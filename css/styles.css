@@ -282,3 +282,21 @@ textarea { min-height: 70px; }
 .th-date-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
 .th-month-pop .th-month-head { flex-direction: column; }
 .th-month-pop .th-date-foot .btn { width: 100%; }
+.rp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.rp-tab.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(11, 107, 91, 0.25);
+}
+.rp-tab:not(.active) {
+  background: #e7f2ee;
+  color: var(--ink);
+}
+.th-date-field input[type="hidden"] {
+  display: none !important;
+}

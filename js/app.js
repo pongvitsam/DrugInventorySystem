@@ -1,4 +1,4 @@
-var STATE = { boot: null, items: [], stock: [], loc: 'MAIN', receive: { item: null, lines: [] }, pickStock: [] };
+var STATE = { boot: null, items: [], stock: [], loc: 'MAIN', receive: { item: null, lines: [] }, pickStock: [], reportKind: 'month' };
 
 function api(name, payload) {
   return DrugAPI.api(name, payload || {});
@@ -26,6 +26,7 @@ function showPage(id) {
   if (id === 'transfer') loadTransferPick();
   if (id === 'adjust') loadAdjustStock();
   if (id === 'import') loadLoginUsers();
+  if (id === 'reports') setReportTab(STATE.reportKind || 'month');
 }
 
 document.querySelectorAll('.nav-btn').forEach(function (btn) {
@@ -261,7 +262,7 @@ function renderReceive() {
   var html = '<tr><th>รายการ</th><th>จำนวน</th><th class="right">ราคา</th><th class="right">เป็นเงิน</th><th>หมดอายุ</th><th></th></tr>';
   html += STATE.receive.lines.map(function (l, i) {
     tot += Number(l.amount || 0);
-    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.qtyText) + '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + money(l.amount) + '</td><td>' + (l.expiry || '-') + '</td><td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
+    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.qtyText) + '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + money(l.amount) + '</td><td>' + (l.expiry ? ThDate.formatDateLong(l.expiry) : '-') + '</td><td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
   }).join('');
   document.getElementById('rcTable').innerHTML = html;
   document.getElementById('rcCalc').textContent = 'ยอดรวม ' + money(tot) + ' บาท · ' + STATE.receive.lines.length + ' รายการ';
@@ -369,8 +370,17 @@ function beMonthKey(isoMonth) {
   var p = isoMonth.split('-');
   return (Number(p[0]) + 543) + '-' + p[1];
 }
+function setReportTab(kind) {
+  STATE.reportKind = kind;
+  document.querySelectorAll('.rp-tab').forEach(function (b) {
+    var on = b.dataset.rp === kind;
+    b.classList.toggle('active', on);
+    b.className = on ? 'btn rp-tab active' : 'btn secondary rp-tab';
+  });
+}
 function runReport(kind) {
-  var iso = document.getElementById('rpMonth').value;
+  setReportTab(kind);
+  var iso = ThDate.get('rpMonth') || document.getElementById('rpMonth').value;
   var monthKey = beMonthKey(iso);
   var fn = kind === 'money' ? 'moneyReport' : kind === 'quarter' ? 'quarterReport' : 'monthReport';
   document.getElementById('reportOut').textContent = 'กำลังสร้างรายงาน...';
