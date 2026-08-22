@@ -37,11 +37,9 @@ var Auth = (function () {
     document.getElementById('appRoot').style.display = 'none';
   }
 
-  function showApp(username) {
+  function showApp() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appRoot').style.display = 'flex';
-    var el = document.getElementById('currentUser');
-    if (el) el.textContent = username;
     if (typeof startApp === 'function') startApp();
   }
 
@@ -65,7 +63,7 @@ var Auth = (function () {
   }
 
   function init() {
-    if (isLoggedIn()) showApp(getUsername());
+    if (isLoggedIn()) showApp();
     else showLoginScreen();
   }
 
@@ -81,8 +79,8 @@ function doLogin() {
     err.textContent = 'กรุณาใส่ Username';
     return;
   }
-  Auth.login(user, remember).then(function (name) {
-    Auth.showApp(name);
+  Auth.login(user, remember).then(function () {
+    Auth.showApp();
   }).catch(function (e) {
     err.textContent = (e && e.message) ? e.message : String(e);
   });

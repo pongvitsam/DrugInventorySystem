@@ -49,7 +49,22 @@ button, input, select, textarea { font-family: inherit; }
 .nav-btn:hover, .nav-btn.active { background: rgba(255,255,255,.12); }
 .sidebar .grow { flex: 1; }
 .sheet-link { color: #d7eee7; font-size: 12px; padding: 10px 12px; text-decoration: none; opacity: .8; cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left; }
-.main { flex: 1; padding: 22px; max-width: 1280px; }
+.main { flex: 1; padding: 22px; max-width: 1280px; position: relative; }
+.watermark {
+  position: fixed;
+  top: 54%;
+  left: calc(var(--sidebar) + (100% - var(--sidebar)) / 2);
+  transform: translate(-50%, -50%) rotate(-24deg);
+  font-size: clamp(48px, 8vw, 96px);
+  font-weight: 700;
+  color: rgba(11, 107, 91, 0.07);
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+.main > *:not(.watermark) { position: relative; z-index: 1; }
 .top {
   display: flex; justify-content: space-between; align-items: flex-end;
   gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
@@ -115,6 +130,11 @@ textarea { min-height: 70px; }
   .sidebar { width: auto; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; }
   .cards, .grid-2 { grid-template-columns: 1fr; }
   .brand { width: 100%; }
+  .watermark {
+    left: 50%;
+    top: 58%;
+    font-size: 42px;
+  }
 }
 @media print {
   .sidebar, .toolbar, .btn, .toast, .nav-btn, .sheet-link { display: none !important; }
@@ -125,6 +145,23 @@ textarea { min-height: 70px; }
   .card, .table-wrap { box-shadow: none; max-height: none; overflow: visible; }
   body { background: #fff; }
   .print-only { display: block; }
+  .watermark { display: none; }
+  .print-sheet {
+    position: relative;
+  }
+  .print-sheet::before {
+    content: 'รพ.สต.ทรายขาว';
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-24deg);
+    font-size: 64px;
+    font-weight: 700;
+    color: rgba(11, 107, 91, 0.08);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .print-sheet > * { position: relative; z-index: 1; }
 }
 .login-screen {
   min-height: 100vh;
