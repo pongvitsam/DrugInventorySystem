@@ -374,7 +374,6 @@ function setReportTab(kind) {
   STATE.reportKind = kind;
   document.querySelectorAll('.rp-tab').forEach(function (b) {
     var on = b.dataset.rp === kind;
-    b.classList.toggle('active', on);
     b.className = on ? 'btn rp-tab active' : 'btn secondary rp-tab';
   });
 }
