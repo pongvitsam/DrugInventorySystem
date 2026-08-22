@@ -69,7 +69,7 @@ var Auth = (function () {
     else showLoginScreen();
   }
 
-  return { init: init, login: login, logout: logout, getUsername: getUsername, isLoggedIn: isLoggedIn };
+  return { init: init, login: login, logout: logout, getUsername: getUsername, isLoggedIn: isLoggedIn, showApp: showApp, showLoginScreen: showLoginScreen };
 })();
 
 function doLogin() {
