@@ -35,11 +35,41 @@ var SHEET_DEFS = {
 var SEQ_CACHE_ = null;
 var SETTINGS_CACHE_ = null;
 var SETTINGS_DIRTY_ = false;
+var ITEMS_INDEX_CACHE_ = null;
+var STOCK_VIEW_CACHE_ = {};
+
+function invalidateStockCaches_() {
+  ITEMS_INDEX_CACHE_ = null;
+  STOCK_VIEW_CACHE_ = {};
+}
+
+function getItemsIndex_() {
+  if (!ITEMS_INDEX_CACHE_) ITEMS_INDEX_CACHE_ = indexById_(readObjects_('Items'));
+  return ITEMS_INDEX_CACHE_;
+}
+
+function enrichStockRow_(s, items) {
+  var it = items[s.itemId] || {};
+  return Object.assign({}, s, {
+    name: it.name || '',
+    category: it.category || '',
+    valueCategory: it.valueCategory || '',
+    packSize: it.packSize || '',
+    amount: round2_(num_(s.qty) * num_(s.unitPrice)),
+    locationLabel: LOC_LABEL[s.location] || s.location,
+    expiryLabel: formatDate_(s.expiry),
+    nearExpiry: isNearExpiry_(s.expiry)
+  });
+}
+
+function sortStockRows_(rows) {
+  rows.sort(function (a, b) {
+    return String(a.category).localeCompare(String(b.category), 'th') || String(a.name).localeCompare(String(b.name), 'th');
+  });
+  return rows;
+}
 
 function callApi(name, payload) {
-  SEQ_CACHE_ = null;
-  SETTINGS_CACHE_ = null;
-  SETTINGS_DIRTY_ = false;
   ensureDb_();
   var fns = {
     bootstrap: apiBootstrap_,
@@ -47,6 +77,7 @@ function callApi(name, payload) {
     saveItem: apiSaveItem_,
     listItems: apiListItems_,
     listStock: apiListStock_,
+    listStockAll: apiListStockAll_,
     saveReceipt: apiSaveReceipt_,
     listReceipts: apiListReceipts_,
     getReceipt: apiGetReceipt_,
@@ -198,25 +229,30 @@ function apiSaveItem_(p) {
 
 function apiListStock_(p) {
   var loc = p.location || '';
-  var items = indexById_(readObjects_('Items'));
+  var cacheKey = loc || '__ALL__';
+  if (STOCK_VIEW_CACHE_[cacheKey]) return { stock: STOCK_VIEW_CACHE_[cacheKey] };
+  var items = getItemsIndex_();
   var stock = readObjects_('Stock').filter(function (s) { return num_(s.qty) > 0 && (!loc || s.location === loc); });
-  var rows = stock.map(function (s) {
-    var it = items[s.itemId] || {};
-    return Object.assign({}, s, {
-      name: it.name || '',
-      category: it.category || '',
-      valueCategory: it.valueCategory || '',
-      packSize: it.packSize || '',
-      amount: round2_(num_(s.qty) * num_(s.unitPrice)),
-      locationLabel: LOC_LABEL[s.location] || s.location,
-      expiryLabel: formatDate_(s.expiry),
-      nearExpiry: isNearExpiry_(s.expiry)
-    });
-  });
-  rows.sort(function (a, b) {
-    return String(a.category).localeCompare(String(b.category), 'th') || String(a.name).localeCompare(String(b.name), 'th');
-  });
+  var rows = sortStockRows_(stock.map(function (s) { return enrichStockRow_(s, items); }));
+  STOCK_VIEW_CACHE_[cacheKey] = rows;
   return { stock: rows };
+}
+
+function apiListStockAll_() {
+  if (STOCK_VIEW_CACHE_.MAIN && STOCK_VIEW_CACHE_.CABINET) {
+    return { MAIN: STOCK_VIEW_CACHE_.MAIN, CABINET: STOCK_VIEW_CACHE_.CABINET };
+  }
+  var items = getItemsIndex_();
+  var out = { MAIN: [], CABINET: [] };
+  readObjects_('Stock').forEach(function (s) {
+    if (num_(s.qty) <= 0 || !out[s.location]) return;
+    out[s.location].push(enrichStockRow_(s, items));
+  });
+  sortStockRows_(out.MAIN);
+  sortStockRows_(out.CABINET);
+  STOCK_VIEW_CACHE_.MAIN = out.MAIN;
+  STOCK_VIEW_CACHE_.CABINET = out.CABINET;
+  return out;
 }
 
 function apiSaveReceipt_(p) {
@@ -860,6 +896,7 @@ function writeObjects_(name, rows) {
     return;
   }
   DB.writeObjects(name, rows);
+  if (name === 'Items' || name === 'Stock') invalidateStockCaches_();
 }
 
 function findById_(rows, id) {

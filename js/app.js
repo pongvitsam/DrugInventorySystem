@@ -1,4 +1,4 @@
-var STATE = { boot: null, items: [], stock: [], loc: 'MAIN', receive: { item: null, lines: [] }, pickStock: [], reportKind: 'month' };
+var STATE = { boot: null, items: [], stock: [], stockCache: { MAIN: null, CABINET: null }, loc: 'MAIN', receive: { item: null, lines: [] }, pickStock: [], reportKind: 'month' };
 
 function api(name, payload) {
   return DrugAPI.api(name, payload || {});
@@ -67,6 +67,24 @@ function applyBoot(b) {
   ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
   initItemOptionSelects(STATE.items || []);
 }
+function refreshStockCache(cb) {
+  return api('listStockAll').then(function (r) {
+    STATE.stockCache.MAIN = r.MAIN || [];
+    STATE.stockCache.CABINET = r.CABINET || [];
+    if (document.getElementById('page-stock').classList.contains('active')) {
+      STATE.stock = STATE.stockCache[STATE.loc] || [];
+      renderStock();
+    }
+    if (cb) cb();
+  }).catch(function (e) {
+    if (cb) cb(e);
+    else toast(e.message || String(e));
+  });
+}
+function refreshAfterMutation() {
+  refreshStockCache();
+  api('bootstrap').then(function (b) { applyBoot(b); });
+}
 function loadBootstrap() {
   setStatus('กำลังโหลดข้อมูล...');
   api('bootstrap').then(function (b) {
@@ -74,6 +92,7 @@ function loadBootstrap() {
     if (b.imported) {
       setStatus('');
       loadItems();
+      refreshStockCache();
       return;
     }
     setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
@@ -84,7 +103,7 @@ function loadBootstrap() {
         applyBoot(b2);
         setStatus('');
         loadItems();
-        showStock('MAIN');
+        refreshStockCache().then(function () { showStock('MAIN'); });
       });
     });
   }).catch(function (e) {
@@ -184,6 +203,7 @@ function saveItem() {
     closeModal();
     toast('บันทึกรายการแล้ว');
     loadItems();
+    refreshStockCache();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
@@ -192,8 +212,13 @@ function showStock(loc) {
   document.querySelectorAll('[data-loc]').forEach(function (b) {
     b.className = b.dataset.loc === loc ? 'btn' : 'btn secondary';
   });
+  if (STATE.stockCache[loc]) {
+    STATE.stock = STATE.stockCache[loc];
+    renderStock();
+  }
   api('listStock', { location: loc }).then(function (r) {
-    STATE.stock = r.stock || [];
+    STATE.stockCache[loc] = r.stock || [];
+    STATE.stock = STATE.stockCache[loc];
     renderStock();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -281,7 +306,7 @@ function saveReceipt() {
     STATE.receive.lines = [];
     renderReceive();
     loadReceipts();
-    loadBootstrap();
+    refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 function loadReceipts() {
@@ -293,15 +318,23 @@ function loadReceipts() {
 }
 
 function loadTransferPick() {
+  if (STATE.stockCache.MAIN) {
+    STATE.pickStock = STATE.stockCache.MAIN;
+    renderTransferPick();
+  }
   api('listStock', { location: 'MAIN' }).then(function (r) {
-    STATE.pickStock = r.stock || [];
-    var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือคลัง</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">เบิกครั้งนี้</th></tr>';
-    html += STATE.pickStock.map(function (s) {
-      return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td><td class="right"><input data-sid="' + s.id + '" type="number" min="0" step="0.01" max="' + s.qty + '" style="width:90px" oninput="sumTransfer()"></td></tr>';
-    }).join('');
-    document.getElementById('trPickTable').innerHTML = html;
-    sumTransfer();
+    STATE.stockCache.MAIN = r.stock || [];
+    STATE.pickStock = STATE.stockCache.MAIN;
+    renderTransferPick();
   });
+}
+function renderTransferPick() {
+  var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือคลัง</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">เบิกครั้งนี้</th></tr>';
+  html += STATE.pickStock.map(function (s) {
+    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td><td class="right"><input data-sid="' + s.id + '" type="number" min="0" step="0.01" max="' + s.qty + '" style="width:90px" oninput="sumTransfer()"></td></tr>';
+  }).join('');
+  document.getElementById('trPickTable').innerHTML = html;
+  sumTransfer();
 }
 function sumTransfer() {
   var n = 0, v = 0;
@@ -327,22 +360,30 @@ function saveTransfer() {
   }).then(function (r) {
     toast('บันทึกเบิกตู้ ' + r.transfer.id);
     loadTransferPick();
-    loadBootstrap();
+    refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
 function loadAdjustStock() {
   var loc = document.getElementById('adjLoc').value;
   var type = document.getElementById('adjType').value;
+  if (STATE.stockCache[loc]) {
+    STATE.pickStock = STATE.stockCache[loc];
+    renderAdjustTable(type);
+  }
   api('listStock', { location: loc }).then(function (r) {
-    STATE.pickStock = r.stock || [];
-    var qtyHead = type === 'COUNT' ? 'ยอดนับจริง' : 'จำนวนใช้ไป';
-    var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th>' + qtyHead + '</th></tr>';
-    html += STATE.pickStock.map(function (s) {
-      return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td><input data-sid="' + s.id + '" type="number" min="0" step="0.01" style="width:110px" ' + (type === 'COUNT' ? 'value="' + s.qty + '"' : '') + '></td></tr>';
-    }).join('');
-    document.getElementById('adjTable').innerHTML = html;
+    STATE.stockCache[loc] = r.stock || [];
+    STATE.pickStock = STATE.stockCache[loc];
+    renderAdjustTable(type);
   });
+}
+function renderAdjustTable(type) {
+  var qtyHead = type === 'COUNT' ? 'ยอดนับจริง' : 'จำนวนใช้ไป';
+  var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th>' + qtyHead + '</th></tr>';
+  html += STATE.pickStock.map(function (s) {
+    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td><input data-sid="' + s.id + '" type="number" min="0" step="0.01" style="width:110px" ' + (type === 'COUNT' ? 'value="' + s.qty + '"' : '') + '></td></tr>';
+  }).join('');
+  document.getElementById('adjTable').innerHTML = html;
 }
 function saveAdjustment() {
   var type = document.getElementById('adjType').value;
@@ -362,7 +403,7 @@ function saveAdjustment() {
   }).then(function (r) {
     toast('บันทึกแล้ว ' + r.adjustment.id);
     loadAdjustStock();
-    loadBootstrap();
+    refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
