@@ -61,7 +61,11 @@ function callApi(name, payload) {
     yearReport: apiYearReport_,
     importSeed: apiImportSeed_,
     parseQty: function (p) { return parseQty_(p && p.text); },
-    searchItems: apiSearchItems_
+    searchItems: apiSearchItems_,
+    login: apiLogin_,
+    listUsers: apiListUsers_,
+    addUser: apiAddUser_,
+    removeUser: apiRemoveUser_
   };
   if (!fns[name]) throw new Error('ไม่พบคำสั่ง: ' + name);
   var result = fns[name](payload || {});
@@ -99,6 +103,55 @@ function apiSaveSettings_(p) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
   });
   return { ok: true, settings: readSettings_() };
+}
+
+function parseUsers_(settings) {
+  try {
+    var raw = settings.loginUsers;
+    if (!raw) return ['Napatsorn'];
+    var arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) && arr.length ? arr : ['Napatsorn'];
+  } catch (e) {
+    return ['Napatsorn'];
+  }
+}
+
+function apiListUsers_() {
+  return { users: parseUsers_(readSettings_()) };
+}
+
+function apiLogin_(p) {
+  var name = String(p.username || '').trim();
+  if (!name) throw new Error('กรุณาใส่ Username');
+  var users = parseUsers_(readSettings_());
+  var ok = users.some(function (u) { return String(u).toLowerCase() === name.toLowerCase(); });
+  if (!ok) throw new Error('Username ไม่ถูกต้อง');
+  var matched = users.filter(function (u) { return String(u).toLowerCase() === name.toLowerCase(); })[0];
+  setSetting_('lastLoginUser', matched);
+  return { ok: true, username: matched };
+}
+
+function apiAddUser_(p) {
+  var name = String(p.username || '').trim();
+  if (!name) throw new Error('กรุณาใส่ Username');
+  if (name.length < 2) throw new Error('Username สั้นเกินไป');
+  var users = parseUsers_(readSettings_());
+  if (users.some(function (u) { return String(u).toLowerCase() === name.toLowerCase(); })) {
+    throw new Error('มี Username นี้แล้ว');
+  }
+  users.push(name);
+  setSetting_('loginUsers', JSON.stringify(users));
+  return { ok: true, users: users };
+}
+
+function apiRemoveUser_(p) {
+  var name = String(p.username || '').trim();
+  var users = parseUsers_(readSettings_()).filter(function (u) {
+    return String(u).toLowerCase() !== name.toLowerCase();
+  });
+  if (!users.length) throw new Error('ต้องมีผู้ใช้อย่างน้อย 1 คน');
+  setSetting_('loginUsers', JSON.stringify(users));
+  return { ok: true, users: users };
 }
 
 function apiListItems_() {
@@ -719,7 +772,8 @@ function ensureDb_() {
     requesterPosition: 'นักวิชาการสาธารณสุขชำนาญการ',
     approverName: '',
     issuerName: 'นางสาวสุภารัตน์ จงรักษ์',
-    imported: '0'
+    imported: '0',
+    loginUsers: '["Napatsorn"]'
   };
   var cur = readSettings_();
   var changed = false;
@@ -729,6 +783,10 @@ function ensureDb_() {
       changed = true;
     }
   });
+  if (!cur.loginUsers) {
+    cur.loginUsers = '["Napatsorn"]';
+    changed = true;
+  }
   if (changed) {
     SETTINGS_CACHE_ = cur;
     SETTINGS_DIRTY_ = true;
