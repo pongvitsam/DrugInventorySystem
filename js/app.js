@@ -59,11 +59,12 @@ function applyBoot(b) {
   document.getElementById('stPos').value = b.settings.requesterPosition || '';
   document.getElementById('stIss').value = b.settings.issuerName || '';
   renderDash(b);
-  document.getElementById('rcDate').value = todayInput();
-  document.getElementById('trDate').value = todayInput();
-  document.getElementById('adjDate').value = todayInput();
+  ThDate.set('rcDate', todayInput());
+  ThDate.set('trDate', todayInput());
+  ThDate.set('adjDate', todayInput());
   var now = new Date();
-  document.getElementById('rpMonth').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
+  initItemOptionSelects(STATE.items || []);
 }
 function loadBootstrap() {
   setStatus('กำลังโหลดข้อมูล...');
@@ -131,6 +132,7 @@ function kpi(label, value, hint) {
 function loadItems() {
   api('listItems').then(function (r) {
     STATE.items = r.items || [];
+    initItemOptionSelects(STATE.items);
     renderItems();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -155,8 +157,8 @@ function openItem(id) {
   document.getElementById('itCode').value = it.code || '';
   document.getElementById('itCat').value = it.category || 'ยาเม็ด';
   document.getElementById('itValCat').value = it.valueCategory || 'ยา';
-  document.getElementById('itPack').value = it.packSize || '';
-  document.getElementById('itForm').value = it.form || '';
+  fillSelectWithCustom('itPack', 'itPackCustom', Options.mergePackFromItems(STATE.items), it.packSize || '');
+  fillSelectWithCustom('itForm', 'itFormCustom', Options.mergeFormFromItems(STATE.items), it.form || '');
   document.getElementById('itPrice').value = it.unitPrice || '';
   document.getElementById('itQuota').value = it.yearQuota || '';
   document.getElementById('itLow').value = it.lowStock || '';
@@ -171,8 +173,8 @@ function saveItem() {
     code: document.getElementById('itCode').value,
     category: document.getElementById('itCat').value,
     valueCategory: document.getElementById('itValCat').value,
-    packSize: document.getElementById('itPack').value,
-    form: document.getElementById('itForm').value,
+    packSize: readSelectWithCustom('itPack', 'itPackCustom'),
+    form: readSelectWithCustom('itForm', 'itFormCustom'),
     unitPrice: document.getElementById('itPrice').value,
     yearQuota: document.getElementById('itQuota').value,
     lowStock: document.getElementById('itLow').value,
@@ -199,7 +201,7 @@ function renderStock() {
   var rows = STATE.stock.filter(function (s) { return !q || String(s.name).toLowerCase().indexOf(q) >= 0; });
   var html = '<tr><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th class="right">มูลค่า</th><th>หมดอายุ</th></tr>';
   html += rows.map(function (s) {
-    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td><td class="right"><b>' + s.qty + '</b></td><td class="right">' + money(s.unitPrice) + '</td><td class="right">' + money(s.amount) + '</td><td>' + (s.nearExpiry ? '<span class="pill warn">' : '') + (s.expiryLabel || '-') + (s.nearExpiry ? '</span>' : '') + '</td></tr>';
+    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td><td class="right"><b>' + s.qty + '</b></td><td class="right">' + money(s.unitPrice) + '</td><td class="right">' + money(s.amount) + '</td><td>' + (s.nearExpiry ? '<span class="pill warn">' : '') + (s.expiryLabel || (s.expiry ? ThDate.formatDateLong(s.expiry) : '-')) + (s.nearExpiry ? '</span>' : '') + '</td></tr>';
   }).join('');
   document.getElementById('stockTable').innerHTML = html;
 }
@@ -284,7 +286,7 @@ function saveReceipt() {
 function loadReceipts() {
   api('listReceipts').then(function (r) {
     document.getElementById('rcHistory').innerHTML = (r.receipts || []).slice(0, 10).map(function (x) {
-      return '<div>' + esc(x.date) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</div>';
+      return '<div>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</div>';
     }).join('') || 'ยังไม่มี';
   });
 }
@@ -492,5 +494,6 @@ function removeLoginUser(name) {
 }
 
 function startApp() {
+  ThDate.initAll();
   loadBootstrap();
 }

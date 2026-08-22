@@ -192,3 +192,93 @@ textarea { min-height: 70px; }
   gap: 8px;
 }
 .user-row span { font-weight: 600; }
+.th-date-field { position: relative; }
+.th-date-field input[type="hidden"],
+.th-date-field input[type="date"],
+.th-date-field input[type="month"] {
+  position: absolute; opacity: 0; pointer-events: none; height: 0; width: 0;
+}
+.th-date-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.th-date-btn:hover { border-color: var(--primary); background: var(--primary-soft); }
+.th-date-pop {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  min-width: 280px;
+}
+.th-date-pop.open { display: block; }
+.th-date-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.th-date-head select {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.th-nav {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #f7fbf9;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--primary);
+}
+.th-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.th-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.th-day {
+  appearance: none;
+  border: 0;
+  background: #f7fbf9;
+  border-radius: 8px;
+  padding: 7px 0;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+}
+.th-day.blank { background: transparent; cursor: default; }
+.th-day.today { box-shadow: inset 0 0 0 2px var(--primary); }
+.th-day.selected { background: var(--primary); color: #fff; font-weight: 700; }
+.th-day:hover:not(.blank):not(.selected) { background: var(--primary-soft); }
+.th-date-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+.th-month-pop .th-month-head { flex-direction: column; }
+.th-month-pop .th-date-foot .btn { width: 100%; }
