@@ -11,6 +11,9 @@ var STATE = {
 };
 
 function api(name, payload) {
+  if (typeof DrugAPI === 'undefined' || !DrugAPI || typeof DrugAPI.api !== 'function') {
+    return Promise.reject(new Error('ระบบยังโหลดไม่ครบ กรุณากด Ctrl+F5 แล้วลองใหม่'));
+  }
   return DrugAPI.api(name, payload || {});
 }
 function toast(msg) {
@@ -557,6 +560,11 @@ function removeLoginUser(name) {
 }
 
 function startApp() {
+  if (typeof DrugAPI === 'undefined') {
+    setStatus('โหลดระบบไม่สำเร็จ (api.js) — กด Ctrl+F5 หรือรีเฟรชหน้า', true);
+    toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
+    return;
+  }
   ThDate.initAll();
   loadBootstrap();
 }
