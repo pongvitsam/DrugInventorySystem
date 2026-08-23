@@ -40,7 +40,8 @@ function showPage(id) {
   if (id === 'stock') showStock();
   if (id === 'receive') {
     loadReceipts();
-    initItemOptionSelects(STATE.items || []);
+    if (!STATE.items || !STATE.items.length) loadItems();
+    else initItemOptionSelects(STATE.items);
   }
   if (id === 'withdraw') {
     loadWithdrawPick();
@@ -515,11 +516,108 @@ function runBillOcr() {
   });
 }
 
+function activeRegistryItems() {
+  return (STATE.items || []).filter(function (i) { return i.active !== '0'; })
+    .slice()
+    .sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'th'); });
+}
+
+function ocrRegistrySelectHtml(i, row) {
+  var items = activeRegistryItems();
+  var q = String(row._filter || '').toLowerCase().trim();
+  var html = '<div class="ocr-pick">';
+  html += '<input class="ocr-pick-filter" type="search" placeholder="ค้นหาในทะเบียน…" value="' + esc(row._filter || '') + '" ' +
+    'oninput="STATE.ocrReview[' + i + ']._filter=this.value;renderOcrReview()">' ;
+  html += '<select class="ocr-item-select" onchange="pickOcrRegistryItem(' + i + ', this.value)">';
+  html += '<option value="">— เลือกจากทะเบียน —</option>';
+  var shown = 0;
+  items.forEach(function (it) {
+    var label = it.name + (it.packSize ? ' · ' + it.packSize : '');
+    var isSel = row.itemId && String(row.itemId) === String(it.id);
+    if (q && !isSel && (it.name + ' ' + (it.packSize || '') + ' ' + (it.code || '')).toLowerCase().indexOf(q) < 0) return;
+    shown++;
+    html += '<option value="' + esc(it.id) + '"' + (isSel ? ' selected' : '') + '>' + esc(label) + '</option>';
+  });
+  if (q && !shown) html += '<option value="" disabled>ไม่พบในทะเบียน</option>';
+  html += '<option value="__custom__"' + (!row.itemId ? ' selected' : '') + '>อื่น ๆ (พิมพ์ชื่อเอง)</option>';
+  html += '</select>';
+  if (!row.itemId) {
+    html += '<input class="ocr-name-input" value="' + esc(row.name || '') + '" placeholder="ชื่อรายการใหม่" ' +
+      'onchange="updateOcrField(' + i + ',\'name\',this.value)">';
+  }
+  if (row.raw) html += '<div class="muted ocr-raw">จาก OCR: ' + esc(row.raw) + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function pickOcrRegistryItem(i, itemId) {
+  var row = STATE.ocrReview[i];
+  if (!row) return;
+  if (!itemId || itemId === '__custom__') {
+    row.itemId = '';
+    row.matched = false;
+    if (!row.name && row.raw) row.name = row.raw;
+    renderOcrReview();
+    return;
+  }
+  var it = (STATE.items || []).filter(function (x) { return String(x.id) === String(itemId); })[0];
+  if (!it) return toast('ไม่พบรายการในทะเบียน');
+  row.itemId = it.id;
+  row.name = it.name;
+  row.packSize = it.packSize || row.packSize || '';
+  row._packCustom = false;
+  row.unitPrice = Number(it.unitPrice != null ? it.unitPrice : row.unitPrice) || 0;
+  row.category = it.category || row.category || '';
+  row.matched = true;
+  row.amount = Number(row.qty || 0) * Number(row.unitPrice || 0);
+  row._filter = '';
+  renderOcrReview();
+}
+
+function ocrPackSelectHtml(i, row) {
+  var packs = Options.mergePackFromItems(STATE.items || []);
+  var cur = String(row.packSize || '').trim();
+  var matched = null;
+  packs.forEach(function (p) {
+    if (matched) return;
+    if (p === cur || (Options.packKey && Options.packKey(p) === Options.packKey(cur))) matched = p;
+  });
+  var showCustom = !!row._packCustom || (!!cur && !matched);
+  var html = '<div class="ocr-pack-pick">';
+  html += '<select class="ocr-pack-select" onchange="pickOcrPack(' + i + ', this.value)">';
+  html += '<option value="">— เลือกหน่วย —</option>';
+  packs.forEach(function (p) {
+    var sel = !showCustom && matched === p ? ' selected' : '';
+    html += '<option value="' + esc(p) + '"' + sel + '>' + esc(p) + '</option>';
+  });
+  html += '<option value="__custom__"' + (showCustom ? ' selected' : '') + '>อื่น ๆ (พิมพ์เอง)</option>';
+  html += '</select>';
+  if (showCustom) {
+    html += '<input class="ocr-pack-custom" value="' + esc(cur) + '" placeholder="เช่น 100\'s" ' +
+      'onchange="STATE.ocrReview[' + i + ']._packCustom=true;updateOcrField(' + i + ',\'packSize\',this.value)">';
+  }
+  html += '</div>';
+  return html;
+}
+
+function pickOcrPack(i, value) {
+  var row = STATE.ocrReview[i];
+  if (!row) return;
+  if (value === '__custom__') {
+    row._packCustom = true;
+    renderOcrReview();
+    return;
+  }
+  row._packCustom = false;
+  row.packSize = value || '';
+  renderOcrReview();
+}
+
 function renderOcrReview() {
   var rows = STATE.ocrReview || [];
   var card = document.getElementById('ocrReviewCard');
   if (card) card.style.display = rows.length ? 'block' : 'none';
-  var html = '<tr><th></th><th>ชื่อ</th><th class="right">จำนวน</th><th>บรรจุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>จับคู่ทะเบียน</th></tr>';
+  var html = '<tr><th></th><th>รายการ (เลือกจากทะเบียน)</th><th class="right">จำนวน</th><th>หน่วยบรรจุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>สถานะ</th></tr>';
   var tot = 0;
   var kept = 0;
   html += rows.map(function (l, i) {
@@ -529,12 +627,12 @@ function renderOcrReview() {
     }
     return '<tr class="' + (l.keep ? '' : 'ocr-skip') + '">' +
       '<td><input type="checkbox" ' + (l.keep ? 'checked' : '') + ' onchange="STATE.ocrReview[' + i + '].keep=this.checked;renderOcrReview()"></td>' +
-      '<td><input value="' + esc(l.name) + '" onchange="STATE.ocrReview[' + i + '].name=this.value" style="width:100%"></td>' +
+      '<td>' + ocrRegistrySelectHtml(i, l) + '</td>' +
       '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
-      '<td><input value="' + esc(l.packSize || '') + '" style="width:90px" onchange="STATE.ocrReview[' + i + '].packSize=this.value"></td>' +
+      '<td>' + ocrPackSelectHtml(i, l) + '</td>' +
       '<td class="right"><input type="number" step="0.01" value="' + (l.unitPrice || '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'unitPrice\',this.value)"></td>' +
       '<td class="right">' + money(Number(l.qty || 0) * Number(l.unitPrice || 0)) + '</td>' +
-      '<td>' + (l.matched ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
+      '<td>' + (l.itemId ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
       '</tr>';
   }).join('');
   document.getElementById('ocrReviewTable').innerHTML = html || '<tr><td>ไม่มีรายการ</td></tr>';
@@ -573,7 +671,7 @@ function confirmOcrReview() {
       itemId: l.itemId || '',
       name: String(l.name).trim(),
       packSize: pack,
-      category: kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด',
+      category: l.category || (kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
       qtyText: qty + ' × ' + pack,
       qty: qty,
       approvedQty: qty,

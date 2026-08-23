@@ -284,16 +284,50 @@ textarea { min-height: 70px; }
   .watermark { left: 50%; top: 58%; font-size: 42px; }
 }
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
   .sidebar, .toolbar, .btn, .toast, .nav-btn, .sheet-link, .stock-alert, .stock-filters { display: none !important; }
   .app { display: block; }
   .main { max-width: none; padding: 0; }
   .page { display: none !important; }
-  .page.active, .print-sheet { display: block !important; }
+  .page.active { display: block !important; }
+  .page.active > .top,
+  .page.active > .card:not(:has(.print-sheet)) { display: none !important; }
+  .page.active .card:has(.print-sheet) {
+    display: block !important;
+    box-shadow: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0 !important;
+  }
+  .page.active .card:has(.print-sheet) > .row,
+  .page.active .card:has(.print-sheet) > h3 { display: none !important; }
+  #wdPrintOut.print-sheet {
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: none !important;
+  }
   .card, .table-wrap { box-shadow: none; max-height: none; overflow: visible; }
   body { background: #fff; }
   .print-only { display: block; }
   .watermark { display: none; }
-  .print-sheet { position: relative; }
+  .print-sheet {
+    position: relative;
+    display: block !important;
+    width: 100%;
+    max-width: 190mm;
+    margin: 0 auto;
+    font-size: 12px;
+    color: #111;
+  }
+  .print-sheet h2 { font-size: 16px; }
+  .print-sheet table { font-size: 11px; }
+  .print-sheet th, .print-sheet td { padding: 4px 5px; }
   .print-sheet::before {
     content: 'รพ.สต.ทรายขาว';
     position: fixed; top: 45%; left: 50%;
@@ -699,6 +733,30 @@ textarea { min-height: 70px; }
 }
 .fefo-row td { background: #fff8e6; }
 .ocr-skip td { opacity: .45; }
+.ocr-pick { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.ocr-pick-filter,
+.ocr-item-select,
+.ocr-name-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+}
+.ocr-pick-filter { background: #f7fbf9; }
+.ocr-pack-pick { display: flex; flex-direction: column; gap: 6px; min-width: 110px; }
+.ocr-pack-select,
+.ocr-pack-custom {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+}
 #ocrReviewTable input {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -719,5 +777,23 @@ textarea { min-height: 70px; }
   .sign-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media print {
-  .sign-grid { grid-template-columns: repeat(4, 1fr); }
+  .sign-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 22mm;
+    font-size: 11px;
+    page-break-inside: avoid;
+  }
+}
+
+/* Preview ใบเบิกบนจอให้ใกล้เคียง A4 แนวตั้ง */
+#wdPrintOut.print-sheet {
+  max-width: 210mm;
+  min-height: 297mm;
+  margin: 12px auto 0;
+  padding: 14mm 12mm;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(4, 40, 35, 0.08);
+  box-sizing: border-box;
 }
