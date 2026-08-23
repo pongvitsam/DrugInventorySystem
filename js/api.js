@@ -199,7 +199,39 @@ function apiRemoveUser_(p) {
 }
 
 function apiListItems_() {
-  return { items: normalizeItemPacks_(readObjects_('Items')) };
+  var items = normalizeItemPacks_(readObjects_('Items'));
+  var stock = readObjects_('Stock').filter(function (s) {
+    return s.location === LOC_MAIN && num_(s.qty) > 0;
+  });
+  var byItem = {};
+  stock.forEach(function (s) {
+    if (!byItem[s.itemId]) byItem[s.itemId] = [];
+    byItem[s.itemId].push({
+      stockId: s.id,
+      qty: round4_(num_(s.qty)),
+      unitPrice: num_(s.unitPrice),
+      expiry: s.expiry || '',
+      expiryLabel: formatDate_(s.expiry),
+      nearExpiry: isNearExpiry_(s.expiry),
+      amount: round2_(num_(s.qty) * num_(s.unitPrice))
+    });
+  });
+  Object.keys(byItem).forEach(function (id) {
+    byItem[id].sort(function (a, b) {
+      return String(a.expiry || '9999-99-99').localeCompare(String(b.expiry || '9999-99-99'));
+    });
+  });
+  var enriched = items.map(function (it) {
+    var lots = byItem[it.id] || [];
+    var stockQty = round4_(lots.reduce(function (s, l) { return s + num_(l.qty); }, 0));
+    var stockValue = round2_(lots.reduce(function (s, l) { return s + num_(l.amount); }, 0));
+    return Object.assign({}, it, {
+      lots: lots,
+      stockQty: stockQty,
+      stockValue: stockValue
+    });
+  });
+  return { items: enriched };
 }
 
 function apiSearchItems_(p) {

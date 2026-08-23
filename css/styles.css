@@ -477,7 +477,23 @@ textarea { min-height: 70px; }
 .th-date-field input[type="hidden"] {
   display: none !important;
 }
-.fefo-row td { background: #fff8e6; }
+.lot-list { display: flex; flex-direction: column; gap: 4px; }
+.lot-row { font-size: 13px; line-height: 1.35; }
+.wd-pick-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.wd-pick-wrap table { margin: 0; }
+.ocr-skip td { opacity: .45; }
+#ocrReviewTable input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
 .sign-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

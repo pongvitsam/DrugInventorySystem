@@ -5,7 +5,9 @@ var STATE = {
   stockCache: { MAIN: null },
   loc: 'MAIN',
   receive: { item: null, lines: [] },
+  ocrReview: [],
   pickStock: [],
+  withdrawCart: [],
   reportKind: 'month',
   lastWithdrawId: null
 };
@@ -72,6 +74,7 @@ function applyBoot(b) {
   }
   fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   fillSelect('itCat', b.categories || []);
+  fillSelect('wdCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   document.getElementById('stUnit').value = s.unitName || '';
   document.getElementById('stSub').value = s.unitSub || '';
   document.getElementById('stApp').value = s.approverName || '';
@@ -98,7 +101,7 @@ function refreshStockCache(cb) {
     }
     if (document.getElementById('page-withdraw').classList.contains('active')) {
       STATE.pickStock = STATE.stockCache.MAIN || [];
-      renderWithdrawPick();
+      filterWithdrawStock();
     }
     if (cb) cb();
   }).catch(function (e) {
@@ -192,9 +195,26 @@ function renderItems() {
       (!cat || i.category === cat) &&
       (!q || (i.name + i.packSize + i.code).toLowerCase().indexOf(q) >= 0);
   });
-  var html = '<tr><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th><th class="right">ราคา</th><th></th></tr>';
+  var html = '<tr><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">คงเหลือ</th><th>ล็อต / วันหมดอายุ</th><th></th></tr>';
   html += rows.map(function (i) {
-    return '<tr><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') + '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) + '</td><td class="right">' + money(i.unitPrice) + '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button></td></tr>';
+    var lots = i.lots || [];
+    var lotHtml;
+    if (!lots.length) {
+      lotHtml = '<span class="muted">ไม่มีสต็อก</span>';
+    } else {
+      lotHtml = '<div class="lot-list">' + lots.map(function (l) {
+        var exp = l.expiryLabel || (l.expiry ? ThDate.formatDateLong(l.expiry) : 'ไม่ระบุวันหมดอายุ');
+        var pill = l.nearExpiry ? 'pill warn' : 'pill';
+        return '<div class="lot-row"><b>' + l.qty + '</b> · <span class="' + pill + '">' + esc(exp) + '</span></div>';
+      }).join('') + '</div>';
+    }
+    return '<tr><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
+      '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) +
+      '</td><td class="right">' + money(i.unitPrice) +
+      '</td><td class="right"><b>' + (i.stockQty || 0) + '</b>' +
+      (i.stockValue ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
+      '</td><td>' + lotHtml +
+      '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button></td></tr>';
   }).join('');
   document.getElementById('itemTable').innerHTML = html || '<tr><td>ยังไม่มีรายการ</td></tr>';
 }
@@ -338,43 +358,257 @@ function loadReceipts() {
   });
 }
 
+function runBillOcr() {
+  var fileInput = document.getElementById('ocrFile');
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  if (!file) return toast('เลือกไฟล์รูปบิลก่อน');
+  var btn = document.getElementById('btnOcrScan');
+  if (btn) btn.disabled = true;
+  var status = document.getElementById('ocrStatus');
+  if (status) { status.style.display = 'block'; status.textContent = 'เตรียมรูป…'; }
+
+  var known = STATE.items && STATE.items.length ? STATE.items : [];
+  var chain = known.length ? Promise.resolve(known) : api('listItems').then(function (r) {
+    STATE.items = r.items || [];
+    return STATE.items;
+  });
+
+  chain.then(function (items) {
+    return BillOcr.scanFile(file, items);
+  }).then(function (parsed) {
+    STATE.ocrReview = (parsed.lines || []).map(function (l, i) {
+      return Object.assign({ _id: 'ocr' + i }, l, { keep: true });
+    });
+    if (parsed.receiptNumber && !document.getElementById('rcNumber').value) {
+      document.getElementById('rcNumber').value = parsed.receiptNumber;
+    }
+    renderOcrReview();
+    if (!STATE.ocrReview.length) {
+      toast('อ่านข้อความได้ แต่ยังแยกรายการไม่ชัด — ลองรูปคมกว่า หรือกรอกมือ');
+      var st = document.getElementById('ocrStatus');
+      if (st) st.textContent = 'อ่านแล้วแต่แยกแถวไม่เจอชัด — ดูตัวอย่างรูปแล้วกรอกมือ หรือลองใหม่';
+    } else {
+      toast('พบ ' + STATE.ocrReview.length + ' รายการ — กรุณาตรวจแก้');
+    }
+  }).catch(function (e) {
+    toast(e.message || String(e));
+    var st = document.getElementById('ocrStatus');
+    if (st) { st.style.display = 'block'; st.textContent = e.message || String(e); }
+  }).then(function () {
+    if (btn) btn.disabled = false;
+  });
+}
+
+function renderOcrReview() {
+  var rows = STATE.ocrReview || [];
+  var card = document.getElementById('ocrReviewCard');
+  if (card) card.style.display = rows.length ? 'block' : 'none';
+  var html = '<tr><th></th><th>ชื่อ</th><th class="right">จำนวน</th><th>บรรจุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>จับคู่ทะเบียน</th></tr>';
+  var tot = 0;
+  var kept = 0;
+  html += rows.map(function (l, i) {
+    if (l.keep) {
+      kept++;
+      tot += Number(l.qty || 0) * Number(l.unitPrice || 0);
+    }
+    return '<tr class="' + (l.keep ? '' : 'ocr-skip') + '">' +
+      '<td><input type="checkbox" ' + (l.keep ? 'checked' : '') + ' onchange="STATE.ocrReview[' + i + '].keep=this.checked;renderOcrReview()"></td>' +
+      '<td><input value="' + esc(l.name) + '" onchange="STATE.ocrReview[' + i + '].name=this.value" style="width:100%"></td>' +
+      '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
+      '<td><input value="' + esc(l.packSize || '') + '" style="width:90px" onchange="STATE.ocrReview[' + i + '].packSize=this.value"></td>' +
+      '<td class="right"><input type="number" step="0.01" value="' + (l.unitPrice || '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'unitPrice\',this.value)"></td>' +
+      '<td class="right">' + money(Number(l.qty || 0) * Number(l.unitPrice || 0)) + '</td>' +
+      '<td>' + (l.matched ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('ocrReviewTable').innerHTML = html || '<tr><td>ไม่มีรายการ</td></tr>';
+  document.getElementById('ocrReviewCalc').textContent = kept + ' รายการที่เลือก · ' + money(tot) + ' บาท';
+}
+
+function updateOcrField(i, key, value) {
+  var row = STATE.ocrReview[i];
+  if (!row) return;
+  if (key === 'qty' || key === 'unitPrice') row[key] = Number(value || 0);
+  else row[key] = value;
+  row.amount = Number(row.qty || 0) * Number(row.unitPrice || 0);
+  renderOcrReview();
+}
+
+function clearOcrReview() {
+  STATE.ocrReview = [];
+  renderOcrReview();
+  var preview = document.getElementById('ocrPreview');
+  if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+  var status = document.getElementById('ocrStatus');
+  if (status) { status.style.display = 'none'; status.textContent = ''; }
+  var file = document.getElementById('ocrFile');
+  if (file) file.value = '';
+}
+
+function confirmOcrReview() {
+  var rows = (STATE.ocrReview || []).filter(function (l) { return l.keep && String(l.name || '').trim() && Number(l.qty) > 0; });
+  if (!rows.length) return toast('เลือกรายการที่ต้องการอย่างน้อย 1 รายการ');
+  var kind = document.getElementById('rcKind').value;
+  rows.forEach(function (l) {
+    var pack = String(l.packSize || '').trim() || 'กล่อง';
+    var qty = Number(l.qty || 0);
+    var price = Number(l.unitPrice || 0);
+    STATE.receive.lines.push({
+      itemId: l.itemId || '',
+      name: String(l.name).trim(),
+      packSize: pack,
+      category: kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด',
+      qtyText: qty + ' × ' + pack,
+      qty: qty,
+      approvedQty: qty,
+      requestedQty: qty,
+      unitPrice: price,
+      amount: qty * price,
+      expiry: l.expiry || '',
+      notes: 'จาก OCR'
+    });
+  });
+  renderReceive();
+  clearOcrReview();
+  toast('ใส่รายการรับเข้าแล้ว ' + rows.length + ' รายการ — ตรวจวันหมดอายุแล้วบันทึกได้');
+}
+
 function loadWithdrawPick() {
   if (STATE.stockCache.MAIN) {
     STATE.pickStock = STATE.stockCache.MAIN;
-    renderWithdrawPick();
+    filterWithdrawStock();
   }
   api('listStock', { location: 'MAIN' }).then(function (r) {
     STATE.stockCache.MAIN = r.stock || [];
     STATE.pickStock = STATE.stockCache.MAIN;
-    renderWithdrawPick();
+    filterWithdrawStock();
   });
+  renderWithdrawSummary();
 }
-function renderWithdrawPick() {
-  var html = '<tr><th></th><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">เบิกครั้งนี้</th></tr>';
-  html += STATE.pickStock.map(function (s) {
-    var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำใช้ก่อน</span> ' : '';
-    return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '"><td>' + tip + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td><td class="right"><input data-sid="' + s.id + '" type="number" min="0" step="1" max="' + s.qty + '" style="width:90px" oninput="sumWithdraw()"></td></tr>';
-  }).join('');
+function filterWithdrawStock() {
+  var q = (document.getElementById('wdSearch').value || '').toLowerCase().trim();
+  var cat = document.getElementById('wdCatFilter') ? document.getElementById('wdCatFilter').value : '';
+  var rows = (STATE.pickStock || []).filter(function (s) {
+    if (cat && s.category !== cat) return false;
+    if (!q) return true;
+    return (String(s.name) + ' ' + String(s.packSize) + ' ' + String(s.category)).toLowerCase().indexOf(q) >= 0;
+  });
+  renderWithdrawPick(rows);
+}
+function renderWithdrawPick(rows) {
+  rows = rows || STATE.pickStock || [];
+  var html = '<tr><th></th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">จำนวน</th><th></th></tr>';
+  if (!rows.length) {
+    html += '<tr><td colspan="9" class="muted">ไม่พบรายการที่ตรงเงื่อนไข</td></tr>';
+  } else {
+    html += rows.map(function (s) {
+      var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำ</span>' : '';
+      var inCart = (STATE.withdrawCart || []).filter(function (c) { return c.stockId === s.id; })[0];
+      var defQty = inCart ? inCart.qty : '';
+      return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '">' +
+        '<td>' + tip + '</td>' +
+        '<td>' + esc(s.name) + '</td>' +
+        '<td>' + esc(s.category) + '</td>' +
+        '<td>' + esc(s.packSize) + '</td>' +
+        '<td class="right">' + s.qty + '</td>' +
+        '<td class="right">' + money(s.unitPrice) + '</td>' +
+        '<td>' + (s.expiryLabel || '-') + '</td>' +
+        '<td class="right"><input id="wdQty_' + s.id + '" type="number" min="1" step="1" max="' + s.qty + '" value="' + defQty + '" style="width:80px"></td>' +
+        '<td><button type="button" class="btn" onclick="addWithdrawLine(\'' + s.id + '\')">' + (inCart ? 'อัปเดต' : 'เพิ่ม') + '</button></td>' +
+        '</tr>';
+    }).join('');
+  }
   document.getElementById('wdPickTable').innerHTML = html;
-  sumWithdraw();
 }
-function sumWithdraw() {
+function addWithdrawLine(stockId) {
+  var s = (STATE.pickStock || []).filter(function (x) { return x.id === stockId; })[0];
+  if (!s) return toast('ไม่พบสต็อก');
+  var inp = document.getElementById('wdQty_' + stockId);
+  var qty = Number(inp && inp.value ? inp.value : 0);
+  if (!qty || qty <= 0) return toast('ใส่จำนวนที่ต้องการเบิก');
+  if (qty > Number(s.qty) + 1e-9) return toast('จำนวนเกินคงเหลือ (' + s.qty + ')');
+  var cart = STATE.withdrawCart || [];
+  var existing = cart.filter(function (c) { return c.stockId === stockId; })[0];
+  if (existing) {
+    existing.qty = qty;
+    existing.amount = qty * Number(s.unitPrice || 0);
+  } else {
+    cart.push({
+      stockId: s.id,
+      itemId: s.itemId,
+      name: s.name,
+      category: s.category,
+      packSize: s.packSize,
+      expiry: s.expiry || '',
+      expiryLabel: s.expiryLabel || '-',
+      unitPrice: Number(s.unitPrice || 0),
+      qty: qty,
+      maxQty: Number(s.qty || 0),
+      amount: qty * Number(s.unitPrice || 0),
+      fefoRecommend: !!s.fefoRecommend
+    });
+  }
+  STATE.withdrawCart = cart;
+  renderWithdrawSummary();
+  filterWithdrawStock();
+  toast('เพิ่ม ' + s.name + ' × ' + qty);
+}
+function updateWithdrawCartQty(stockId, value) {
+  var line = (STATE.withdrawCart || []).filter(function (c) { return c.stockId === stockId; })[0];
+  if (!line) return;
+  var qty = Number(value || 0);
+  if (qty <= 0) {
+    removeWithdrawLine(stockId);
+    return;
+  }
+  if (qty > line.maxQty + 1e-9) {
+    toast('จำนวนเกินคงเหลือ (' + line.maxQty + ')');
+    qty = line.maxQty;
+  }
+  line.qty = qty;
+  line.amount = qty * line.unitPrice;
+  renderWithdrawSummary();
+}
+function removeWithdrawLine(stockId) {
+  STATE.withdrawCart = (STATE.withdrawCart || []).filter(function (c) { return c.stockId !== stockId; });
+  renderWithdrawSummary();
+  filterWithdrawStock();
+}
+function clearWithdrawCart() {
+  STATE.withdrawCart = [];
+  renderWithdrawSummary();
+  filterWithdrawStock();
+}
+function renderWithdrawSummary() {
+  var cart = STATE.withdrawCart || [];
+  var html = '<tr><th>ลำดับ</th><th>รายการ</th><th>บรรจุ</th><th>หมดอายุ</th><th class="right">ราคา</th><th class="right">จำนวน</th><th class="right">มูลค่า</th><th></th></tr>';
+  if (!cart.length) {
+    html += '<tr><td colspan="8" class="muted">ยังไม่มีรายการ — ค้นหาด้านบนแล้วกดเพิ่ม</td></tr>';
+  } else {
+    html += cart.map(function (l, i) {
+      return '<tr class="' + (l.fefoRecommend ? 'fefo-row' : '') + '">' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' + esc(l.name) + (l.fefoRecommend ? ' <span class="pill warn">แนะนำ</span>' : '') + '</td>' +
+        '<td>' + esc(l.packSize) + '</td>' +
+        '<td>' + esc(l.expiryLabel) + '</td>' +
+        '<td class="right">' + money(l.unitPrice) + '</td>' +
+        '<td class="right"><input type="number" min="1" step="1" max="' + l.maxQty + '" value="' + l.qty + '" style="width:80px" onchange="updateWithdrawCartQty(\'' + l.stockId + '\', this.value)"></td>' +
+        '<td class="right"><b>' + money(l.amount) + '</b></td>' +
+        '<td><button type="button" class="btn ghost" onclick="removeWithdrawLine(\'' + l.stockId + '\')">ลบ</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+  document.getElementById('wdSummaryTable').innerHTML = html;
   var n = 0, v = 0;
-  document.querySelectorAll('#wdPickTable input[data-sid]').forEach(function (inp) {
-    var q = Number(inp.value || 0);
-    if (!q) return;
-    var s = STATE.pickStock.filter(function (x) { return x.id === inp.dataset.sid; })[0];
-    n += q; v += q * Number(s.unitPrice || 0);
-  });
-  document.getElementById('wdCalc').textContent = n ? ('เบิก ' + n + ' หน่วย · ' + money(v) + ' บาท') : 'ยังไม่ได้เลือก';
+  cart.forEach(function (l) { n += Number(l.qty || 0); v += Number(l.amount || 0); });
+  document.getElementById('wdCalc').textContent = cart.length
+    ? ('สรุป ' + cart.length + ' รายการ · ' + n + ' หน่วย · ' + money(v) + ' บาท')
+    : 'ยังไม่ได้เลือก';
 }
 function saveWithdraw() {
-  var lines = [];
-  document.querySelectorAll('#wdPickTable input[data-sid]').forEach(function (inp) {
-    var q = Number(inp.value || 0);
-    if (q > 0) lines.push({ stockId: inp.dataset.sid, qty: q });
-  });
-  if (!lines.length) return toast('ใส่จำนวนที่ต้องการเบิก');
+  var lines = (STATE.withdrawCart || []).filter(function (l) { return Number(l.qty) > 0; })
+    .map(function (l) { return { stockId: l.stockId, qty: l.qty }; });
+  if (!lines.length) return toast('เพิ่มรายการที่ต้องการเบิกก่อน');
   api('saveTransfer', {
     date: document.getElementById('wdDate').value,
     notes: document.getElementById('wdNotes').value,
@@ -382,6 +616,8 @@ function saveWithdraw() {
   }).then(function (r) {
     toast('บันทึกใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
     STATE.lastWithdrawId = r.transfer.id;
+    STATE.withdrawCart = [];
+    renderWithdrawSummary();
     loadWithdrawPick();
     loadWithdrawHistory();
     showWithdrawPrint(r.transfer.id);
