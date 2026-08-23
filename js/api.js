@@ -1,7 +1,6 @@
 var DrugAPI = (function () {
 var LOC_MAIN = 'MAIN';
-var LOC_CABINET = 'CABINET';
-var LOC_LABEL = { MAIN: 'คลังหลัก', CABINET: 'ตู้ข้างนอก' };
+var LOC_LABEL = { MAIN: 'คลังหลัก' };
 
 var CATEGORIES = [
   'ยาเม็ด',
@@ -12,10 +11,10 @@ var CATEGORIES = [
   'ยาฉุกเฉิน',
   'ยาส่งต่อผู้ป่วยต่อเนื่อง',
   'เวชภัณฑ์ที่มิใช่ยา',
-  'ยาแพทย์ออกหน่วย'
+  'ยาแพทย์ออกหน่วย',
+  'วัสดุทางการแพทย์',
+  'วัคซีน'
 ];
-
-var VALUE_CATEGORIES = ['ยา', 'เวชภัณฑ์ที่ไม่ใช่ยา', 'วัสดุทางการแพทย์', 'วัคซีน'];
 
 var SHEET_DEFS = {
   Settings: ['key', 'value'],
@@ -53,7 +52,6 @@ function enrichStockRow_(s, items) {
   return Object.assign({}, s, {
     name: it.name || '',
     category: it.category || '',
-    valueCategory: it.valueCategory || '',
     packSize: it.packSize || '',
     amount: round2_(num_(s.qty) * num_(s.unitPrice)),
     locationLabel: LOC_LABEL[s.location] || s.location,
@@ -64,7 +62,23 @@ function enrichStockRow_(s, items) {
 
 function sortStockRows_(rows) {
   rows.sort(function (a, b) {
-    return String(a.category).localeCompare(String(b.category), 'th') || String(a.name).localeCompare(String(b.name), 'th');
+    var ae = a.expiry || '9999-99-99';
+    var be = b.expiry || '9999-99-99';
+    return String(a.name).localeCompare(String(b.name), 'th') ||
+      ae.localeCompare(be) ||
+      String(a.category).localeCompare(String(b.category), 'th');
+  });
+  return rows;
+}
+
+function markFefoRecommend_(rows) {
+  var earliest = {};
+  rows.forEach(function (s) {
+    if (!s.expiry) return;
+    if (!earliest[s.itemId] || s.expiry < earliest[s.itemId]) earliest[s.itemId] = s.expiry;
+  });
+  rows.forEach(function (s) {
+    s.fefoRecommend = !!(s.expiry && earliest[s.itemId] === s.expiry);
   });
   return rows;
 }
@@ -83,13 +97,9 @@ function callApi(name, payload) {
     getReceipt: apiGetReceipt_,
     saveTransfer: apiSaveTransfer_,
     listTransfers: apiListTransfers_,
-    saveAdjustment: apiSaveAdjustment_,
-    listAdjustments: apiListAdjustments_,
-    saveRequests: apiSaveRequests_,
+    getTransfer: apiGetTransfer_,
     monthReport: apiMonthReport_,
     moneyReport: apiMoneyReport_,
-    quarterReport: apiQuarterReport_,
-    yearReport: apiYearReport_,
     importSeed: apiImportSeed_,
     parseQty: function (p) { return parseQty_(p && p.text); },
     searchItems: apiSearchItems_,
@@ -107,29 +117,32 @@ function callApi(name, payload) {
 
 function apiBootstrap_() {
   var settings = readSettings_();
-  var items = readObjects_('Items');
-  var stock = readObjects_('Stock');
+  var items = normalizeItemPacks_(readObjects_('Items'));
+  var stock = readObjects_('Stock').filter(function (s) { return s.location === LOC_MAIN; });
   var receipts = readObjects_('Receipts');
   var transfers = readObjects_('Transfers');
-  var adjustments = readObjects_('Adjustments');
   var dash = buildDashboard_(items, stock, receipts, transfers);
   return {
     settings: settings,
     categories: CATEGORIES,
-    valueCategories: VALUE_CATEGORIES,
     locations: LOC_LABEL,
     itemCount: items.filter(function (i) { return i.active !== '0'; }).length,
     imported: String(settings.imported) === '1',
     storageMode: 'local',
     dashboard: dash,
     recentReceipts: receipts.slice(-8).reverse(),
-    recentTransfers: transfers.slice(-8).reverse(),
-    recentAdjustments: adjustments.slice(-8).reverse()
+    recentTransfers: transfers.slice(-8).reverse()
   };
 }
 
 function apiSaveSettings_(p) {
-  var keys = ['unitName', 'unitSub', 'requesterName', 'requesterPosition', 'approverName', 'issuerName'];
+  var keys = [
+    'unitName', 'unitSub',
+    'approverName', 'approverPosition',
+    'requesterName', 'requesterPosition',
+    'receiverName', 'receiverPosition',
+    'issuerName', 'issuerPosition'
+  ];
   keys.forEach(function (k) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
   });
@@ -186,12 +199,12 @@ function apiRemoveUser_(p) {
 }
 
 function apiListItems_() {
-  return { items: readObjects_('Items') };
+  return { items: normalizeItemPacks_(readObjects_('Items')) };
 }
 
 function apiSearchItems_(p) {
   var q = String(p.q || '').toLowerCase().trim();
-  var items = readObjects_('Items').filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items')).filter(function (i) { return i.active !== '0'; });
   if (!q) return { items: items.slice(0, 40) };
   return {
     items: items.filter(function (i) {
@@ -207,7 +220,7 @@ function apiSaveItem_(p) {
     item = findById_(rows, p.id);
     if (!item) throw new Error('ไม่พบรายการ');
   } else {
-    item = { id: nextId_('I'), active: '1', lowStock: '0', yearQuota: 0, unitPrice: 0, code: '', form: '', notes: '', unit: '' };
+    item = { id: nextId_('I'), active: '1', lowStock: 0, yearQuota: 0, unitPrice: 0, code: '', form: '', notes: '', unit: '' };
     rows.push(item);
   }
   item.name = String(p.name || '').trim();
@@ -215,12 +228,12 @@ function apiSaveItem_(p) {
   item.code = String(p.code || '').trim();
   item.form = String(p.form || '').trim();
   item.category = p.category || 'ยาเม็ด';
-  item.valueCategory = p.valueCategory || valueCategoryOf_(item.category);
-  item.packSize = String(p.packSize || '').trim();
-  item.unit = String(p.unit || '').trim();
+  item.valueCategory = valueCategoryOf_(item.category);
+  item.packSize = preferSpacedPack_(String(p.packSize || '').trim());
+  item.unit = String(p.unit || item.packSize || '').trim();
   item.unitPrice = num_(p.unitPrice);
-  item.yearQuota = num_(p.yearQuota);
-  item.lowStock = num_(p.lowStock);
+  item.yearQuota = 0;
+  item.lowStock = 0;
   item.active = p.active === false || p.active === '0' ? '0' : '1';
   item.notes = String(p.notes || '');
   writeObjects_('Items', rows);
@@ -228,31 +241,22 @@ function apiSaveItem_(p) {
 }
 
 function apiListStock_(p) {
-  var loc = p.location || '';
+  var loc = p.location || LOC_MAIN;
   var cacheKey = loc || '__ALL__';
   if (STOCK_VIEW_CACHE_[cacheKey]) return { stock: STOCK_VIEW_CACHE_[cacheKey] };
   var items = getItemsIndex_();
-  var stock = readObjects_('Stock').filter(function (s) { return num_(s.qty) > 0 && (!loc || s.location === loc); });
-  var rows = sortStockRows_(stock.map(function (s) { return enrichStockRow_(s, items); }));
+  var stock = readObjects_('Stock').filter(function (s) {
+    return num_(s.qty) > 0 && s.location === (loc || LOC_MAIN);
+  });
+  var rows = markFefoRecommend_(sortStockRows_(stock.map(function (s) { return enrichStockRow_(s, items); })));
   STOCK_VIEW_CACHE_[cacheKey] = rows;
   return { stock: rows };
 }
 
 function apiListStockAll_() {
-  if (STOCK_VIEW_CACHE_.MAIN && STOCK_VIEW_CACHE_.CABINET) {
-    return { MAIN: STOCK_VIEW_CACHE_.MAIN, CABINET: STOCK_VIEW_CACHE_.CABINET };
-  }
-  var items = getItemsIndex_();
-  var out = { MAIN: [], CABINET: [] };
-  readObjects_('Stock').forEach(function (s) {
-    if (num_(s.qty) <= 0 || !out[s.location]) return;
-    out[s.location].push(enrichStockRow_(s, items));
-  });
-  sortStockRows_(out.MAIN);
-  sortStockRows_(out.CABINET);
-  STOCK_VIEW_CACHE_.MAIN = out.MAIN;
-  STOCK_VIEW_CACHE_.CABINET = out.CABINET;
-  return out;
+  if (STOCK_VIEW_CACHE_.MAIN) return { MAIN: STOCK_VIEW_CACHE_.MAIN };
+  var r = apiListStock_({ location: LOC_MAIN });
+  return { MAIN: r.stock };
 }
 
 function apiSaveReceipt_(p) {
@@ -284,8 +288,8 @@ function apiSaveReceipt_(p) {
         form: String(line.form || ''),
         category: line.category || (rec.kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
         valueCategory: line.valueCategory || (rec.kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่ไม่ใช่ยา' : 'ยา'),
-        packSize: String(line.packSize || ''),
-        unit: String(line.unit || ''),
+        packSize: preferSpacedPack_(String(line.packSize || '')),
+        unit: String(line.unit || line.packSize || ''),
         unitPrice: num_(line.unitPrice),
         yearQuota: 0,
         lowStock: 0,
@@ -370,19 +374,20 @@ function apiSaveTransfer_(p) {
     var price = num_(from.unitPrice);
     var amount = round2_(qty * price);
     from.qty = round4_(num_(from.qty) - qty);
-    var to = addStock_(stock, from.itemId, LOC_CABINET, qty, price, from.expiry, 'จากคลังหลัก');
     tLines.push({
       id: nextId_('TL'),
       transferId: tr.id,
       itemId: from.itemId,
       stockId: from.id,
       qty: qty,
+      approvedQty: qty,
       unitPrice: price,
       amount: amount,
-      expiry: from.expiry || ''
+      expiry: from.expiry || '',
+      packSize: (items[from.itemId] || {}).packSize || '',
+      name: (items[from.itemId] || {}).name || ''
     });
-    moves.push(movement_('TRANSFER_OUT', tr.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, tr.id, ''));
-    moves.push(movement_('TRANSFER_IN', tr.date, LOC_CABINET, from.itemId, to.id, qty, price, amount, tr.id, ''));
+    moves.push(movement_('ISSUE', tr.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, tr.id, ''));
     tr.totalQty = round4_(num_(tr.totalQty) + qty);
     tr.totalValue = round2_(num_(tr.totalValue) + amount);
   });
@@ -398,90 +403,29 @@ function apiListTransfers_() {
   return { transfers: readObjects_('Transfers').slice().reverse() };
 }
 
-function apiSaveAdjustment_(p) {
-  var type = p.type || 'USAGE';
-  var location = p.location || LOC_CABINET;
-  if (!p.date) throw new Error('กรุณาใส่วันที่');
-  var lines = (p.lines || []).filter(function (l) { return l.stockId && (num_(l.qty) > 0 || type === 'COUNT'); });
-  if (!lines.length) throw new Error('กรุณาเลือกรายการ');
-  var stock = readObjects_('Stock');
+function apiGetTransfer_(p) {
+  var tr = findById_(readObjects_('Transfers'), p.id);
+  if (!tr) throw new Error('ไม่พบใบเบิก');
   var items = indexById_(readObjects_('Items'));
-  var heads = readObjects_('Adjustments');
-  var aLines = readObjects_('AdjustmentLines');
-  var moves = readObjects_('Movements');
-  var adj = {
-    id: nextId_('A'),
-    date: toIsoDate_(p.date),
-    type: type,
-    location: location,
-    notes: String(p.notes || ''),
-    totalValue: 0,
-    createdAt: nowIso_()
-  };
-  lines.forEach(function (line) {
-    var lot = findById_(stock, line.stockId);
-    if (!lot) throw new Error('ไม่พบสต็อก');
-    var price = num_(lot.unitPrice);
-    var qty;
-    var change;
-    if (type === 'COUNT') {
-      var counted = num_(line.counted);
-      change = round4_(counted - num_(lot.qty));
-      qty = Math.abs(change);
-      lot.qty = counted;
-    } else {
-      qty = num_(line.qty);
-      if (qty > num_(lot.qty) + 1e-9) throw new Error('จำนวนเกินคงเหลือ: ' + ((items[lot.itemId] || {}).name || ''));
-      change = -qty;
-      lot.qty = round4_(num_(lot.qty) - qty);
-    }
-    var amount = round2_(Math.abs(change) * price);
-    aLines.push({
-      id: nextId_('AL'),
-      adjustmentId: adj.id,
-      itemId: lot.itemId,
-      stockId: lot.id,
-      qty: change,
-      unitPrice: price,
-      amount: amount,
-      expiry: lot.expiry || ''
+  var lines = readObjects_('TransferLines').filter(function (l) { return l.transferId === tr.id; }).map(function (l, idx) {
+    var it = items[l.itemId] || {};
+    return Object.assign({}, l, {
+      no: idx + 1,
+      name: l.name || it.name || '',
+      packSize: l.packSize || it.packSize || '',
+      approvedQty: num_(l.approvedQty != null ? l.approvedQty : l.qty),
+      expiryLabel: formatDate_(l.expiry)
     });
-    moves.push(movement_(type, adj.date, lot.location, lot.itemId, lot.id, change, price, amount, adj.id, adj.notes));
-    if (change < 0) adj.totalValue = round2_(num_(adj.totalValue) + amount);
   });
-  heads.push(adj);
-  writeObjects_('Stock', stock);
-  writeObjects_('Adjustments', heads);
-  writeObjects_('AdjustmentLines', aLines);
-  writeObjects_('Movements', moves);
-  return { ok: true, adjustment: adj };
-}
-
-function apiListAdjustments_() {
-  return { adjustments: readObjects_('Adjustments').slice().reverse() };
-}
-
-function apiSaveRequests_(p) {
-  var monthKey = p.monthKey;
-  if (!monthKey) throw new Error('ระบุเดือน');
-  var all = readObjects_('MonthlyRequests').filter(function (r) { return r.monthKey !== monthKey; });
-  (p.rows || []).forEach(function (r) {
-    if (num_(r.qty) > 0) all.push({ monthKey: monthKey, itemId: r.itemId, qty: num_(r.qty) });
-  });
-  writeObjects_('MonthlyRequests', all);
-  return { ok: true };
+  return { transfer: tr, lines: lines, settings: readSettings_() };
 }
 
 function apiMonthReport_(p) {
   var monthKey = p.monthKey || currentMonthKey_();
   var range = monthRange_(monthKey);
-  var items = readObjects_('Items').filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items')).filter(function (i) { return i.active !== '0'; });
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
-  var reqs = {};
-  readObjects_('MonthlyRequests').forEach(function (r) {
-    if (r.monthKey === monthKey) reqs[r.itemId] = num_(r.qty);
-  });
   var byItem = {};
   items.forEach(function (it) {
     byItem[it.id] = {
@@ -490,7 +434,8 @@ function apiMonthReport_(p) {
       received: 0,
       issued: 0,
       remain: 0,
-      request: reqs[it.id] || 0,
+      receivedValue: 0,
+      issuedValue: 0,
       remainValue: 0
     };
   });
@@ -504,11 +449,19 @@ function apiMonthReport_(p) {
     if (!row || m.location !== LOC_MAIN) return;
     var d = m.date;
     var ch = num_(m.qtyChange);
+    var amt = Math.abs(ch) * num_(m.unitPrice);
     if (d > range.end) {
       row.remain -= ch;
+      row.remainValue -= ch * num_(m.unitPrice);
     } else if (d >= range.start && d <= range.end) {
-      if (m.type === 'RECEIVE') row.received += Math.max(ch, 0);
-      if (ch < 0) row.issued += -ch;
+      if (m.type === 'RECEIVE' || m.type === 'OPENING') {
+        row.received += Math.max(ch, 0);
+        row.receivedValue += Math.max(ch, 0) * num_(m.unitPrice);
+      }
+      if (ch < 0) {
+        row.issued += -ch;
+        row.issuedValue += (-ch) * num_(m.unitPrice);
+      }
     }
   });
   Object.keys(byItem).forEach(function (id) {
@@ -517,117 +470,109 @@ function apiMonthReport_(p) {
     r.remain = round4_(r.remain);
     r.received = round4_(r.received);
     r.issued = round4_(r.issued);
+    r.receivedValue = round2_(r.receivedValue);
+    r.issuedValue = round2_(r.issuedValue);
     r.remainValue = round2_(r.remainValue);
   });
   var groups = [];
   CATEGORIES.forEach(function (cat) {
-    var rows = items.filter(function (i) { return i.category === cat; }).map(function (i) { return byItem[i.id]; });
-    if (rows.length) groups.push({ category: cat, rows: rows, totalValue: round2_(rows.reduce(function (s, r) { return s + r.remainValue; }, 0)) });
+    var rows = items.filter(function (i) { return i.category === cat; }).map(function (i) { return byItem[i.id]; })
+      .filter(function (r) { return r.opening || r.received || r.issued || r.remain; });
+    if (rows.length) {
+      groups.push({
+        category: cat,
+        rows: rows,
+        totalValue: round2_(rows.reduce(function (s, r) { return s + r.remainValue; }, 0)),
+        receivedValue: round2_(rows.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
+        issuedValue: round2_(rows.reduce(function (s, r) { return s + r.issuedValue; }, 0))
+      });
+    }
   });
   var extra = items.filter(function (i) { return CATEGORIES.indexOf(i.category) < 0; });
   if (extra.length) {
-    var rows = extra.map(function (i) { return byItem[i.id]; });
-    groups.push({ category: 'อื่น ๆ', rows: rows, totalValue: round2_(rows.reduce(function (s, r) { return s + r.remainValue; }, 0)) });
+    var erows = extra.map(function (i) { return byItem[i.id]; })
+      .filter(function (r) { return r.opening || r.received || r.issued || r.remain; });
+    if (erows.length) {
+      groups.push({
+        category: 'อื่น ๆ',
+        rows: erows,
+        totalValue: round2_(erows.reduce(function (s, r) { return s + r.remainValue; }, 0)),
+        receivedValue: round2_(erows.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
+        issuedValue: round2_(erows.reduce(function (s, r) { return s + r.issuedValue; }, 0))
+      });
+    }
   }
+  var summary = {
+    receivedValue: round2_(groups.reduce(function (s, g) { return s + g.receivedValue; }, 0)),
+    issuedValue: round2_(groups.reduce(function (s, g) { return s + g.issuedValue; }, 0)),
+    remainValue: round2_(groups.reduce(function (s, g) { return s + g.totalValue; }, 0)),
+    receivedQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].received; }, 0)),
+    issuedQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].issued; }, 0)),
+    remainQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].remain; }, 0))
+  };
   return {
     monthKey: monthKey,
     label: monthLabel_(monthKey),
     range: range,
     settings: readSettings_(),
+    summary: summary,
     groups: groups,
-    grandTotal: round2_(groups.reduce(function (s, g) { return s + g.totalValue; }, 0))
+    grandTotal: summary.remainValue
   };
 }
 
 function apiMoneyReport_(p) {
   var monthKey = p.monthKey || currentMonthKey_();
   var range = monthRange_(monthKey);
-  var items = indexById_(readObjects_('Items'));
+  var items = indexById_(normalizeItemPacks_(readObjects_('Items')));
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
-  var seed = getSeedMoney();
   var map = {};
-  VALUE_CATEGORIES.forEach(function (c) {
-    map[c] = { category: c, opening: 0, buy: 0, receive: 0, used: 0, remain: 0 };
+  CATEGORIES.forEach(function (c) {
+    map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0 };
   });
   stock.forEach(function (s) {
+    if (s.location !== LOC_MAIN) return;
     var it = items[s.itemId] || {};
-    var cat = it.valueCategory || 'ยา';
-    if (!map[cat]) map[cat] = { category: cat, opening: 0, buy: 0, receive: 0, used: 0, remain: 0 };
+    var cat = it.category || 'อื่น ๆ';
+    if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0 };
     map[cat].remain += num_(s.qty) * num_(s.unitPrice);
   });
   moves.forEach(function (m) {
+    if (m.location !== LOC_MAIN) return;
     var it = items[m.itemId] || {};
-    var cat = it.valueCategory || 'ยา';
-    if (!map[cat]) return;
+    var cat = it.category || 'อื่น ๆ';
+    if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0 };
     var d = m.date;
     var amt = num_(m.qtyChange) * num_(m.unitPrice);
     if (d > range.end) {
       map[cat].remain -= amt;
     } else if (d >= range.start && d <= range.end) {
-      if (m.type === 'RECEIVE') map[cat].receive += Math.max(amt, 0);
-      if (m.type === 'USAGE' || (m.type === 'COUNT' && num_(m.qtyChange) < 0)) map[cat].used += Math.max(-amt, 0);
+      if (m.type === 'RECEIVE' || m.type === 'OPENING') map[cat].receive += Math.max(amt, 0);
+      if (m.type === 'ISSUE' || m.type === 'TRANSFER_OUT' || m.type === 'USAGE' || (m.type === 'COUNT' && num_(m.qtyChange) < 0)) {
+        map[cat].used += Math.max(-amt, 0);
+      }
     }
   });
-  var rows = VALUE_CATEGORIES.map(function (c) {
+  var rows = Object.keys(map).map(function (c) {
     var r = map[c];
     r.remain = round2_(r.remain);
     r.receive = round2_(r.receive);
     r.used = round2_(r.used);
     r.opening = round2_(r.remain - r.receive + r.used);
     return r;
-  });
-  var settings = readSettings_();
-  if (settings.imported === '1' && monthKey <= seed.asOf) {
-    /* keep computed */
-  }
-  return {
-    monthKey: monthKey,
-    label: monthLabel_(monthKey),
-    settings: settings,
-    rows: rows,
-    seedHint: seed
-  };
-}
-
-function apiQuarterReport_(p) {
-  var items = readObjects_('Items').filter(function (i) {
-    return i.active !== '0' && (i.category === 'เวชภัณฑ์ที่มิใช่ยา' || i.valueCategory === 'เวชภัณฑ์ที่ไม่ใช่ยา');
-  });
-  var stock = readObjects_('Stock');
-  var remain = {};
-  stock.forEach(function (s) {
-    remain[s.itemId] = (remain[s.itemId] || 0) + num_(s.qty);
-  });
-  var monthKey = p.monthKey || currentMonthKey_();
-  var reqs = {};
-  readObjects_('MonthlyRequests').forEach(function (r) {
-    if (r.monthKey === monthKey) reqs[r.itemId] = num_(r.qty);
-  });
-  var rows = items.map(function (it, idx) {
-    var qtyReq = reqs[it.id] || 0;
-    return {
-      no: idx + 1,
-      item: it,
-      remain: remain[it.id] || 0,
-      yearQuota: num_(it.yearQuota),
-      request: qtyReq,
-      amount: round2_(qtyReq * num_(it.unitPrice))
-    };
-  });
+  }).filter(function (r) { return r.opening || r.receive || r.used || r.remain; });
   return {
     monthKey: monthKey,
     label: monthLabel_(monthKey),
     settings: readSettings_(),
     rows: rows,
-    total: round2_(rows.reduce(function (s, r) { return s + r.amount; }, 0))
+    totals: {
+      receive: round2_(rows.reduce(function (s, r) { return s + r.receive; }, 0)),
+      used: round2_(rows.reduce(function (s, r) { return s + r.used; }, 0)),
+      remain: round2_(rows.reduce(function (s, r) { return s + r.remain; }, 0))
+    }
   };
-}
-
-function apiYearReport_(p) {
-  var monthKey = p.monthKey || currentMonthKey_();
-  var data = apiMonthReport_({ monthKey: monthKey });
-  return data;
 }
 
 function apiImportSeed_(p) {
@@ -657,11 +602,11 @@ function apiImportSeed_(p) {
         name: row.name,
         form: '',
         category: row.category,
-        valueCategory: row.valueCategory || valueCategoryOf_(row.category),
-        packSize: row.packSize || '',
-        unit: extra.unit || row.packSize || '',
+        valueCategory: valueCategoryOf_(row.category),
+        packSize: preferSpacedPack_(row.packSize || ''),
+        unit: extra.unit || preferSpacedPack_(row.packSize || ''),
         unitPrice: num_(row.unitPrice),
-        yearQuota: num_(row.yearQuota || extra.yearQuota),
+        yearQuota: 0,
         lowStock: 0,
         active: '1',
         notes: ''
@@ -669,8 +614,8 @@ function apiImportSeed_(p) {
       items.push(item);
       itemMap[key] = item;
     } else {
-      if (num_(row.yearQuota)) item.yearQuota = num_(row.yearQuota);
       if (num_(row.unitPrice) && !num_(item.unitPrice)) item.unitPrice = num_(row.unitPrice);
+      if (row.packSize) item.packSize = preferSpacedPack_(row.packSize);
     }
     var remain = num_(row.remain);
     var price = num_(row.unitPrice) || num_(item.unitPrice);
@@ -683,7 +628,8 @@ function apiImportSeed_(p) {
     return item;
   }
   med.forEach(function (r) { upsert(r); });
-  quarter.forEach(function (r) { upsert(r, { yearQuota: r.yearQuota }); });
+  quarter.forEach(function (r) { upsert(r, {}); });
+  items = normalizeItemPacks_(items);
   writeObjects_('Items', items);
   writeObjects_('Stock', stock);
   writeObjects_('Movements', moves);
@@ -696,9 +642,6 @@ function apiImportSeed_(p) {
   writeObjects_('AdjustmentLines', []);
   setSetting_('imported', '1');
   setSetting_('moneyOpenMonth', money.asOf);
-  VALUE_CATEGORIES.forEach(function (c) {
-    setSetting_('moneyOpen_' + c, String(money[c] || 0));
-  });
   return {
     ok: true,
     itemCount: items.length,
@@ -710,33 +653,29 @@ function apiImportSeed_(p) {
 function buildDashboard_(items, stock, receipts, transfers) {
   var itemMap = indexById_(items);
   var mainVal = 0;
-  var cabVal = 0;
-  var byVal = {};
-  VALUE_CATEGORIES.forEach(function (c) { byVal[c] = 0; });
-  var low = [];
+  var byCat = {};
+  CATEGORIES.forEach(function (c) { byCat[c] = 0; });
   var expiry = [];
   stock.forEach(function (s) {
+    if (s.location !== LOC_MAIN) return;
     var q = num_(s.qty);
     if (q <= 0) return;
     var amt = q * num_(s.unitPrice);
-    if (s.location === LOC_MAIN) mainVal += amt;
-    else cabVal += amt;
+    mainVal += amt;
     var it = itemMap[s.itemId] || {};
-    var vc = it.valueCategory || 'ยา';
-    byVal[vc] = (byVal[vc] || 0) + amt;
-    if (num_(it.lowStock) > 0 && q <= num_(it.lowStock)) {
-      low.push({ name: it.name, qty: q, location: LOC_LABEL[s.location] });
-    }
+    var cat = it.category || 'อื่น ๆ';
+    byCat[cat] = (byCat[cat] || 0) + amt;
     if (isNearExpiry_(s.expiry)) {
-      expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: LOC_LABEL[s.location] });
+      expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: 'คลังหลัก' });
     }
   });
+  var byValue = Object.keys(byCat).map(function (c) {
+    return { category: c, value: round2_(byCat[c] || 0) };
+  }).filter(function (x) { return x.value > 0; });
   return {
     mainValue: round2_(mainVal),
-    cabinetValue: round2_(cabVal),
-    totalValue: round2_(mainVal + cabVal),
-    byValue: VALUE_CATEGORIES.map(function (c) { return { category: c, value: round2_(byVal[c] || 0) }; }),
-    low: low.slice(0, 12),
+    totalValue: round2_(mainVal),
+    byValue: byValue,
     expiry: expiry.slice(0, 12),
     receiptCount: receipts.length,
     transferCount: transfers.length
@@ -793,21 +732,62 @@ function parseQty_(text) {
   return { packs: isNaN(n) ? 0 : n, size: 1, raw: raw };
 }
 
+function preferSpacedPack_(v) {
+  return String(v || '').trim();
+}
+
+function packKey_(v) {
+  return String(v || '').replace(/\s+/g, '').toLowerCase();
+}
+
+function normalizeItemPacks_(items) {
+  var bestByKey = {};
+  items.forEach(function (it) {
+    var p = String(it.packSize || '').trim();
+    if (!p) return;
+    var k = packKey_(p);
+    if (!bestByKey[k]) {
+      bestByKey[k] = p;
+      return;
+    }
+    var cur = bestByKey[k];
+    var scNew = (p.match(/\s/g) || []).length;
+    var scCur = (cur.match(/\s/g) || []).length;
+    if (scNew > scCur) bestByKey[k] = p;
+  });
+  var changed = false;
+  items.forEach(function (it) {
+    var p = String(it.packSize || '').trim();
+    if (!p) return;
+    var pref = bestByKey[packKey_(p)];
+    if (pref && pref !== p) {
+      it.packSize = pref;
+      changed = true;
+    }
+  });
+  if (changed) writeObjects_('Items', items);
+  return items;
+}
+
 function valueCategoryOf_(cat) {
-  if (cat === 'เวชภัณฑ์ที่มิใช่ยา') return 'เวชภัณฑ์ที่ไม่ใช่ยา';
+  if (cat === 'เวชภัณฑ์ที่มิใช่ยา') return 'เวชภัณฑ์ที่มิใช่ยา';
   if (String(cat).indexOf('วัคซีน') >= 0) return 'วัคซีน';
   if (String(cat).indexOf('วัสดุ') >= 0) return 'วัสดุทางการแพทย์';
-  return 'ยา';
+  return cat || 'ยาเม็ด';
 }
 
 function ensureDb_() {
   var def = {
     unitName: 'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านทรายขาว',
     unitSub: 'ต.ทรายขาว อ.คลองท่อม จ.กระบี่',
+    approverName: '',
+    approverPosition: 'ผู้อำนวยการโรงพยาบาลส่งเสริมสุขภาพตำบล',
     requesterName: 'นายอรรถพร พิรุณรัตน์',
     requesterPosition: 'นักวิชาการสาธารณสุขชำนาญการ',
-    approverName: '',
+    receiverName: '',
+    receiverPosition: '',
     issuerName: 'นางสาวสุภารัตน์ จงรักษ์',
+    issuerPosition: '',
     imported: '0',
     loginUsers: '["Napatsorn"]'
   };

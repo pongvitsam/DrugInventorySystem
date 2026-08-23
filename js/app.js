@@ -1,4 +1,14 @@
-var STATE = { boot: null, items: [], stock: [], stockCache: { MAIN: null, CABINET: null }, loc: 'MAIN', receive: { item: null, lines: [] }, pickStock: [], reportKind: 'month' };
+var STATE = {
+  boot: null,
+  items: [],
+  stock: [],
+  stockCache: { MAIN: null },
+  loc: 'MAIN',
+  receive: { item: null, lines: [] },
+  pickStock: [],
+  reportKind: 'month',
+  lastWithdrawId: null
+};
 
 function api(name, payload) {
   return DrugAPI.api(name, payload || {});
@@ -21,10 +31,15 @@ function showPage(id) {
   document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === id); });
   document.getElementById('page-' + id).classList.add('active');
   if (id === 'items') loadItems();
-  if (id === 'stock') showStock(STATE.loc);
-  if (id === 'receive') loadReceipts();
-  if (id === 'transfer') loadTransferPick();
-  if (id === 'adjust') loadAdjustStock();
+  if (id === 'stock') showStock();
+  if (id === 'receive') {
+    loadReceipts();
+    initItemOptionSelects(STATE.items || []);
+  }
+  if (id === 'withdraw') {
+    loadWithdrawPick();
+    loadWithdrawHistory();
+  }
   if (id === 'import') loadLoginUsers();
   if (id === 'reports') setReportTab(STATE.reportKind || 'month');
 }
@@ -44,8 +59,9 @@ function setStatus(msg, isError) {
 }
 function applyBoot(b) {
   STATE.boot = b;
-  document.getElementById('brandSub').textContent = (b.settings.unitName || '') + ' · ' + (b.settings.unitSub || '');
-  document.getElementById('dashSub').textContent = b.settings.unitName || '';
+  var s = b.settings || {};
+  document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '');
+  document.getElementById('dashSub').textContent = s.unitName || '';
   var link = document.getElementById('sheetLink');
   if (link) {
     link.textContent = 'ส่งออกข้อมูลสำรอง (JSON)';
@@ -53,16 +69,19 @@ function applyBoot(b) {
   }
   fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   fillSelect('itCat', b.categories || []);
-  fillSelect('itValCat', b.valueCategories || []);
-  document.getElementById('stUnit').value = b.settings.unitName || '';
-  document.getElementById('stSub').value = b.settings.unitSub || '';
-  document.getElementById('stReq').value = b.settings.requesterName || '';
-  document.getElementById('stPos').value = b.settings.requesterPosition || '';
-  document.getElementById('stIss').value = b.settings.issuerName || '';
+  document.getElementById('stUnit').value = s.unitName || '';
+  document.getElementById('stSub').value = s.unitSub || '';
+  document.getElementById('stApp').value = s.approverName || '';
+  document.getElementById('stAppPos').value = s.approverPosition || '';
+  document.getElementById('stReq').value = s.requesterName || '';
+  document.getElementById('stPos').value = s.requesterPosition || '';
+  document.getElementById('stRecv').value = s.receiverName || '';
+  document.getElementById('stRecvPos').value = s.receiverPosition || '';
+  document.getElementById('stIss').value = s.issuerName || '';
+  document.getElementById('stIssPos').value = s.issuerPosition || '';
   renderDash(b);
   ThDate.set('rcDate', todayInput());
-  ThDate.set('trDate', todayInput());
-  ThDate.set('adjDate', todayInput());
+  ThDate.set('wdDate', todayInput());
   var now = new Date();
   ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
   initItemOptionSelects(STATE.items || []);
@@ -70,10 +89,13 @@ function applyBoot(b) {
 function refreshStockCache(cb) {
   return api('listStockAll').then(function (r) {
     STATE.stockCache.MAIN = r.MAIN || [];
-    STATE.stockCache.CABINET = r.CABINET || [];
     if (document.getElementById('page-stock').classList.contains('active')) {
-      STATE.stock = STATE.stockCache[STATE.loc] || [];
+      STATE.stock = STATE.stockCache.MAIN || [];
       renderStock();
+    }
+    if (document.getElementById('page-withdraw').classList.contains('active')) {
+      STATE.pickStock = STATE.stockCache.MAIN || [];
+      renderWithdrawPick();
     }
     if (cb) cb();
   }).catch(function (e) {
@@ -103,7 +125,7 @@ function loadBootstrap() {
         applyBoot(b2);
         setStatus('');
         loadItems();
-        refreshStockCache().then(function () { showStock('MAIN'); });
+        refreshStockCache();
       });
     });
   }).catch(function (e) {
@@ -115,6 +137,7 @@ function loadBootstrap() {
 
 function fillSelect(id, arr, withBlank) {
   var el = document.getElementById(id);
+  if (!el) return;
   var keep = el.value;
   el.innerHTML = '';
   (withBlank ? [''].concat(arr.filter(function (x) { return x !== 'ทั้งหมด'; })) : arr).forEach(function (v) {
@@ -129,20 +152,22 @@ function fillSelect(id, arr, withBlank) {
 function renderDash(b) {
   var d = b.dashboard;
   document.getElementById('kpis').innerHTML =
-    kpi('มูลค่ารวม', money(d.totalValue) + ' ฿', 'คลังหลัก + ตู้ข้างนอก') +
-    kpi('คลังหลัก', money(d.mainValue) + ' ฿', 'รับเข้าจากโรงพยาบาล') +
-    kpi('ตู้ข้างนอก', money(d.cabinetValue) + ' ฿', d.transferCount + ' ครั้งที่เบิก') +
-    kpi('รายการในทะเบียน', String(b.itemCount || 0), (d.receiptCount || 0) + ' ใบรับเข้า');
-  document.getElementById('valueCats').innerHTML = '<h3>มูลค่าแยกหมวด</h3>' + d.byValue.map(function (x) {
-    return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>' + x.category + '</span><b>' + money(x.value) + '</b></div>';
-  }).join('');
-  document.getElementById('dashExpiry').innerHTML = d.expiry.length
-    ? '<table><tr><th>รายการ</th><th>ที่เก็บ</th><th>หมดอายุ</th><th class="right">คงเหลือ</th></tr>' + d.expiry.map(function (x) {
-      return '<tr><td>' + x.name + '</td><td>' + x.location + '</td><td><span class="pill warn">' + x.expiry + '</span></td><td class="right">' + x.qty + '</td></tr>';
+    kpi('มูลค่าคลังหลัก', money(d.totalValue) + ' ฿', 'ยอดคงเหลือปัจจุบัน') +
+    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลในเมือง') +
+    kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก') +
+    kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์');
+  document.getElementById('valueCats').innerHTML = '<h3>มูลค่าแยกหมวด</h3>' + ((d.byValue || []).length
+    ? d.byValue.map(function (x) {
+      return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>' + esc(x.category) + '</span><b>' + money(x.value) + '</b></div>';
+    }).join('')
+    : '<div class="muted">ยังไม่มีข้อมูล</div>');
+  document.getElementById('dashExpiry').innerHTML = (d.expiry || []).length
+    ? '<table><tr><th>รายการ</th><th>หมดอายุ</th><th class="right">คงเหลือ</th></tr>' + d.expiry.map(function (x) {
+      return '<tr><td>' + esc(x.name) + '</td><td><span class="pill warn">' + esc(x.expiry) + '</span></td><td class="right">' + x.qty + '</td></tr>';
     }).join('') + '</table>'
     : 'ไม่มีรายการใกล้หมดอายุ';
   var rec = (b.recentReceipts || []).map(function (r) { return 'รับเข้า ' + (r.number || r.id) + ' · ' + money(r.totalValue) + ' ฿'; });
-  var tr = (b.recentTransfers || []).map(function (r) { return 'เบิกตู้ ' + r.id + ' · ' + money(r.totalValue) + ' ฿'; });
+  var tr = (b.recentTransfers || []).map(function (r) { return 'เบิก ' + r.id + ' · ' + money(r.totalValue) + ' ฿'; });
   document.getElementById('dashRecent').innerHTML = (rec.concat(tr).slice(0, 8).join('<br>') || 'ยังไม่มีรายการ');
 }
 function kpi(label, value, hint) {
@@ -176,12 +201,9 @@ function openItem(id) {
   document.getElementById('itName').value = it.name || '';
   document.getElementById('itCode').value = it.code || '';
   document.getElementById('itCat').value = it.category || 'ยาเม็ด';
-  document.getElementById('itValCat').value = it.valueCategory || 'ยา';
   fillSelectWithCustom('itPack', 'itPackCustom', Options.mergePackFromItems(STATE.items), it.packSize || '');
   fillSelectWithCustom('itForm', 'itFormCustom', Options.mergeFormFromItems(STATE.items), it.form || '');
   document.getElementById('itPrice').value = it.unitPrice || '';
-  document.getElementById('itQuota').value = it.yearQuota || '';
-  document.getElementById('itLow').value = it.lowStock || '';
   document.getElementById('itNotes').value = it.notes || '';
   document.getElementById('itemModal').style.display = 'flex';
 }
@@ -192,12 +214,9 @@ function saveItem() {
     name: document.getElementById('itName').value,
     code: document.getElementById('itCode').value,
     category: document.getElementById('itCat').value,
-    valueCategory: document.getElementById('itValCat').value,
     packSize: readSelectWithCustom('itPack', 'itPackCustom'),
     form: readSelectWithCustom('itForm', 'itFormCustom'),
     unitPrice: document.getElementById('itPrice').value,
-    yearQuota: document.getElementById('itQuota').value,
-    lowStock: document.getElementById('itLow').value,
     notes: document.getElementById('itNotes').value
   }).then(function () {
     closeModal();
@@ -207,18 +226,15 @@ function saveItem() {
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
-function showStock(loc) {
-  STATE.loc = loc;
-  document.querySelectorAll('[data-loc]').forEach(function (b) {
-    b.className = b.dataset.loc === loc ? 'btn' : 'btn secondary';
-  });
-  if (STATE.stockCache[loc]) {
-    STATE.stock = STATE.stockCache[loc];
+function showStock() {
+  STATE.loc = 'MAIN';
+  if (STATE.stockCache.MAIN) {
+    STATE.stock = STATE.stockCache.MAIN;
     renderStock();
   }
-  api('listStock', { location: loc }).then(function (r) {
-    STATE.stockCache[loc] = r.stock || [];
-    STATE.stock = STATE.stockCache[loc];
+  api('listStock', { location: 'MAIN' }).then(function (r) {
+    STATE.stockCache.MAIN = r.stock || [];
+    STATE.stock = STATE.stockCache.MAIN;
     renderStock();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -227,7 +243,7 @@ function renderStock() {
   var rows = STATE.stock.filter(function (s) { return !q || String(s.name).toLowerCase().indexOf(q) >= 0; });
   var html = '<tr><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th class="right">มูลค่า</th><th>หมดอายุ</th></tr>';
   html += rows.map(function (s) {
-    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td><td class="right"><b>' + s.qty + '</b></td><td class="right">' + money(s.unitPrice) + '</td><td class="right">' + money(s.amount) + '</td><td>' + (s.nearExpiry ? '<span class="pill warn">' : '') + (s.expiryLabel || (s.expiry ? ThDate.formatDateLong(s.expiry) : '-')) + (s.nearExpiry ? '</span>' : '') + '</td></tr>';
+    return '<tr' + (s.fefoRecommend ? ' class="fefo-row"' : '') + '><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td><td class="right"><b>' + s.qty + '</b></td><td class="right">' + money(s.unitPrice) + '</td><td class="right">' + money(s.amount) + '</td><td>' + (s.nearExpiry ? '<span class="pill warn">' : '') + (s.expiryLabel || (s.expiry ? ThDate.formatDateLong(s.expiry) : '-')) + (s.nearExpiry ? '</span>' : '') + '</td></tr>';
   }).join('');
   document.getElementById('stockTable').innerHTML = html;
 }
@@ -251,43 +267,45 @@ function chooseItem(kind, id) {
   var it = (STATE._search || []).filter(function (x) { return x.id === id; })[0];
   if (!it) return;
   STATE.receive.item = it;
-  document.getElementById(kind + 'Search').value = it.name + ' (' + it.packSize + ')';
+  document.getElementById(kind + 'Search').value = it.name;
   document.getElementById('rcPrice').value = it.unitPrice || 0;
+  fillSelectWithCustom('rcPack', 'rcPackCustom', Options.mergePackFromItems(STATE.items), it.packSize || '');
   document.getElementById(kind + 'Suggest').style.display = 'none';
 }
 function addReceiveLine() {
   var nameBox = document.getElementById('rcSearch').value.trim();
-  var qtyText = document.getElementById('rcQty').value.trim();
-  if (!qtyText) return toast('ใส่จำนวนก่อน');
+  var qty = Number(document.getElementById('rcQty').value || 0);
+  var pack = readSelectWithCustom('rcPack', 'rcPackCustom');
+  if (!qty || qty <= 0) return toast('ใส่จำนวนก่อน');
+  if (!pack) return toast('เลือกหน่วยบรรจุ');
   var it = STATE.receive.item;
+  var qtyText = qty + ' × ' + pack;
   var line = {
     itemId: it && it.id,
     name: it ? it.name : nameBox,
-    packSize: it ? it.packSize : '',
+    packSize: pack,
     category: it ? it.category : (document.getElementById('rcKind').value === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
     qtyText: qtyText,
+    qty: qty,
+    approvedQty: qty,
+    requestedQty: qty,
     unitPrice: Number(document.getElementById('rcPrice').value || 0),
     expiry: document.getElementById('rcExpiry').value,
     notes: ''
   };
-  api('parseQty', { text: qtyText }).then(function (p) {
-    line.qty = p.packs;
-    line.approvedQty = p.packs;
-    line.requestedQty = p.packs;
-    line.amount = line.qty * line.unitPrice;
-    STATE.receive.lines.push(line);
-    STATE.receive.item = null;
-    document.getElementById('rcSearch').value = '';
-    document.getElementById('rcQty').value = '';
-    renderReceive();
-  });
+  line.amount = line.qty * line.unitPrice;
+  STATE.receive.lines.push(line);
+  STATE.receive.item = null;
+  document.getElementById('rcSearch').value = '';
+  document.getElementById('rcQty').value = '';
+  renderReceive();
 }
 function renderReceive() {
   var tot = 0;
-  var html = '<tr><th>รายการ</th><th>จำนวน</th><th class="right">ราคา</th><th class="right">เป็นเงิน</th><th>หมดอายุ</th><th></th></tr>';
+  var html = '<tr><th>รายการ</th><th>จำนวน</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">เป็นเงิน</th><th>หมดอายุ</th><th></th></tr>';
   html += STATE.receive.lines.map(function (l, i) {
     tot += Number(l.amount || 0);
-    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.qtyText) + '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + money(l.amount) + '</td><td>' + (l.expiry ? ThDate.formatDateLong(l.expiry) : '-') + '</td><td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
+    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.qty) + '</td><td>' + esc(l.packSize) + '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + money(l.amount) + '</td><td>' + (l.expiry ? ThDate.formatDateLong(l.expiry) : '-') + '</td><td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
   }).join('');
   document.getElementById('rcTable').innerHTML = html;
   document.getElementById('rcCalc').textContent = 'ยอดรวม ' + money(tot) + ' บาท · ' + STATE.receive.lines.length + ' รายการ';
@@ -317,93 +335,80 @@ function loadReceipts() {
   });
 }
 
-function loadTransferPick() {
+function loadWithdrawPick() {
   if (STATE.stockCache.MAIN) {
     STATE.pickStock = STATE.stockCache.MAIN;
-    renderTransferPick();
+    renderWithdrawPick();
   }
   api('listStock', { location: 'MAIN' }).then(function (r) {
     STATE.stockCache.MAIN = r.stock || [];
     STATE.pickStock = STATE.stockCache.MAIN;
-    renderTransferPick();
+    renderWithdrawPick();
   });
 }
-function renderTransferPick() {
-  var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือคลัง</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">เบิกครั้งนี้</th></tr>';
+function renderWithdrawPick() {
+  var html = '<tr><th></th><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">เบิกครั้งนี้</th></tr>';
   html += STATE.pickStock.map(function (s) {
-    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td><td class="right"><input data-sid="' + s.id + '" type="number" min="0" step="0.01" max="' + s.qty + '" style="width:90px" oninput="sumTransfer()"></td></tr>';
+    var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำใช้ก่อน</span> ' : '';
+    return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '"><td>' + tip + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td><td class="right"><input data-sid="' + s.id + '" type="number" min="0" step="1" max="' + s.qty + '" style="width:90px" oninput="sumWithdraw()"></td></tr>';
   }).join('');
-  document.getElementById('trPickTable').innerHTML = html;
-  sumTransfer();
+  document.getElementById('wdPickTable').innerHTML = html;
+  sumWithdraw();
 }
-function sumTransfer() {
+function sumWithdraw() {
   var n = 0, v = 0;
-  document.querySelectorAll('#trPickTable input[data-sid]').forEach(function (inp) {
+  document.querySelectorAll('#wdPickTable input[data-sid]').forEach(function (inp) {
     var q = Number(inp.value || 0);
     if (!q) return;
     var s = STATE.pickStock.filter(function (x) { return x.id === inp.dataset.sid; })[0];
     n += q; v += q * Number(s.unitPrice || 0);
   });
-  document.getElementById('trCalc').textContent = n ? ('เบิก ' + n + ' หน่วย · ' + money(v) + ' บาท') : 'ยังไม่ได้เลือก';
+  document.getElementById('wdCalc').textContent = n ? ('เบิก ' + n + ' หน่วย · ' + money(v) + ' บาท') : 'ยังไม่ได้เลือก';
 }
-function saveTransfer() {
+function saveWithdraw() {
   var lines = [];
-  document.querySelectorAll('#trPickTable input[data-sid]').forEach(function (inp) {
+  document.querySelectorAll('#wdPickTable input[data-sid]').forEach(function (inp) {
     var q = Number(inp.value || 0);
     if (q > 0) lines.push({ stockId: inp.dataset.sid, qty: q });
   });
   if (!lines.length) return toast('ใส่จำนวนที่ต้องการเบิก');
   api('saveTransfer', {
-    date: document.getElementById('trDate').value,
-    notes: document.getElementById('trNotes').value,
+    date: document.getElementById('wdDate').value,
+    notes: document.getElementById('wdNotes').value,
     lines: lines
   }).then(function (r) {
-    toast('บันทึกเบิกตู้ ' + r.transfer.id);
-    loadTransferPick();
+    toast('บันทึกใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
+    STATE.lastWithdrawId = r.transfer.id;
+    loadWithdrawPick();
+    loadWithdrawHistory();
+    showWithdrawPrint(r.transfer.id);
     refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
-
-function loadAdjustStock() {
-  var loc = document.getElementById('adjLoc').value;
-  var type = document.getElementById('adjType').value;
-  if (STATE.stockCache[loc]) {
-    STATE.pickStock = STATE.stockCache[loc];
-    renderAdjustTable(type);
-  }
-  api('listStock', { location: loc }).then(function (r) {
-    STATE.stockCache[loc] = r.stock || [];
-    STATE.pickStock = STATE.stockCache[loc];
-    renderAdjustTable(type);
+function loadWithdrawHistory() {
+  api('listTransfers').then(function (r) {
+    document.getElementById('wdHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
+      return '<div class="user-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿</span><button class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button></div>';
+    }).join('') || 'ยังไม่มี';
   });
 }
-function renderAdjustTable(type) {
-  var qtyHead = type === 'COUNT' ? 'ยอดนับจริง' : 'จำนวนใช้ไป';
-  var html = '<tr><th>รายการ</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th>' + qtyHead + '</th></tr>';
-  html += STATE.pickStock.map(function (s) {
-    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.packSize) + '</td><td class="right">' + s.qty + '</td><td><input data-sid="' + s.id + '" type="number" min="0" step="0.01" style="width:110px" ' + (type === 'COUNT' ? 'value="' + s.qty + '"' : '') + '></td></tr>';
-  }).join('');
-  document.getElementById('adjTable').innerHTML = html;
-}
-function saveAdjustment() {
-  var type = document.getElementById('adjType').value;
-  var lines = [];
-  document.querySelectorAll('#adjTable input[data-sid]').forEach(function (inp) {
-    var n = Number(inp.value || 0);
-    if (type === 'COUNT') lines.push({ stockId: inp.dataset.sid, counted: n });
-    else if (n > 0) lines.push({ stockId: inp.dataset.sid, qty: n });
-  });
-  if (!lines.length) return toast('ยังไม่มีจำนวน');
-  api('saveAdjustment', {
-    date: document.getElementById('adjDate').value,
-    type: type,
-    location: document.getElementById('adjLoc').value,
-    notes: document.getElementById('adjNotes').value,
-    lines: lines
-  }).then(function (r) {
-    toast('บันทึกแล้ว ' + r.adjustment.id);
-    loadAdjustStock();
-    refreshAfterMutation();
+function showWithdrawPrint(id) {
+  api('getTransfer', { id: id }).then(function (data) {
+    var t = data.transfer;
+    var s = data.settings || {};
+    var html = '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div>' +
+      '<h2 style="margin:8px 0 4px">ใบเบิกยาและเวชภัณฑ์จากคลังหลัก</h2>' +
+      '<div>วันที่ ' + esc(ThDate.formatDateLong(t.date)) + (t.notes ? ' · ' + esc(t.notes) : '') + '</div></div>';
+    html += '<table><tr><th>ลำดับ</th><th>รายการ</th><th class="right">ราคา/หน่วย</th><th class="right">จำนวนที่เบิก</th><th class="right">จำนวนที่อนุมัติ</th><th class="right">มูลค่า</th><th>วันหมดอายุ</th><th>หมายเหตุ</th></tr>';
+    (data.lines || []).forEach(function (l) {
+      html += '<tr><td>' + l.no + '</td><td>' + esc(l.name) + (l.packSize ? '<div class="muted">' + esc(l.packSize) + '</div>' : '') +
+        '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + l.qty + '</td><td class="right">' + l.approvedQty +
+        '</td><td class="right">' + money(l.amount) + '</td><td>' + esc(l.expiryLabel || '-') + '</td><td></td></tr>';
+    });
+    html += '<tr><td colspan="5" class="right"><b>รวมทั้งสิ้น</b></td><td class="right"><b>' + money(t.totalValue) + '</b></td><td colspan="2"></td></tr></table>';
+    html += signBlock4(s);
+    document.getElementById('wdPrintOut').innerHTML = html;
+    document.getElementById('wdPrintCard').style.display = 'block';
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
@@ -422,55 +427,58 @@ function runReport(kind) {
   setReportTab(kind);
   var iso = ThDate.get('rpMonth') || document.getElementById('rpMonth').value;
   var monthKey = beMonthKey(iso);
-  var fn = kind === 'money' ? 'moneyReport' : kind === 'quarter' ? 'quarterReport' : 'monthReport';
+  var fn = kind === 'money' ? 'moneyReport' : 'monthReport';
   document.getElementById('reportOut').textContent = 'กำลังสร้างรายงาน...';
   api(fn, { monthKey: monthKey }).then(function (data) {
     if (kind === 'money') renderMoney(data);
-    else if (kind === 'quarter') renderQuarter(data);
     else renderMonth(data);
   }).catch(function (e) {
     document.getElementById('reportOut').textContent = e.message || String(e);
   });
 }
 function hdr(s, title, sub) {
-  return '<div class="print-only"></div><div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div><h2 style="margin:8px 0 4px">' + title + '</h2><div class="muted">' + sub + '</div></div>';
+  return '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div><h2 style="margin:8px 0 4px">' + title + '</h2><div class="muted">' + sub + '</div></div>';
 }
 function renderMonth(d) {
-  var html = hdr(d.settings, 'แบบฟอร์มเบิกยา', 'ยอดการใช้ยา ' + d.label);
-  d.groups.forEach(function (g) {
-    html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยกมา</th><th class="right">รับ</th><th class="right">จ่าย</th><th class="right">คงเหลือ</th><th class="right">ขอเบิก</th><th class="right">มูลค่า</th></tr>';
+  var sm = d.summary || {};
+  var html = hdr(d.settings, 'สรุปคลังหลักรายเดือน', d.label);
+  html += '<div class="cards" style="margin-bottom:14px">' +
+    kpi('รับเข้าเดือนนี้', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย') +
+    kpi('เบิกออกเดือนนี้', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย') +
+    kpi('คงเหลือสิ้นเดือน', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย') +
+    '</div>';
+  (d.groups || []).forEach(function (g) {
+    html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยกมา</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
     g.rows.forEach(function (r) {
-      html += '<tr><td>' + esc(r.item.name) + '</td><td>' + esc(r.item.packSize) + '</td><td class="right">' + money(r.item.unitPrice) + '</td><td class="right">' + r.opening + '</td><td class="right">' + r.received + '</td><td class="right">' + r.issued + '</td><td class="right"><b>' + r.remain + '</b></td><td class="right">' + r.request + '</td><td class="right">' + money(r.remainValue) + '</td></tr>';
+      html += '<tr><td>' + esc(r.item.name) + '</td><td>' + esc(r.item.packSize) + '</td><td class="right">' + money(r.item.unitPrice) + '</td><td class="right">' + r.opening + '</td><td class="right">' + r.received + '</td><td class="right">' + r.issued + '</td><td class="right"><b>' + r.remain + '</b></td><td class="right">' + money(r.remainValue) + '</td></tr>';
     });
-    html += '<tr><td colspan="8" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="right"><b>' + money(g.totalValue) + '</b></td></tr></table>';
+    html += '<tr><td colspan="7" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="right"><b>' + money(g.totalValue) + '</b></td></tr></table>';
   });
-  html += '<p class="right"><b>รวมทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
-  html += signBlock(d.settings);
+  html += '<p class="right"><b>รวมคงเหลือทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
+  html += signBlock4(d.settings);
   document.getElementById('reportOut').innerHTML = html;
 }
 function renderMoney(d) {
-  var html = hdr(d.settings, 'รายงานยอดยา เวชภัณฑ์ วัสดุทางการแพทย์ คงเหลือ', 'ประจำเดือน ' + d.label);
-  html += '<table><tr><th>รายละเอียด</th><th class="right">ยอดยกมา</th><th class="right">ซื้อ</th><th class="right">เบิกจากรพ.</th><th class="right">ใช้ไป</th><th class="right">คงเหลือ</th></tr>';
-  d.rows.forEach(function (r) {
-    html += '<tr><td>' + esc(r.category) + '</td><td class="right">' + money(r.opening) + '</td><td class="right">' + money(r.buy) + '</td><td class="right">' + money(r.receive) + '</td><td class="right">' + money(r.used) + '</td><td class="right"><b>' + money(r.remain) + '</b></td></tr>';
+  var t = d.totals || {};
+  var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', 'ประจำเดือน ' + d.label);
+  html += '<div class="cards" style="margin-bottom:14px">' +
+    kpi('รับเข้า', money(t.receive) + ' ฿', 'เดือนนี้') +
+    kpi('เบิกออก', money(t.used) + ' ฿', 'เดือนนี้') +
+    kpi('คงเหลือ', money(t.remain) + ' ฿', 'สิ้นเดือน') +
+    '</div>';
+  html += '<table><tr><th>หมวด</th><th class="right">ยอดยกมา</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
+  (d.rows || []).forEach(function (r) {
+    html += '<tr><td>' + esc(r.category) + '</td><td class="right">' + money(r.opening) + '</td><td class="right">' + money(r.receive) + '</td><td class="right">' + money(r.used) + '</td><td class="right"><b>' + money(r.remain) + '</b></td></tr>';
   });
-  html += '</table>' + signBlock(d.settings);
+  html += '</table>' + signBlock4(d.settings);
   document.getElementById('reportOut').innerHTML = html;
 }
-function renderQuarter(d) {
-  var html = hdr(d.settings, 'ใบเบิกเวชภัณฑ์มิใช่ยา', 'ประจำ ' + d.label);
-  html += '<table><tr><th>ลำดับ</th><th>รายการ</th><th>หน่วย</th><th class="right">เบิกทั้งปี</th><th class="right">คงเหลือ</th><th class="right">จำนวนที่เบิก</th><th class="right">ราคา</th><th class="right">มูลค่า</th></tr>';
-  d.rows.forEach(function (r) {
-    html += '<tr><td>' + r.no + '</td><td>' + esc(r.item.name) + '</td><td>' + esc(r.item.packSize) + '</td><td class="right">' + r.yearQuota + '</td><td class="right">' + r.remain + '</td><td class="right">' + r.request + '</td><td class="right">' + money(r.item.unitPrice) + '</td><td class="right">' + money(r.amount) + '</td></tr>';
-  });
-  html += '<tr><td colspan="7" class="right"><b>รวม</b></td><td class="right"><b>' + money(d.total) + '</b></td></tr></table>' + signBlock(d.settings);
-  document.getElementById('reportOut').innerHTML = html;
-}
-function signBlock(s) {
-  return '<div class="row" style="margin-top:28px;justify-content:space-around;text-align:center">' +
-    '<div>ลงชื่อ ................................ ผู้เบิก<br><br>(' + esc(s.requesterName || '') + ')<br>' + esc(s.requesterPosition || '') + '</div>' +
-    '<div>ลงชื่อ ................................ ผู้อนุมัติ<br><br>(' + esc(s.approverName || '................................') + ')<br>ตำแหน่ง ................................</div>' +
-    '<div>ลงชื่อ ................................ ผู้จ่าย<br><br>(' + esc(s.issuerName || '................................') + ')<br>ตำแหน่ง ................................</div>' +
+function signBlock4(s) {
+  return '<div class="sign-grid">' +
+    '<div>ลงชื่อ ................................<br>ผู้อนุมัติ<br><br>(' + esc(s.approverName || '................................') + ')<br>' + esc(s.approverPosition || 'ตำแหน่ง ................................') + '</div>' +
+    '<div>ลงชื่อ ................................<br>ผู้เบิก<br><br>(' + esc(s.requesterName || '................................') + ')<br>' + esc(s.requesterPosition || 'ตำแหน่ง ................................') + '</div>' +
+    '<div>ลงชื่อ ................................<br>ผู้รับ<br><br>(' + esc(s.receiverName || '................................') + ')<br>' + esc(s.receiverPosition || 'ตำแหน่ง ................................') + '</div>' +
+    '<div>ลงชื่อ ................................<br>ผู้จ่าย<br><br>(' + esc(s.issuerName || '................................') + ')<br>' + esc(s.issuerPosition || 'ตำแหน่ง ................................') + '</div>' +
     '</div>';
 }
 
@@ -492,9 +500,14 @@ function saveSettings() {
   api('saveSettings', {
     unitName: document.getElementById('stUnit').value,
     unitSub: document.getElementById('stSub').value,
+    approverName: document.getElementById('stApp').value,
+    approverPosition: document.getElementById('stAppPos').value,
     requesterName: document.getElementById('stReq').value,
     requesterPosition: document.getElementById('stPos').value,
-    issuerName: document.getElementById('stIss').value
+    receiverName: document.getElementById('stRecv').value,
+    receiverPosition: document.getElementById('stRecvPos').value,
+    issuerName: document.getElementById('stIss').value,
+    issuerPosition: document.getElementById('stIssPos').value
   }).then(function () { toast('บันทึกตั้งค่าแล้ว'); loadBootstrap(); });
 }
 function esc(s) {
@@ -518,7 +531,7 @@ function loadLoginUsers() {
   api('listUsers').then(function (r) {
     var users = r.users || [];
     var html = users.map(function (u) {
-      var safe = esc(u).replace(/'/g, "\'");
+      var safe = esc(u).replace(/'/g, "\\'");
       return '<div class="user-row"><span>' + esc(u) + '</span><button class="btn ghost" onclick="removeLoginUser(\'' + safe + '\')">ลบ</button></div>';
     }).join('');
     document.getElementById('userList').innerHTML = html || '<p class="muted">ยังไม่มีผู้ใช้</p>';

@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=3">
+  <link rel="stylesheet" href="css/styles.css?v=4">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -35,12 +35,11 @@
       </div>
       <button class="nav-btn active" data-page="dash">แดชบอร์ด</button>
       <button class="nav-btn" data-page="items">ทะเบียนรายการ</button>
-      <button class="nav-btn" data-page="stock">คงเหลือ 2 ที่เก็บ</button>
-      <button class="nav-btn" data-page="receive">รับเข้าจากใบเสร็จ</button>
-      <button class="nav-btn" data-page="transfer">เบิกไปตู้ข้างนอก</button>
-      <button class="nav-btn" data-page="adjust">ตัดจ่าย / ตรวจนับ</button>
-      <button class="nav-btn" data-page="reports">รายงาน / พิมพ์</button>
-      <button class="nav-btn" data-page="import">นำเข้าข้อมูลเดิม</button>
+      <button class="nav-btn" data-page="stock">ยอดคงเหลือ</button>
+      <button class="nav-btn" data-page="receive">รับเข้าคลังหลัก</button>
+      <button class="nav-btn" data-page="withdraw">เบิกจากคลังหลัก</button>
+      <button class="nav-btn" data-page="reports">สรุปรายเดือน</button>
+      <button class="nav-btn" data-page="import">ตั้งค่า / นำเข้า</button>
       <div class="grow"></div>
       <div class="user-box">
         <div class="who">รพ.สต.ทรายขาว</div>
@@ -50,6 +49,7 @@
     </aside>
     <main class="main">
       <div class="watermark" aria-hidden="true">รพ.สต.ทรายขาว</div>
+
       <section class="page active" id="page-dash">
         <div class="top">
           <div>
@@ -77,7 +77,7 @@
         <div class="top">
           <div>
             <h2>ทะเบียนยาและเวชภัณฑ์</h2>
-            <div class="sub">เพิ่ม แก้ไข ค้นหารายการหลัก</div>
+            <div class="sub">รายละเอียดยาในคลังหลัก — ชื่อ จำนวน วันหมดอายุ ดูที่หน้าคงเหลือ</div>
           </div>
           <button class="btn" onclick="openItem()">+ รายการใหม่</button>
         </div>
@@ -91,13 +91,11 @@
       <section class="page" id="page-stock">
         <div class="top">
           <div>
-            <h2>ยอดคงเหลือ</h2>
-            <div class="sub">คลังหลัก และตู้ข้างนอก</div>
+            <h2>ยอดคงเหลือคลังหลัก</h2>
+            <div class="sub">ดูจำนวน มูลค่า และวันหมดอายุของยาในคลัง รพ.สต.</div>
           </div>
         </div>
         <div class="toolbar">
-          <button class="btn" data-loc="MAIN" onclick="showStock('MAIN')">คลังหลัก</button>
-          <button class="btn secondary" data-loc="CABINET" onclick="showStock('CABINET')">ตู้ข้างนอก</button>
           <div class="field"><label>ค้นหา</label><input id="stockQ" oninput="renderStock()" placeholder="ชื่อรายการ"></div>
         </div>
         <div class="card table-wrap"><table id="stockTable"></table></div>
@@ -106,8 +104,8 @@
       <section class="page" id="page-receive">
         <div class="top">
           <div>
-            <h2>รับเข้าจากใบเสร็จ / ใบอนุมัติเบิก</h2>
-            <div class="sub">ใส่จำนวนแบบ 70x1's หรือ 6x100's ระบบคำนวณยอดเงินให้</div>
+            <h2>รับเข้าจากโรงพยาบาลในเมือง</h2>
+            <div class="sub">บันทึกรายการเข้าคลังหลัก — ใส่จำนวนตัวเลข + เลือกหน่วยบรรจุ</div>
           </div>
         </div>
         <div class="card">
@@ -127,7 +125,8 @@
               <input id="rcSearch" placeholder="พิมพ์ชื่อยา แล้วเลือก" oninput="searchPick('rc')">
               <div class="suggest-list" id="rcSuggest"></div>
             </div>
-            <div class="field"><label>จำนวน (เช่น 2x1000's)</label><input id="rcQty" placeholder="2x100's"></div>
+            <div class="field"><label>จำนวน</label><input id="rcQty" type="number" min="0" step="1" placeholder="เช่น 2"></div>
+            <div class="field"><label>หน่วยบรรจุ</label><select id="rcPack"></select><input id="rcPackCustom" placeholder="ระบุหน่วย" style="display:none;margin-top:6px"></div>
             <div class="field"><label>ราคา/หน่วย</label><input id="rcPrice" type="number" step="0.01"></div>
             <div class="field th-date-field"><label>วันหมดอายุ</label><input id="rcExpiry" type="hidden"><button type="button" class="th-date-btn" data-for="rcExpiry">เลือกวันที่</button></div>
             <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addReceiveLine()">เพิ่ม</button></div>
@@ -144,99 +143,93 @@
         </div>
       </section>
 
-      <section class="page" id="page-transfer">
+      <section class="page" id="page-withdraw">
         <div class="top">
           <div>
-            <h2>เบิกจากคลังหลักไปตู้ข้างนอก</h2>
-            <div class="sub">บันทึกเป็นรายครั้ง ตัดคลังหลัก และเพิ่มของในตู้</div>
+            <h2>เบิกจากคลังหลัก</h2>
+            <div class="sub">เลือกยาที่หมดอายุก่อน (ระบบแนะนำ) · บันทึกแล้วพิมพ์ใบเบิก PDF ได้</div>
           </div>
         </div>
         <div class="card">
           <div class="row">
-            <div class="field th-date-field"><label>วันที่เบิก</label><input id="trDate" type="hidden"><button type="button" class="th-date-btn" data-for="trDate">เลือกวันที่</button></div>
-            <div class="field"><label>หมายเหตุ</label><input id="trNotes" placeholder="เบิกประจำสัปดาห์"></div>
+            <div class="field th-date-field"><label>วันที่เบิก</label><input id="wdDate" type="hidden"><button type="button" class="th-date-btn" data-for="wdDate">เลือกวันที่</button></div>
+            <div class="field"><label>หมายเหตุ</label><input id="wdNotes" placeholder="เบิกใช้ประจำ"></div>
           </div>
-          <div class="table-wrap" style="margin-top:12px"><table id="trPickTable"></table></div>
+          <p class="muted" style="margin:10px 0 6px">แถวสีเหลือง = แนะนำใช้ก่อน (หมดอายุใกล้สุดของรายการนั้น)</p>
+          <div class="table-wrap"><table id="wdPickTable"></table></div>
           <div class="row" style="justify-content:space-between;margin-top:12px">
-            <div class="muted" id="trCalc">ยังไม่ได้เลือก</div>
-            <button class="btn" onclick="saveTransfer()">บันทึกเบิกไปตู้ข้างนอก</button>
+            <div class="muted" id="wdCalc">ยังไม่ได้เลือก</div>
+            <button class="btn" onclick="saveWithdraw()">บันทึกใบเบิก</button>
           </div>
         </div>
-      </section>
-
-      <section class="page" id="page-adjust">
-        <div class="top">
-          <div>
-            <h2>ตัดจ่าย / ตรวจนับ</h2>
-            <div class="sub">ใช้ไปจากตู้ข้างนอก หรือนับสต็อกจริงสิ้นเดือน</div>
-          </div>
+        <div class="card" style="margin-top:14px">
+          <h3>ใบเบิกล่าสุด</h3>
+          <div id="wdHistory" class="muted">ยังไม่มี</div>
         </div>
-        <div class="card">
-          <div class="row">
-            <div class="field th-date-field"><label>วันที่</label><input id="adjDate" type="hidden"><button type="button" class="th-date-btn" data-for="adjDate">เลือกวันที่</button></div>
-            <div class="field"><label>ประเภท</label>
-              <select id="adjType" onchange="loadAdjustStock()">
-                <option value="USAGE">ใช้ไป / ตัดจ่าย</option>
-                <option value="COUNT">ตรวจนับยอดจริง</option>
-              </select>
-            </div>
-            <div class="field"><label>ที่เก็บ</label>
-              <select id="adjLoc" onchange="loadAdjustStock()">
-                <option value="CABINET">ตู้ข้างนอก</option>
-                <option value="MAIN">คลังหลัก</option>
-              </select>
-            </div>
-            <div class="field"><label>หมายเหตุ</label><input id="adjNotes"></div>
+        <div class="card" style="margin-top:14px;display:none" id="wdPrintCard">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h3 style="margin:0">ใบเบิกสำหรับพิมพ์</h3>
+            <button type="button" class="btn" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
           </div>
-          <div class="table-wrap" style="margin-top:12px"><table id="adjTable"></table></div>
-          <div class="row" style="justify-content:flex-end;margin-top:12px">
-            <button class="btn" onclick="saveAdjustment()">บันทึก</button>
-          </div>
+          <div id="wdPrintOut" class="print-sheet" style="margin-top:12px"></div>
         </div>
       </section>
 
       <section class="page" id="page-reports">
         <div class="top">
           <div>
-            <h2>รายงาน</h2>
-            <div class="sub">พิมพ์แบบฟอร์มให้ใกล้ของเดิม แล้วเซ็นมือได้</div>
+            <h2>สรุปรายเดือน</h2>
+            <div class="sub">รับเข้า · เบิกออก · คงเหลือ ณ สิ้นเดือน</div>
           </div>
         </div>
         <div class="card">
           <div class="toolbar">
             <div class="field th-date-field"><label>เดือน</label><input id="rpMonth" type="hidden"><button type="button" class="th-date-btn" data-for="rpMonth">เลือกเดือน</button></div>
             <div class="rp-tabs">
-              <button type="button" class="btn rp-tab active" data-rp="month" onclick="runReport('month')">แบบฟอร์มเบิกยารายเดือน</button>
-              <button type="button" class="btn secondary rp-tab" data-rp="money" onclick="runReport('money')">รายงานยอดเงินคงเหลือ</button>
-              <button type="button" class="btn secondary rp-tab" data-rp="quarter" onclick="runReport('quarter')">ใบเบิกเวชภัณฑ์ไตรมาส</button>
+              <button type="button" class="btn rp-tab active" data-rp="month" onclick="runReport('month')">สรุปคลังหลัก</button>
+              <button type="button" class="btn secondary rp-tab" data-rp="money" onclick="runReport('money')">สรุปมูลค่ารายหมวด</button>
             </div>
             <button type="button" class="btn ghost" onclick="window.print()">พิมพ์</button>
           </div>
-          <div id="reportOut" class="print-sheet">เลือกประเภทรายงาน</div>
+          <div id="reportOut" class="print-sheet">เลือกเดือนแล้วกดประเภทรายงาน</div>
         </div>
       </section>
 
       <section class="page" id="page-import">
         <div class="top">
           <div>
-            <h2>นำเข้าข้อมูลเดิม</h2>
-            <div class="sub">ดึงรายการยาจากไฟล์ พ.ค.69 และเวชภัณฑ์ไตรมาส มาเป็นยอดยกมา</div>
+            <h2>ตั้งค่า / นำเข้า</h2>
+            <div class="sub">ชื่อผู้เซ็นใบเบิก · ผู้ใช้ · นำเข้าข้อมูลเดิม</div>
           </div>
         </div>
         <div class="card">
-          <p>ตอนเปิดครั้งแรก ระบบนำเข้าข้อมูลจากไฟล์เดิมให้อัตโนมัติแล้ว ข้อมูลเก็บในเบราว์เซอร์ของเครื่องนี้ (localStorage)</p>
-          <ul>
-            <li>ยาและเวชภัณฑ์ จากชีต พ.ค.69</li>
-            <li>รายการเวชภัณฑ์มิใช่ยา + วงเงินทั้งปี จากใบเบิกไตรมาส</li>
-            <li>ยอดเงินอ้างอิงสิ้น ก.ค.69: ยา 134,299.02 บาท, เวชภัณฑ์ 20,924.37 บาท</li>
-          </ul>
-          <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
-          <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
-          <p class="muted" id="importMsg"></p>
+          <h3>ตั้งค่าหน่วยงาน</h3>
+          <div class="row">
+            <div class="field"><label>ชื่อหน่วย</label><input id="stUnit"></div>
+            <div class="field"><label>ที่อยู่สั้น</label><input id="stSub"></div>
+          </div>
+          <h3 style="margin-top:16px">ชื่อ–ตำแหน่ง บนใบเบิก (กรอกเองได้)</h3>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label>ผู้อนุมัติ</label><input id="stApp"></div>
+            <div class="field"><label>ตำแหน่งผู้อนุมัติ</label><input id="stAppPos"></div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label>ผู้เบิก</label><input id="stReq"></div>
+            <div class="field"><label>ตำแหน่งผู้เบิก</label><input id="stPos"></div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label>ผู้รับ</label><input id="stRecv"></div>
+            <div class="field"><label>ตำแหน่งผู้รับ</label><input id="stRecvPos"></div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label>ผู้จ่าย</label><input id="stIss"></div>
+            <div class="field"><label>ตำแหน่งผู้จ่าย</label><input id="stIssPos"></div>
+          </div>
+          <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
         </div>
         <div class="card" style="margin-top:14px">
           <h3>ผู้ใช้ที่ Login ได้</h3>
-          <p class="muted">เพิ่ม Username ที่อนุญาตให้เข้าใช้งานระบบ (ไม่มีรหัสผ่าน)</p>
+          <p class="muted">Username เดียวก็ได้ (ไม่มีรหัสผ่าน)</p>
           <div class="row" style="align-items:flex-end">
             <div class="field"><label>Username ใหม่</label><input id="newUserName" placeholder="ชื่อผู้ใช้"></div>
             <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addLoginUser()">เพิ่มผู้ใช้</button></div>
@@ -244,17 +237,11 @@
           <div id="userList" style="margin-top:12px"></div>
         </div>
         <div class="card" style="margin-top:14px">
-          <h3>ตั้งค่าหน่วยงาน</h3>
-          <div class="row">
-            <div class="field"><label>ชื่อหน่วย</label><input id="stUnit"></div>
-            <div class="field"><label>ที่อยู่สั้น</label><input id="stSub"></div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <div class="field"><label>ผู้เบิก</label><input id="stReq"></div>
-            <div class="field"><label>ตำแหน่ง</label><input id="stPos"></div>
-            <div class="field"><label>ผู้จ่าย</label><input id="stIss"></div>
-          </div>
-          <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
+          <h3>นำเข้าข้อมูลเดิม</h3>
+          <p>ตอนเปิดครั้งแรก ระบบนำเข้าจากไฟล์ พ.ค.69 ให้อัตโนมัติ ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้</p>
+          <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
+          <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
+          <p class="muted" id="importMsg"></p>
         </div>
       </section>
     </main>
@@ -270,14 +257,11 @@
       </div>
       <div class="row" style="margin-top:8px">
         <div class="field"><label>หมวด</label><select id="itCat"></select></div>
-        <div class="field"><label>หมวดมูลค่า</label><select id="itValCat"></select></div>
         <div class="field"><label>ขนาดบรรจุ</label><select id="itPack"></select><input id="itPackCustom" placeholder="ระบุขนาดบรรจุ" style="display:none;margin-top:6px"></div>
+        <div class="field"><label>รูปแบบ</label><select id="itForm"></select><input id="itFormCustom" placeholder="ระบุรูปแบบ เช่น TAB" style="display:none;margin-top:6px"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <div class="field"><label>รูปแบบ</label><select id="itForm"></select><input id="itFormCustom" placeholder="ระบุรูปแบบ เช่น TAB" style="display:none;margin-top:6px"></div>
         <div class="field"><label>ราคาต่อหน่วย</label><input id="itPrice" type="number" step="0.01"></div>
-        <div class="field"><label>วงเงิน/โควตาปี</label><input id="itQuota" type="number"></div>
-        <div class="field"><label>จุดสั่งซื้อ</label><input id="itLow" type="number"></div>
       </div>
       <div class="field" style="margin-top:8px"><label>หมายเหตุ</label><input id="itNotes"></div>
       <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -287,12 +271,12 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=3"></script>
-  <script src="js/seed.js?v=3"></script>
-  <script src="js/api.js?v=3"></script>
-  <script src="js/options.js?v=3"></script>
-  <script src="js/thdate.js?v=3"></script>
-  <script src="js/app.js?v=3"></script>
-  <script src="js/auth.js?v=3"></script>
+  <script src="js/db.js?v=4"></script>
+  <script src="js/seed.js?v=4"></script>
+  <script src="js/api.js?v=4"></script>
+  <script src="js/options.js?v=4"></script>
+  <script src="js/thdate.js?v=4"></script>
+  <script src="js/app.js?v=4"></script>
+  <script src="js/auth.js?v=4"></script>
 </body>
 </html>
