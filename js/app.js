@@ -159,10 +159,10 @@ function fillSelect(id, arr, withBlank) {
 function renderDash(b) {
   var d = b.dashboard;
   document.getElementById('kpis').innerHTML =
-    kpi('มูลค่าคลังหลัก', money(d.totalValue) + ' ฿', 'ยอดคงเหลือปัจจุบัน') +
-    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลในเมือง') +
-    kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก') +
-    kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์');
+    kpi('มูลค่าคลังหลัก', money(d.totalValue) + ' ฿', 'ยอดคงเหลือปัจจุบัน', 'teal') +
+    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลในเมือง', 'sky') +
+    kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก', 'sand') +
+    kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์', 'leaf');
   document.getElementById('valueCats').innerHTML = '<h3>มูลค่าแยกหมวด</h3>' + ((d.byValue || []).length
     ? d.byValue.map(function (x) {
       return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>' + esc(x.category) + '</span><b>' + money(x.value) + '</b></div>';
@@ -177,8 +177,9 @@ function renderDash(b) {
   var tr = (b.recentTransfers || []).map(function (r) { return 'เบิก ' + r.id + ' · ' + money(r.totalValue) + ' ฿'; });
   document.getElementById('dashRecent').innerHTML = (rec.concat(tr).slice(0, 8).join('<br>') || 'ยังไม่มีรายการ');
 }
-function kpi(label, value, hint) {
-  return '<div class="card kpi"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="hint">' + hint + '</div></div>';
+function kpi(label, value, hint, tone) {
+  tone = tone || 'teal';
+  return '<div class="card kpi kpi-' + tone + '"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="hint">' + hint + '</div></div>';
 }
 
 function loadItems() {
@@ -209,11 +210,20 @@ function renderItems() {
         return '<div class="lot-row"><b>' + l.qty + '</b> · <span class="' + pill + '">' + esc(exp) + '</span></div>';
       }).join('') + '</div>';
     }
-    return '<tr><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
+    var qty = Number(i.stockQty || 0);
+    var low = qty > 0 && qty < 10;
+    var empty = qty <= 0;
+    var qtyHtml = empty
+      ? '<span class="qty-low">0</span><div class="muted">หมดสต็อก</div>'
+      : (low
+        ? '<span class="qty-low">' + qty + '</span><div class="pill warn">ใกล้หมด</div>'
+        : '<b>' + qty + '</b>');
+    var rowClass = empty ? 'stock-low-row' : (low ? 'stock-low-row' : '');
+    return '<tr class="' + rowClass + '"><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
       '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) +
       '</td><td class="right">' + money(i.unitPrice) +
-      '</td><td class="right"><b>' + (i.stockQty || 0) + '</b>' +
-      (i.stockValue ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
+      '</td><td class="right">' + qtyHtml +
+      (i.stockValue && qty > 0 ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
       '</td><td>' + lotHtml +
       '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button></td></tr>';
   }).join('');
@@ -786,9 +796,9 @@ function renderMonth(d) {
   var sm = d.summary || {};
   var html = hdr(d.settings, 'สรุปคลังหลักรายเดือน', d.label);
   html += '<div class="cards" style="margin-bottom:14px">' +
-    kpi('รับเข้าเดือนนี้', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย') +
-    kpi('เบิกออกเดือนนี้', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย') +
-    kpi('คงเหลือสิ้นเดือน', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย') +
+    kpi('รับเข้าเดือนนี้', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย', 'sky') +
+    kpi('เบิกออกเดือนนี้', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย', 'sand') +
+    kpi('คงเหลือสิ้นเดือน', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
     html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยกมา</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
@@ -805,9 +815,9 @@ function renderMoney(d) {
   var t = d.totals || {};
   var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', 'ประจำเดือน ' + d.label);
   html += '<div class="cards" style="margin-bottom:14px">' +
-    kpi('รับเข้า', money(t.receive) + ' ฿', 'เดือนนี้') +
-    kpi('เบิกออก', money(t.used) + ' ฿', 'เดือนนี้') +
-    kpi('คงเหลือ', money(t.remain) + ' ฿', 'สิ้นเดือน') +
+    kpi('รับเข้า', money(t.receive) + ' ฿', 'เดือนนี้', 'sky') +
+    kpi('เบิกออก', money(t.used) + ' ฿', 'เดือนนี้', 'sand') +
+    kpi('คงเหลือ', money(t.remain) + ' ฿', 'สิ้นเดือน', 'teal') +
     '</div>';
   html += '<table><tr><th>หมวด</th><th class="right">ยอดยกมา</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
   (d.rows || []).forEach(function (r) {

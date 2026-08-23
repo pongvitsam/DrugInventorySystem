@@ -7,14 +7,16 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=9">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=11">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
     <div class="login-card">
-      <h1>คลังยา รพ.สต.บ้านทรายขาว</h1>
-      <p class="login-sub">ใส่ Username เท่านั้น (ไม่มีรหัสผ่าน) — เริ่มต้น: Napatsorn</p>
+      <div class="login-mark" aria-hidden="true"></div>
+      <p class="login-eyebrow">ระบบคลังยา</p>
+      <h1>รพ.สต.บ้านทรายขาว</h1>
+      <p class="login-sub">เข้าใช้งานด้วย Username · ไม่มีรหัสผ่าน<br>เริ่มต้น: <b>Napatsorn</b></p>
       <div class="field">
         <label>Username</label>
         <input id="loginUser" type="text" placeholder="Napatsorn" autocomplete="username">
@@ -30,16 +32,19 @@
   <div class="app" id="appRoot" style="display:none">
     <aside class="sidebar">
       <div class="brand">
-        <h1>คลังยา รพ.สต.</h1>
-        <p id="brandSub">บ้านทรายขาว</p>
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <h1>คลังยา รพ.สต.</h1>
+          <p id="brandSub">บ้านทรายขาว</p>
+        </div>
       </div>
-      <button class="nav-btn active" data-page="dash">แดชบอร์ด</button>
-      <button class="nav-btn" data-page="items">ทะเบียนรายการ</button>
-      <button class="nav-btn" data-page="stock">ยอดคงเหลือ</button>
-      <button class="nav-btn" data-page="receive">รับเข้าคลังหลัก</button>
-      <button class="nav-btn" data-page="withdraw">เบิกจากคลังหลัก</button>
-      <button class="nav-btn" data-page="reports">สรุปรายเดือน</button>
-      <button class="nav-btn" data-page="import">ตั้งค่า / นำเข้า</button>
+      <button class="nav-btn active" data-page="dash"><span class="nav-ico" data-ico="dash"></span>แดชบอร์ด</button>
+      <button class="nav-btn" data-page="items"><span class="nav-ico" data-ico="items"></span>ทะเบียนรายการ</button>
+      <button class="nav-btn" data-page="stock"><span class="nav-ico" data-ico="stock"></span>ยอดคงเหลือ</button>
+      <button class="nav-btn" data-page="receive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังหลัก</button>
+      <button class="nav-btn" data-page="withdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังหลัก</button>
+      <button class="nav-btn" data-page="reports"><span class="nav-ico" data-ico="reports"></span>สรุปรายเดือน</button>
+      <button class="nav-btn" data-page="import"><span class="nav-ico" data-ico="import"></span>ตั้งค่า / นำเข้า</button>
       <div class="grow"></div>
       <div class="user-box">
         <div class="who">รพ.สต.ทรายขาว</div>
@@ -85,7 +90,7 @@
           <div class="field"><label>ค้นหา</label><input id="itemQ" oninput="renderItems()" placeholder="ชื่อยา / ขนาดบรรจุ"></div>
           <div class="field"><label>หมวด</label><select id="itemCatFilter" onchange="renderItems()"><option value="">ทั้งหมด</option></select></div>
         </div>
-        <div class="card table-wrap"><table id="itemTable"></table></div>
+        <div class="card table-wrap table-wrap-full"><table id="itemTable"></table></div>
       </section>
 
       <section class="page" id="page-stock">
@@ -104,7 +109,7 @@
             <button type="button" class="chip" data-sf="expiry" onclick="setStockFilter('expiry')">ใกล้หมดอายุ</button>
           </div>
         </div>
-        <div class="card table-wrap"><table id="stockTable"></table></div>
+        <div class="card table-wrap table-wrap-full"><table id="stockTable"></table></div>
       </section>
 
       <section class="page" id="page-receive">
@@ -316,13 +321,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=9"></script>
-  <script src="js/api.js?v=9"></script>
-  <script src="js/options.js?v=9"></script>
-  <script src="js/thdate.js?v=9"></script>
-  <script src="js/seed.js?v=9"></script>
-  <script src="js/ocr.js?v=9"></script>
-  <script src="js/app.js?v=9"></script>
-  <script src="js/auth.js?v=9"></script>
+  <script src="js/db.js?v=11"></script>
+  <script src="js/api.js?v=11"></script>
+  <script src="js/options.js?v=11"></script>
+  <script src="js/thdate.js?v=11"></script>
+  <script src="js/seed.js?v=11"></script>
+  <script src="js/ocr.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
+  <script src="js/auth.js?v=11"></script>
 </body>
 </html>
