@@ -486,6 +486,87 @@ textarea { min-height: 70px; }
   border-radius: 12px;
 }
 .wd-pick-wrap table { margin: 0; }
+.stock-alert {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #f0c9a0;
+  background: linear-gradient(135deg, #fff8ef 0%, #ffefd6 100%);
+  box-shadow: 0 4px 16px rgba(181, 71, 8, 0.08);
+}
+.stock-alert-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: var(--warn);
+}
+.stock-alert-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stock-alert-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #f0d2b0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.stock-alert-item em {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--danger);
+}
+.stock-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { border-color: var(--primary); background: var(--primary-soft); }
+.chip.active {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+  color: #fff;
+  border-color: transparent;
+}
+.chip.active[data-sf="low"] {
+  background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%);
+}
+.chip.active[data-sf="expiry"] {
+  background: linear-gradient(135deg, #b54708 0%, #d97706 100%);
+}
+.stock-low-row td { background: #fff5f3; }
+.stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
+.qty-low {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 800;
+}
+.fefo-row td { background: #fff8e6; }
 .ocr-skip td { opacity: .45; }
 #ocrReviewTable input {
   border: 1px solid var(--line);

@@ -4,6 +4,7 @@ var STATE = {
   stock: [],
   stockCache: { MAIN: null },
   loc: 'MAIN',
+  stockFilter: 'all',
   receive: { item: null, lines: [] },
   ocrReview: [],
   pickStock: [],
@@ -249,6 +250,20 @@ function saveItem() {
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
+var LOW_STOCK_QTY = 10;
+
+function isLowStock(s) {
+  return Number(s.qty || 0) > 0 && Number(s.qty || 0) < LOW_STOCK_QTY;
+}
+
+function setStockFilter(kind) {
+  STATE.stockFilter = kind || 'all';
+  document.querySelectorAll('#stockFilters .chip').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.sf === STATE.stockFilter);
+  });
+  renderStock();
+}
+
 function showStock() {
   STATE.loc = 'MAIN';
   if (STATE.stockCache.MAIN) {
@@ -261,13 +276,102 @@ function showStock() {
     renderStock();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+
+function renderStockAlert(allRows) {
+  var box = document.getElementById('stockAlert');
+  if (!box) return;
+  var byItem = {};
+  (allRows || []).forEach(function (s) {
+    if (!isLowStock(s)) return;
+    var key = s.itemId || s.name;
+    if (!byItem[key]) {
+      byItem[key] = { name: s.name, packSize: s.packSize, qty: 0, lots: 0, nearExpiry: false };
+    }
+    byItem[key].qty += Number(s.qty || 0);
+    byItem[key].lots += 1;
+    if (s.nearExpiry) byItem[key].nearExpiry = true;
+  });
+  var lows = Object.keys(byItem).map(function (k) { return byItem[k]; })
+    .sort(function (a, b) { return a.qty - b.qty; });
+  if (!lows.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.style.display = 'block';
+  var chips = lows.slice(0, 8).map(function (x) {
+    return '<span class="stock-alert-item"><b>' + esc(x.name) + '</b> เหลือ <em>' + x.qty + '</em>' +
+      (x.packSize ? ' · ' + esc(x.packSize) : '') +
+      (x.nearExpiry ? ' <span class="pill warn">หมดอายุใกล้</span>' : '') +
+      '</span>';
+  }).join('');
+  var more = lows.length > 8 ? '<span class="muted">และอีก ' + (lows.length - 8) + ' รายการ</span>' : '';
+  box.innerHTML =
+    '<div class="stock-alert-head">' +
+    '<div><strong>เตือนใกล้หมด</strong> พบ <b>' + lows.length + '</b> รายการ คงเหลือน้อยกว่า ' + LOW_STOCK_QTY + '</div>' +
+    '<button type="button" class="btn secondary" onclick="setStockFilter(\'low\')">ดูเฉพาะใกล้หมด</button>' +
+    '</div>' +
+    '<div class="stock-alert-list">' + chips + more + '</div>';
+}
+
 function renderStock() {
   var q = (document.getElementById('stockQ').value || '').toLowerCase();
-  var rows = STATE.stock.filter(function (s) { return !q || String(s.name).toLowerCase().indexOf(q) >= 0; });
-  var html = '<tr><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th class="right">มูลค่า</th><th>หมดอายุ</th></tr>';
-  html += rows.map(function (s) {
-    return '<tr' + (s.fefoRecommend ? ' class="fefo-row"' : '') + '><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td><td class="right"><b>' + s.qty + '</b></td><td class="right">' + money(s.unitPrice) + '</td><td class="right">' + money(s.amount) + '</td><td>' + (s.nearExpiry ? '<span class="pill warn">' : '') + (s.expiryLabel || (s.expiry ? ThDate.formatDateLong(s.expiry) : '-')) + (s.nearExpiry ? '</span>' : '') + '</td></tr>';
-  }).join('');
+  var filter = STATE.stockFilter || 'all';
+  var all = STATE.stock || [];
+  renderStockAlert(all);
+
+  var rows = all.filter(function (s) {
+    if (q && String(s.name).toLowerCase().indexOf(q) < 0) return false;
+    if (filter === 'low' && !isLowStock(s)) return false;
+    if (filter === 'expiry' && !s.nearExpiry) return false;
+    return true;
+  });
+
+  // ใกล้หมด / ใกล้หมดอายุ ขึ้นก่อน
+  rows = rows.slice().sort(function (a, b) {
+    var al = isLowStock(a) ? 0 : 1;
+    var bl = isLowStock(b) ? 0 : 1;
+    if (al !== bl) return al - bl;
+    var ae = a.nearExpiry ? 0 : 1;
+    var be = b.nearExpiry ? 0 : 1;
+    if (ae !== be) return ae - be;
+    return Number(a.qty || 0) - Number(b.qty || 0);
+  });
+
+  var html = '<tr><th>สถานะ</th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th class="right">มูลค่า</th><th>หมดอายุ</th></tr>';
+  if (!rows.length) {
+    html += '<tr><td colspan="8" class="muted">ไม่พบรายการตามเงื่อนไข</td></tr>';
+  } else {
+    html += rows.map(function (s) {
+      var low = isLowStock(s);
+      var rowClass = [];
+      if (low) rowClass.push('stock-low-row');
+      else if (s.fefoRecommend) rowClass.push('fefo-row');
+      if (s.nearExpiry) rowClass.push('stock-expiry-row');
+
+      var status = '';
+      if (low && Number(s.qty) <= 3) status = '<span class="pill danger">วิกฤต</span>';
+      else if (low) status = '<span class="pill warn">ใกล้หมด</span>';
+      else if (s.nearExpiry) status = '<span class="pill warn">ใกล้หมดอายุ</span>';
+      else status = '<span class="pill">ปกติ</span>';
+
+      var qtyCell = low
+        ? '<span class="qty-low">' + s.qty + '</span>'
+        : '<b>' + s.qty + '</b>';
+
+      return '<tr class="' + rowClass.join(' ') + '">' +
+        '<td>' + status + '</td>' +
+        '<td>' + esc(s.name) + '</td>' +
+        '<td>' + esc(s.category) + '</td>' +
+        '<td>' + esc(s.packSize) + '</td>' +
+        '<td class="right">' + qtyCell + '</td>' +
+        '<td class="right">' + money(s.unitPrice) + '</td>' +
+        '<td class="right">' + money(s.amount) + '</td>' +
+        '<td>' + (s.nearExpiry ? '<span class="pill warn">' : '') +
+        (s.expiryLabel || (s.expiry ? ThDate.formatDateLong(s.expiry) : '-')) +
+        (s.nearExpiry ? '</span>' : '') + '</td></tr>';
+    }).join('');
+  }
   document.getElementById('stockTable').innerHTML = html;
 }
 

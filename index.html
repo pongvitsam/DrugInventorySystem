@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=8">
+  <link rel="stylesheet" href="css/styles.css?v=9">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -92,11 +92,17 @@
         <div class="top">
           <div>
             <h2>ยอดคงเหลือคลังหลัก</h2>
-            <div class="sub">ดูจำนวน มูลค่า และวันหมดอายุของยาในคลัง รพ.สต.</div>
+            <div class="sub">ดูจำนวน มูลค่า วันหมดอายุ · เตือนเมื่อคงเหลือน้อยกว่า 10</div>
           </div>
         </div>
+        <div id="stockAlert" class="stock-alert" style="display:none"></div>
         <div class="toolbar">
           <div class="field"><label>ค้นหา</label><input id="stockQ" oninput="renderStock()" placeholder="ชื่อรายการ"></div>
+          <div class="stock-filters" id="stockFilters">
+            <button type="button" class="chip active" data-sf="all" onclick="setStockFilter('all')">ทั้งหมด</button>
+            <button type="button" class="chip" data-sf="low" onclick="setStockFilter('low')">ใกล้หมด (&lt;10)</button>
+            <button type="button" class="chip" data-sf="expiry" onclick="setStockFilter('expiry')">ใกล้หมดอายุ</button>
+          </div>
         </div>
         <div class="card table-wrap"><table id="stockTable"></table></div>
       </section>
@@ -310,13 +316,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=8"></script>
-  <script src="js/api.js?v=8"></script>
-  <script src="js/options.js?v=8"></script>
-  <script src="js/thdate.js?v=8"></script>
-  <script src="js/seed.js?v=8"></script>
-  <script src="js/ocr.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
-  <script src="js/auth.js?v=8"></script>
+  <script src="js/db.js?v=9"></script>
+  <script src="js/api.js?v=9"></script>
+  <script src="js/options.js?v=9"></script>
+  <script src="js/thdate.js?v=9"></script>
+  <script src="js/seed.js?v=9"></script>
+  <script src="js/ocr.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
+  <script src="js/auth.js?v=9"></script>
 </body>
 </html>
