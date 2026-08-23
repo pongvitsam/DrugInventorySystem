@@ -188,11 +188,13 @@ th {
 }
 .table-wrap-full {
   max-height: calc(100vh - 168px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .page .card.table-wrap,
 .page .card.table-wrap-full {
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 .page .card.table-wrap table,
 .page .card.table-wrap-full table {

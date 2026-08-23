@@ -197,6 +197,16 @@ function renderItems() {
       (!cat || i.category === cat) &&
       (!q || (i.name + i.packSize + i.code).toLowerCase().indexOf(q) >= 0);
   });
+  // ใกล้หมด (<10 และยังมีของ) ขึ้นก่อน แล้วค่อยรายการอื่น
+  rows = rows.slice().sort(function (a, b) {
+    var aq = Number(a.stockQty || 0);
+    var bq = Number(b.stockQty || 0);
+    var aLow = aq > 0 && aq < 10 ? 0 : 1;
+    var bLow = bq > 0 && bq < 10 ? 0 : 1;
+    if (aLow !== bLow) return aLow - bLow;
+    if (aLow === 0 && bLow === 0) return aq - bq;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'th');
+  });
   var html = '<tr><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">คงเหลือ</th><th>ล็อต / วันหมดอายุ</th><th></th></tr>';
   html += rows.map(function (i) {
     var lots = i.lots || [];
@@ -211,18 +221,10 @@ function renderItems() {
       }).join('') + '</div>';
     }
     var qty = Number(i.stockQty || 0);
-    var low = qty > 0 && qty < 10;
-    var empty = qty <= 0;
-    var qtyHtml = empty
-      ? '<span class="qty-low">0</span><div class="muted">หมดสต็อก</div>'
-      : (low
-        ? '<span class="qty-low">' + qty + '</span><div class="pill warn">ใกล้หมด</div>'
-        : '<b>' + qty + '</b>');
-    var rowClass = empty ? 'stock-low-row' : (low ? 'stock-low-row' : '');
-    return '<tr class="' + rowClass + '"><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
+    return '<tr><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
       '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) +
       '</td><td class="right">' + money(i.unitPrice) +
-      '</td><td class="right">' + qtyHtml +
+      '</td><td class="right"><b>' + qty + '</b>' +
       (i.stockValue && qty > 0 ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
       '</td><td>' + lotHtml +
       '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button></td></tr>';
