@@ -319,7 +319,7 @@ function renderItems() {
     if (aLow === 0 && bLow === 0) return aq - bq;
     return String(a.name || '').localeCompare(String(b.name || ''), 'th');
   });
-  var html = '<tr><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">คงเหลือ</th><th>ล็อต / วันหมดอายุ</th><th></th></tr>';
+  var html = '<tr><th>รหัสยา</th><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">คงเหลือ</th><th>ล็อต / วันหมดอายุ</th><th></th></tr>';
   html += rows.map(function (i) {
     var lots = i.lots || [];
     var lotHtml;
@@ -333,7 +333,8 @@ function renderItems() {
       }).join('') + '</div>';
     }
     var qty = Number(i.stockQty || 0);
-    return '<tr><td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') +
+    return '<tr><td>' + (i.code ? esc(i.code) : '<span class="muted">—</span>') +
+      '</td><td>' + esc(i.name) +
       '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) +
       '</td><td class="right">' + money(i.unitPrice) +
       '</td><td class="right"><b>' + qty + '</b>' +
