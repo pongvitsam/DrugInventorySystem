@@ -89,6 +89,7 @@ function callApi(name, payload) {
     bootstrap: apiBootstrap_,
     saveSettings: apiSaveSettings_,
     saveItem: apiSaveItem_,
+    saveStockLots: apiSaveStockLots_,
     listItems: apiListItems_,
     listStock: apiListStock_,
     listStockAll: apiListStockAll_,
@@ -270,6 +271,64 @@ function apiSaveItem_(p) {
   item.notes = String(p.notes || '');
   writeObjects_('Items', rows);
   return { ok: true, item: item };
+}
+
+function apiSaveStockLots_(p) {
+  var itemId = String(p.itemId || '');
+  if (!itemId) throw new Error('ไม่พบรายการ');
+  var items = readObjects_('Items');
+  var item = findById_(items, itemId);
+  if (!item) throw new Error('ไม่พบรายการ');
+  var stock = readObjects_('Stock');
+  var moves = readObjects_('Movements');
+  var todayIso = new Date().toISOString().slice(0, 10);
+  var defaultPrice = num_(item.unitPrice);
+  var lots = p.lots || [];
+  (p.removeStockIds || []).forEach(function (sid) {
+    var row = findById_(stock, sid);
+    if (!row || row.itemId !== itemId) return;
+    var oldQty = num_(row.qty);
+    if (oldQty > 0) {
+      moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, -oldQty, num_(row.unitPrice),
+        round2_(-oldQty * num_(row.unitPrice)), '', 'ลบล็อตจากทะเบียน'));
+    }
+    row.qty = 0;
+  });
+  lots.forEach(function (lot) {
+    var qty = num_(lot.qty);
+    var expiry = toIsoDate_(lot.expiry);
+    var stockId = String(lot.stockId || '');
+    if (stockId) {
+      var row = findById_(stock, stockId);
+      if (!row || row.itemId !== itemId) throw new Error('ไม่พบล็อตสต็อก');
+      var oldQty = num_(row.qty);
+      row.expiry = expiry;
+      if (qty <= 0) {
+        if (oldQty > 0) {
+          moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, -oldQty, num_(row.unitPrice),
+            round2_(-oldQty * num_(row.unitPrice)), '', 'ลบล็อตจากทะเบียน'));
+        }
+        row.qty = 0;
+      } else {
+        var delta = round4_(qty - oldQty);
+        row.qty = round4_(qty);
+        if (Math.abs(delta) > 1e-9) {
+          moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, delta, num_(row.unitPrice),
+            round2_(delta * num_(row.unitPrice)), '', 'แก้ไขยอดจากทะเบียน'));
+        }
+      }
+      return;
+    }
+    if (qty <= 0) return;
+    var unitPrice = num_(lot.unitPrice != null ? lot.unitPrice : defaultPrice);
+    var added = addStock_(stock, itemId, LOC_MAIN, qty, unitPrice, expiry, 'ทะเบียน');
+    moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, added.id, qty, unitPrice,
+      round2_(qty * unitPrice), '', 'เพิ่มล็อตจากทะเบียน'));
+  });
+  stock = stock.filter(function (s) { return num_(s.qty) > 0; });
+  writeObjects_('Stock', stock);
+  writeObjects_('Movements', moves);
+  return { ok: true };
 }
 
 function apiListStock_(p) {

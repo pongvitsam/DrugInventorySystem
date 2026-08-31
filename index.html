@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=15">
+  <link rel="stylesheet" href="css/styles.css?v=16">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -82,7 +82,7 @@
         <div class="top">
           <div>
             <h2>ทะเบียนยาและเวชภัณฑ์</h2>
-            <div class="sub">ชื่อ หมวด บรรจุ · คงเหลือและวันหมดอายุแต่ละล็อต</div>
+            <div class="sub">ชื่อ หมวด บรรจุ · แก้ไขคงเหลือและวันหมดอายุได้จากปุ่มแก้ไข</div>
           </div>
           <button class="btn" onclick="openItem()">+ รายการใหม่</button>
         </div>
@@ -313,6 +313,12 @@
         <div class="field"><label>ราคาต่อหน่วย</label><input id="itPrice" type="number" step="0.01"></div>
       </div>
       <div class="field" style="margin-top:8px"><label>หมายเหตุ</label><input id="itNotes"></div>
+      <div id="itStockSection" style="margin-top:14px">
+        <h4 style="margin:0 0 8px">สต็อกคลังหลัก</h4>
+        <p class="muted" style="margin:0 0 8px">แก้ไขจำนวนคงเหลือและวันหมดอายุแต่ละล็อต</p>
+        <div id="itStockLots"></div>
+        <button type="button" class="btn secondary" style="margin-top:8px" onclick="addItemStockLotRow()">+ เพิ่มล็อต</button>
+      </div>
       <div class="row" style="justify-content:flex-end;margin-top:14px">
         <button class="btn secondary" onclick="closeModal()">ยกเลิก</button>
         <button class="btn" onclick="saveItem()">บันทึก</button>
@@ -321,13 +327,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=15"></script>
-  <script src="js/api.js?v=15"></script>
-  <script src="js/options.js?v=15"></script>
-  <script src="js/thdate.js?v=15"></script>
-  <script src="js/seed.js?v=15"></script>
-  <script src="js/ocr.js?v=15"></script>
-  <script src="js/app.js?v=15"></script>
-  <script src="js/auth.js?v=15"></script>
+  <script src="js/db.js?v=16"></script>
+  <script src="js/api.js?v=16"></script>
+  <script src="js/options.js?v=16"></script>
+  <script src="js/thdate.js?v=16"></script>
+  <script src="js/seed.js?v=16"></script>
+  <script src="js/ocr.js?v=16"></script>
+  <script src="js/app.js?v=16"></script>
+  <script src="js/auth.js?v=16"></script>
 </body>
 </html>

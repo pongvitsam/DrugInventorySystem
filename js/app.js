@@ -233,7 +233,7 @@ function renderItems() {
   document.getElementById('itemTable').innerHTML = html || '<tr><td>ยังไม่มีรายการ</td></tr>';
 }
 function openItem(id) {
-  var it = (STATE.items || []).filter(function (x) { return x.id === id; })[0] || {};
+  var it = id ? (STATE.items || []).filter(function (x) { return x.id === id; })[0] : {};
   document.getElementById('itId').value = it.id || '';
   document.getElementById('itName').value = it.name || '';
   document.getElementById('itCode').value = it.code || '';
@@ -242,11 +242,60 @@ function openItem(id) {
   fillSelectWithCustom('itForm', 'itFormCustom', Options.mergeFormFromItems(STATE.items), it.form || '');
   document.getElementById('itPrice').value = it.unitPrice || '';
   document.getElementById('itNotes').value = it.notes || '';
+  document.getElementById('itemModalTitle').textContent = it.id ? 'แก้ไขรายการ' : 'รายการใหม่';
+  renderItemStockLots(it);
   document.getElementById('itemModal').style.display = 'flex';
 }
 function closeModal() { document.getElementById('itemModal').style.display = 'none'; }
+
+function renderItemStockLots(it) {
+  var lots = (it && it.lots && it.lots.length) ? it.lots : [];
+  STATE.editingItemLots = lots.map(function (l) {
+    return { stockId: l.stockId || '', qty: Number(l.qty || 0), expiry: l.expiry || '' };
+  });
+  STATE.itemLotDraft = STATE.editingItemLots.map(function (l) {
+    return { stockId: l.stockId, qty: l.qty, expiry: l.expiry };
+  });
+  paintItemStockLots();
+}
+
+function itemLotRowHtml(i, l) {
+  return '<div class="item-lot-row">' +
+    '<div class="field"><label>คงเหลือ</label><input type="number" min="0" step="1" value="' + (l.qty || 0) +
+    '" oninput="setItemLotField(' + i + ',\'qty\',this.value)"></div>' +
+    '<div class="field"><label>วันหมดอายุ</label><input type="date" value="' + esc(l.expiry || '') +
+    '" onchange="setItemLotField(' + i + ',\'expiry\',this.value)"></div>' +
+    '<button type="button" class="btn ghost item-lot-del" onclick="removeItemLotRow(' + i + ')">ลบ</button>' +
+    '</div>';
+}
+
+function paintItemStockLots() {
+  var lots = STATE.itemLotDraft || [];
+  var html = lots.length
+    ? lots.map(function (l, i) { return itemLotRowHtml(i, l); }).join('')
+    : '<p class="muted">ยังไม่มีสต็อก — กดเพิ่มล็อตด้านล่าง</p>';
+  document.getElementById('itStockLots').innerHTML = html;
+}
+
+function setItemLotField(i, key, val) {
+  if (!STATE.itemLotDraft || !STATE.itemLotDraft[i]) return;
+  STATE.itemLotDraft[i][key] = key === 'qty' ? Number(val || 0) : val;
+}
+
+function addItemStockLotRow() {
+  STATE.itemLotDraft = STATE.itemLotDraft || [];
+  STATE.itemLotDraft.push({ stockId: '', qty: 0, expiry: '' });
+  paintItemStockLots();
+}
+
+function removeItemLotRow(i) {
+  if (!STATE.itemLotDraft) return;
+  STATE.itemLotDraft.splice(i, 1);
+  paintItemStockLots();
+}
+
 function saveItem() {
-  api('saveItem', {
+  var payload = {
     id: document.getElementById('itId').value,
     name: document.getElementById('itName').value,
     code: document.getElementById('itCode').value,
@@ -255,6 +304,18 @@ function saveItem() {
     form: readSelectWithCustom('itForm', 'itFormCustom'),
     unitPrice: document.getElementById('itPrice').value,
     notes: document.getElementById('itNotes').value
+  };
+  var lots = (STATE.itemLotDraft || []).filter(function (l) {
+    return l.stockId || Number(l.qty) > 0 || l.expiry;
+  });
+  var origIds = (STATE.editingItemLots || []).map(function (l) { return l.stockId; }).filter(Boolean);
+  var currentIds = lots.filter(function (l) { return l.stockId; }).map(function (l) { return l.stockId; });
+  var removeStockIds = origIds.filter(function (id) { return currentIds.indexOf(id) < 0; });
+  api('saveItem', payload).then(function (r) {
+    var itemId = r.item.id;
+    if (lots.length || removeStockIds.length) {
+      return api('saveStockLots', { itemId: itemId, lots: lots, removeStockIds: removeStockIds });
+    }
   }).then(function () {
     closeModal();
     toast('บันทึกรายการแล้ว');
@@ -617,7 +678,7 @@ function renderOcrReview() {
   var rows = STATE.ocrReview || [];
   var card = document.getElementById('ocrReviewCard');
   if (card) card.style.display = rows.length ? 'block' : 'none';
-  var html = '<tr><th></th><th>รายการ (เลือกจากทะเบียน)</th><th class="right">จำนวน</th><th>หน่วยบรรจุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>สถานะ</th></tr>';
+  var html = '<tr><th></th><th>รายการ (เลือกจากทะเบียน)</th><th class="right">จำนวน</th><th>หน่วยบรรจุ</th><th>วันหมดอายุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>สถานะ</th></tr>';
   var tot = 0;
   var kept = 0;
   html += rows.map(function (l, i) {
@@ -630,6 +691,7 @@ function renderOcrReview() {
       '<td>' + ocrRegistrySelectHtml(i, l) + '</td>' +
       '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
       '<td>' + ocrPackSelectHtml(i, l) + '</td>' +
+      '<td><input type="date" class="ocr-expiry-input" value="' + esc(l.expiry || '') + '" onchange="updateOcrField(' + i + ',\'expiry\',this.value)"></td>' +
       '<td class="right"><input type="number" step="0.01" value="' + (l.unitPrice || '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'unitPrice\',this.value)"></td>' +
       '<td class="right">' + money(Number(l.qty || 0) * Number(l.unitPrice || 0)) + '</td>' +
       '<td>' + (l.itemId ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
