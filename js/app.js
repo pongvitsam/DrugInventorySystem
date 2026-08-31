@@ -78,6 +78,7 @@ function applyBoot(b) {
   fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   fillSelect('wdCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   refreshOptionLists();
+  bindItemModalOptionSelects();
   document.getElementById('stUnit').value = s.unitName || '';
   document.getElementById('stSub').value = s.unitSub || '';
   document.getElementById('stApp').value = s.approverName || '';
@@ -169,31 +170,16 @@ function refreshOptionLists() {
   };
 }
 
-function renderOptionTags() {
-  var map = {
-    categories: 'itCatTags',
-    packSizes: 'itPackTags',
-    forms: 'itFormTags'
-  };
-  Object.keys(map).forEach(function (key) {
-    var box = document.getElementById(map[key]);
-    if (!box) return;
-    var list = (STATE.optionLists && STATE.optionLists[key]) || [];
-    box.innerHTML = list.map(function (v, idx) {
-      return '<span class="option-tag">' + esc(v) +
-        ' <button type="button" class="option-tag-del" title="ลบ" onclick="removeOptionListItem(\'' + key + '\',' + idx + ')">×</button></span>';
-    }).join('');
-  });
-}
+function renderOptionTags() {}
 
 function refillItemModalSelects(opts) {
   opts = opts || {};
   refreshOptionLists();
-  fillSelect('itCat', STATE.optionLists.categories);
-  if (opts.category) document.getElementById('itCat').value = opts.category;
-  fillSelectWithCustom('itPack', 'itPackCustom', STATE.optionLists.packSizes, opts.packSize || '');
-  fillSelectWithCustom('itForm', 'itFormCustom', STATE.optionLists.forms, opts.form || '');
-  renderOptionTags();
+  fillOptionSelect('itCat', STATE.optionLists.categories, opts.category || 'ยาเม็ด', false);
+  fillOptionSelect('itPack', STATE.optionLists.packSizes, opts.packSize || '', true);
+  fillOptionSelect('itForm', STATE.optionLists.forms, opts.form || '', true);
+  ['itCat', 'itPack', 'itForm'].forEach(hideOptionAddRow);
+  document.querySelectorAll('.opt-manage-pop').forEach(function (p) { p.style.display = 'none'; });
 }
 
 function persistOptionLists() {
@@ -215,23 +201,40 @@ function persistOptionLists() {
     fillSelect('itemCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
     fillSelect('wdCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
     initItemOptionSelects(STATE.items || []);
-    renderOptionTags();
   });
 }
 
-function addOptionListItem(listKey, inputId, selectId) {
-  var val = String(document.getElementById(inputId).value || '').trim();
+function addOptionListItem(listKey, val, selectId) {
+  val = String(val || '').trim();
   if (!val) return toast('พิมพ์รายการที่ต้องการเพิ่ม');
-  var list = STATE.optionLists[listKey] || [];
+  var list = (STATE.optionLists[listKey] || []).slice();
   if (list.some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) {
+    refillItemModalSelects({
+      category: listKey === 'categories' ? val : readOptionSelect('itCat'),
+      packSize: listKey === 'packSizes' ? val : readOptionSelect('itPack'),
+      form: listKey === 'forms' ? val : readOptionSelect('itForm')
+    });
+    if (selectId) {
+      var sel = document.getElementById(selectId);
+      if (sel) { sel.value = val; sel._optPrev = val; }
+      hideOptionAddRow(selectId);
+    }
     return toast('มีรายการนี้แล้ว');
   }
   list.push(val);
   list.sort(function (a, b) { return String(a).localeCompare(String(b), 'th'); });
   STATE.optionLists[listKey] = list;
-  document.getElementById(inputId).value = '';
   persistOptionLists().then(function () {
-    if (selectId) document.getElementById(selectId).value = val;
+    refillItemModalSelects({
+      category: listKey === 'categories' ? val : readOptionSelect('itCat'),
+      packSize: listKey === 'packSizes' ? val : readOptionSelect('itPack'),
+      form: listKey === 'forms' ? val : readOptionSelect('itForm')
+    });
+    if (selectId) {
+      var sel = document.getElementById(selectId);
+      if (sel) { sel.value = val; sel._optPrev = val; }
+      hideOptionAddRow(selectId);
+    }
     toast('เพิ่มรายการแล้ว');
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -244,12 +247,14 @@ function removeOptionListItem(listKey, index) {
   if (!confirm('ลบ "' + value + '" จากรายการเลือก?')) return;
   list.splice(index, 1);
   STATE.optionLists[listKey] = list;
+  var map = { categories: 'itCat', packSizes: 'itPack', forms: 'itForm' };
   persistOptionLists().then(function () {
     refillItemModalSelects({
-      category: document.getElementById('itCat').value,
-      packSize: readSelectWithCustom('itPack', 'itPackCustom'),
-      form: readSelectWithCustom('itForm', 'itFormCustom')
+      category: readOptionSelect('itCat'),
+      packSize: readOptionSelect('itPack'),
+      form: readOptionSelect('itForm')
     });
+    paintOptionManage(listKey, map[listKey] + 'Manage');
     toast('ลบรายการแล้ว');
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -419,8 +424,8 @@ function saveItem() {
     name: document.getElementById('itName').value,
     code: document.getElementById('itCode').value,
     category: document.getElementById('itCat').value,
-    packSize: readSelectWithCustom('itPack', 'itPackCustom'),
-    form: readSelectWithCustom('itForm', 'itFormCustom'),
+    packSize: readOptionSelect('itPack'),
+    form: readOptionSelect('itForm'),
     unitPrice: document.getElementById('itPrice').value,
     notes: document.getElementById('itNotes').value
   };

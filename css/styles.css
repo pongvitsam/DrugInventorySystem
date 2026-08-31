@@ -681,35 +681,75 @@ textarea { min-height: 70px; }
 .lot-list { display: flex; flex-direction: column; gap: 4px; }
 .lot-row { font-size: 13px; line-height: 1.35; }
 .option-field { min-width: 0; }
-.option-mgr { margin-top: 4px; }
-.option-tags {
+.opt-field { min-width: 0; position: relative; }
+.opt-label-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.option-tag {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #edf8f4;
-  border: 1px solid #c5e0d6;
-  font-size: 12px;
-  line-height: 1.3;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
 }
-.option-tag-del {
+.opt-label-row label { margin: 0; }
+.opt-manage-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.opt-manage-link:hover { color: var(--teal); }
+.opt-add-row {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.opt-add-row input { flex: 1; min-width: 0; }
+.opt-add-row .btn { flex-shrink: 0; padding: 7px 10px; font-size: 13px; }
+.opt-manage-pop {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 180px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.08);
+  padding: 6px;
+}
+.opt-manage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.opt-manage-item:hover { background: #f3faf7; }
+.opt-manage-del {
   appearance: none;
   border: 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 0 4px;
 }
-.option-tag-del:hover { color: var(--danger); }
+.opt-manage-del:hover { color: var(--danger); }
+select option.opt-add-option,
+select option[value="__add__"] {
+  color: var(--teal);
+  font-weight: 600;
+}
 #itemModal .modal { width: min(820px, 100%); }
 .item-lot-row {
   display: grid;
