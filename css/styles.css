@@ -304,7 +304,8 @@ textarea { min-height: 70px; }
     margin: 0 !important;
   }
   .page.active .card:has(.print-sheet) > .row,
-  .page.active .card:has(.print-sheet) > h3 { display: none !important; }
+  .page.active .card:has(.print-sheet) > h3,
+  .page.active .card:has(.print-sheet) > p.muted { display: none !important; }
   #wdPrintOut.print-sheet {
     min-height: 0 !important;
     padding: 0 !important;
@@ -921,24 +922,52 @@ select option[value="__add__"] {
 }
 .sign-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px 28px;
   margin-top: 28px;
   text-align: center;
   font-size: 13px;
   line-height: 1.45;
 }
+.sign-box { padding: 4px 6px; }
+.sign-role-line { margin-bottom: 8px; }
+.sign-name { margin: 10px 0 6px; min-height: 1.2em; }
+.sign-pos { margin-bottom: 4px; min-height: 2.8em; font-size: 12px; }
+.sign-date-line {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.sign-date-static { letter-spacing: 0.02em; }
+.sign-date-inp {
+  border: none;
+  border-bottom: 1px dotted #888;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: center;
+  padding: 2px 4px;
+  vertical-align: baseline;
+}
+.sign-date-day { width: 32px; }
+.sign-date-month { width: min(120px, 36vw); }
+.sign-date-year { width: 48px; }
 @media (max-width: 900px) {
-  .sign-grid { grid-template-columns: repeat(2, 1fr); }
+  .sign-grid { grid-template-columns: 1fr; }
 }
 @media print {
   .sign-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    margin-top: 22mm;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14mm 10mm;
+    margin-top: 18mm;
     font-size: 11px;
     page-break-inside: avoid;
   }
+  .sign-date-inp {
+    border: none;
+    border-bottom: 1px dotted #000;
+  }
+  .sign-date-month { width: 34mm; }
 }
 
 /* Preview ใบเบิกบนจอให้ใกล้เคียง A4 แนวตั้ง */

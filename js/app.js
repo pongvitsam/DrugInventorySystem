@@ -1258,8 +1258,9 @@ function showWithdrawPrint(id) {
         '</td><td class="right">' + money(l.amount) + '</td><td>' + esc(l.expiryLabel || '-') + '</td><td></td></tr>';
     });
     html += '<tr><td colspan="5" class="right"><b>รวมทั้งสิ้น</b></td><td class="right"><b>' + money(t.totalValue) + '</b></td><td colspan="2"></td></tr></table>';
-    html += signBlock4(s);
+    html += signBlock4(s, true);
     document.getElementById('wdPrintOut').innerHTML = html;
+    initWithdrawSignDates(t.date);
     document.getElementById('wdPrintCard').style.display = 'block';
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -1325,13 +1326,61 @@ function renderMoney(d) {
   html += '</table>' + signBlock4(d.settings);
   document.getElementById('reportOut').innerHTML = html;
 }
-function signBlock4(s) {
+function signDateLineHtml(editable) {
+  if (editable) {
+    return '<div class="sign-date-line">' +
+      'วันที่ <input type="text" class="sign-date-inp sign-date-day" maxlength="2" inputmode="numeric" placeholder="..">' +
+      ' เดือน <input type="text" class="sign-date-inp sign-date-month" maxlength="24" placeholder="................">' +
+      ' พ.ศ. <input type="text" class="sign-date-inp sign-date-year" maxlength="4" inputmode="numeric" placeholder="....">' +
+      '</div>';
+  }
+  return '<div class="sign-date-line sign-date-static">วันที่...... เดือน.......................... พ.ศ..............</div>';
+}
+
+function signBlock4(s, editable) {
+  function box(role, nameKey, posKey) {
+    var name = s[nameKey] || '';
+    var pos = s[posKey] || '';
+    return '<div class="sign-box">' +
+      '<div class="sign-role-line">ลงชื่อ ................................ ' + role + '</div>' +
+      '<div class="sign-name">(' + esc(name || '................................') + ')</div>' +
+      '<div class="sign-pos">ตำแหน่ง ' + esc(pos || '................................') + '</div>' +
+      signDateLineHtml(!!editable) +
+      '</div>';
+  }
   return '<div class="sign-grid">' +
-    '<div>ลงชื่อ ................................<br>ผู้อนุมัติ<br><br>(' + esc(s.approverName || '................................') + ')<br>' + esc(s.approverPosition || 'ตำแหน่ง ................................') + '</div>' +
-    '<div>ลงชื่อ ................................<br>ผู้เบิก<br><br>(' + esc(s.requesterName || '................................') + ')<br>' + esc(s.requesterPosition || 'ตำแหน่ง ................................') + '</div>' +
-    '<div>ลงชื่อ ................................<br>ผู้รับ<br><br>(' + esc(s.receiverName || '................................') + ')<br>' + esc(s.receiverPosition || 'ตำแหน่ง ................................') + '</div>' +
-    '<div>ลงชื่อ ................................<br>ผู้จ่าย<br><br>(' + esc(s.issuerName || '................................') + ')<br>' + esc(s.issuerPosition || 'ตำแหน่ง ................................') + '</div>' +
+    box('ผู้อนุมัติ', 'approverName', 'approverPosition') +
+    box('ผู้เบิก', 'requesterName', 'requesterPosition') +
+    box('ผู้รับ', 'receiverName', 'receiverPosition') +
+    box('ผู้จ่าย', 'issuerName', 'issuerPosition') +
     '</div>';
+}
+
+function isoToThaiSignParts(iso) {
+  var TH_MONTHS = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+  var p = String(iso || '').slice(0, 10).split('-');
+  if (p.length !== 3) return null;
+  var m = Number(p[1]);
+  if (!m || m < 1 || m > 12) return null;
+  return {
+    day: String(Number(p[2])),
+    month: TH_MONTHS[m],
+    year: String(Number(p[0]) + 543)
+  };
+}
+
+function initWithdrawSignDates(isoDate) {
+  var parts = isoToThaiSignParts(isoDate);
+  if (!parts) return;
+  document.querySelectorAll('#wdPrintOut .sign-box').forEach(function (box) {
+    var d = box.querySelector('.sign-date-day');
+    var m = box.querySelector('.sign-date-month');
+    var y = box.querySelector('.sign-date-year');
+    if (d) d.value = parts.day;
+    if (m) m.value = parts.month;
+    if (y) y.value = parts.year;
+  });
 }
 
 function doImport(force) {
