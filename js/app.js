@@ -9,6 +9,8 @@ var STATE = {
   ocrReview: [],
   pickStock: [],
   withdrawCart: [],
+  editingWithdrawId: null,
+  editWithdrawOrig: {},
   reportKind: 'month',
   lastWithdrawId: null,
   optionLists: { categories: [], packSizes: [], forms: [] }
@@ -916,6 +918,81 @@ function loadWithdrawPick() {
     filterWithdrawStock();
   });
   renderWithdrawSummary();
+  updateWithdrawEditUI();
+}
+function withdrawStockMax(stockId, stockQty) {
+  var max = Number(stockQty || 0);
+  if (STATE.editingWithdrawId && STATE.editWithdrawOrig) {
+    max += Number(STATE.editWithdrawOrig[stockId] || 0);
+  }
+  return max;
+}
+function updateWithdrawEditUI() {
+  var banner = document.getElementById('wdEditBanner');
+  var btn = document.getElementById('wdSaveBtn');
+  if (!banner || !btn) return;
+  if (STATE.editingWithdrawId) {
+    banner.style.display = 'flex';
+    document.getElementById('wdEditBannerText').textContent = 'กำลังแก้ไขใบเบิก ' + STATE.editingWithdrawId;
+    btn.textContent = 'บันทึกการแก้ไข';
+  } else {
+    banner.style.display = 'none';
+    btn.textContent = 'บันทึกใบเบิก';
+  }
+}
+function cancelWithdrawEdit() {
+  STATE.editingWithdrawId = null;
+  STATE.editWithdrawOrig = {};
+  STATE.withdrawCart = [];
+  ThDate.set('wdDate', todayInput());
+  document.getElementById('wdNotes').value = '';
+  updateWithdrawEditUI();
+  renderWithdrawSummary();
+  filterWithdrawStock();
+  toast('ยกเลิกการแก้ไข');
+}
+function editWithdraw(id) {
+  Promise.all([
+    api('getTransfer', { id: id }),
+    api('listStock', { location: 'MAIN' })
+  ]).then(function (res) {
+    var data = res[0];
+    var stock = res[1].stock || [];
+    STATE.stockCache.MAIN = stock;
+    STATE.pickStock = stock;
+    var stockById = {};
+    stock.forEach(function (s) { stockById[s.id] = s; });
+    var orig = {};
+    STATE.withdrawCart = (data.lines || []).map(function (l) {
+      var s = stockById[l.stockId] || {};
+      var origQty = Number(l.qty || 0);
+      orig[l.stockId] = origQty;
+      var maxQty = withdrawStockMax(l.stockId, s.qty);
+      return {
+        stockId: l.stockId,
+        itemId: l.itemId,
+        name: l.name || s.name || '',
+        category: s.category || '',
+        packSize: l.packSize || s.packSize || '',
+        expiry: l.expiry || s.expiry || '',
+        expiryLabel: l.expiryLabel || s.expiryLabel || '-',
+        unitPrice: Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0),
+        qty: origQty,
+        maxQty: maxQty,
+        amount: origQty * Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0),
+        fefoRecommend: !!s.fefoRecommend
+      };
+    });
+    STATE.editingWithdrawId = id;
+    STATE.editWithdrawOrig = orig;
+    ThDate.set('wdDate', data.transfer.date);
+    document.getElementById('wdNotes').value = data.transfer.notes || '';
+    showPage('withdraw');
+    updateWithdrawEditUI();
+    renderWithdrawSummary();
+    filterWithdrawStock();
+    toast('โหลดใบเบิก ' + id + ' เพื่อแก้ไข');
+  }).catch(function (e) { toast(e.message || String(e)); });
 }
 function filterWithdrawStock() {
   var q = (document.getElementById('wdSearch').value || '').toLowerCase().trim();
@@ -937,6 +1014,7 @@ function renderWithdrawPick(rows) {
       var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำ</span>' : '';
       var inCart = (STATE.withdrawCart || []).filter(function (c) { return c.stockId === s.id; })[0];
       var defQty = inCart ? inCart.qty : '';
+      var maxQ = withdrawStockMax(s.id, s.qty);
       return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '">' +
         '<td>' + tip + '</td>' +
         '<td>' + esc(s.name) + '</td>' +
@@ -945,7 +1023,7 @@ function renderWithdrawPick(rows) {
         '<td class="right">' + s.qty + '</td>' +
         '<td class="right">' + money(s.unitPrice) + '</td>' +
         '<td>' + (s.expiryLabel || '-') + '</td>' +
-        '<td class="right"><input id="wdQty_' + s.id + '" type="number" min="1" step="1" max="' + s.qty + '" value="' + defQty + '" style="width:80px"></td>' +
+        '<td class="right"><input id="wdQty_' + s.id + '" type="number" min="1" step="1" max="' + maxQ + '" value="' + defQty + '" style="width:80px"></td>' +
         '<td><button type="button" class="btn" onclick="addWithdrawLine(\'' + s.id + '\')">' + (inCart ? 'อัปเดต' : 'เพิ่ม') + '</button></td>' +
         '</tr>';
     }).join('');
@@ -958,11 +1036,13 @@ function addWithdrawLine(stockId) {
   var inp = document.getElementById('wdQty_' + stockId);
   var qty = Number(inp && inp.value ? inp.value : 0);
   if (!qty || qty <= 0) return toast('ใส่จำนวนที่ต้องการเบิก');
-  if (qty > Number(s.qty) + 1e-9) return toast('จำนวนเกินคงเหลือ (' + s.qty + ')');
+  var maxAllowed = withdrawStockMax(stockId, s.qty);
+  if (qty > maxAllowed + 1e-9) return toast('จำนวนเกินคงเหลือ (' + maxAllowed + ')');
   var cart = STATE.withdrawCart || [];
   var existing = cart.filter(function (c) { return c.stockId === stockId; })[0];
   if (existing) {
     existing.qty = qty;
+    existing.maxQty = maxAllowed;
     existing.amount = qty * Number(s.unitPrice || 0);
   } else {
     cart.push({
@@ -975,7 +1055,7 @@ function addWithdrawLine(stockId) {
       expiryLabel: s.expiryLabel || '-',
       unitPrice: Number(s.unitPrice || 0),
       qty: qty,
-      maxQty: Number(s.qty || 0),
+      maxQty: maxAllowed,
       amount: qty * Number(s.unitPrice || 0),
       fefoRecommend: !!s.fefoRecommend
     });
@@ -1008,6 +1088,13 @@ function removeWithdrawLine(stockId) {
 }
 function clearWithdrawCart() {
   STATE.withdrawCart = [];
+  if (STATE.editingWithdrawId) {
+    STATE.editingWithdrawId = null;
+    STATE.editWithdrawOrig = {};
+    ThDate.set('wdDate', todayInput());
+    document.getElementById('wdNotes').value = '';
+    updateWithdrawEditUI();
+  }
   renderWithdrawSummary();
   filterWithdrawStock();
 }
@@ -1041,14 +1128,20 @@ function saveWithdraw() {
   var lines = (STATE.withdrawCart || []).filter(function (l) { return Number(l.qty) > 0; })
     .map(function (l) { return { stockId: l.stockId, qty: l.qty }; });
   if (!lines.length) return toast('เพิ่มรายการที่ต้องการเบิกก่อน');
-  api('saveTransfer', {
+  var payload = {
     date: document.getElementById('wdDate').value,
     notes: document.getElementById('wdNotes').value,
     lines: lines
-  }).then(function (r) {
-    toast('บันทึกใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
+  };
+  if (STATE.editingWithdrawId) payload.id = STATE.editingWithdrawId;
+  api('saveTransfer', payload).then(function (r) {
+    var editing = !!STATE.editingWithdrawId;
+    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
     STATE.lastWithdrawId = r.transfer.id;
+    STATE.editingWithdrawId = null;
+    STATE.editWithdrawOrig = {};
     STATE.withdrawCart = [];
+    updateWithdrawEditUI();
     renderWithdrawSummary();
     loadWithdrawPick();
     loadWithdrawHistory();
@@ -1059,7 +1152,10 @@ function saveWithdraw() {
 function loadWithdrawHistory() {
   api('listTransfers').then(function (r) {
     document.getElementById('wdHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
-      return '<div class="user-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿</span><button class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button></div>';
+      return '<div class="user-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿</span>' +
+        '<span class="row" style="gap:6px;margin:0">' +
+        '<button type="button" class="btn ghost" onclick="editWithdraw(\'' + x.id + '\')">แก้ไข</button>' +
+        '<button type="button" class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button></span></div>';
     }).join('') || 'ยังไม่มี';
   });
 }

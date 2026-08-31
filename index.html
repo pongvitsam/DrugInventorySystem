@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=23">
+  <link rel="stylesheet" href="css/styles.css?v=24">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -189,6 +189,10 @@
           </div>
         </div>
         <div class="card">
+          <div id="wdEditBanner" class="wd-edit-banner" style="display:none">
+            <span id="wdEditBannerText">กำลังแก้ไขใบเบิก</span>
+            <button type="button" class="btn ghost" onclick="cancelWithdrawEdit()">ยกเลิกการแก้ไข</button>
+          </div>
           <div class="row">
             <div class="field th-date-field"><label>วันที่เบิก</label><input id="wdDate" type="hidden"><button type="button" class="th-date-btn" data-for="wdDate">เลือกวันที่</button></div>
             <div class="field"><label>หมายเหตุ</label><input id="wdNotes" placeholder="เบิกใช้ประจำ"></div>
@@ -207,7 +211,7 @@
             <div class="muted" id="wdCalc">ยังไม่ได้เลือก</div>
             <div class="row" style="gap:8px;margin:0">
               <button type="button" class="btn secondary" onclick="clearWithdrawCart()">ล้างรายการ</button>
-              <button class="btn" onclick="saveWithdraw()">บันทึกใบเบิก</button>
+              <button class="btn" id="wdSaveBtn" onclick="saveWithdraw()">บันทึกใบเบิก</button>
             </div>
           </div>
         </div>
@@ -363,13 +367,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=23"></script>
-  <script src="js/api.js?v=23"></script>
-  <script src="js/options.js?v=23"></script>
-  <script src="js/thdate.js?v=23"></script>
-  <script src="js/seed.js?v=23"></script>
-  <script src="js/ocr.js?v=23"></script>
-  <script src="js/app.js?v=23"></script>
-  <script src="js/auth.js?v=23"></script>
+  <script src="js/db.js?v=24"></script>
+  <script src="js/api.js?v=24"></script>
+  <script src="js/options.js?v=24"></script>
+  <script src="js/thdate.js?v=24"></script>
+  <script src="js/seed.js?v=24"></script>
+  <script src="js/ocr.js?v=24"></script>
+  <script src="js/app.js?v=24"></script>
+  <script src="js/auth.js?v=24"></script>
 </body>
 </html>

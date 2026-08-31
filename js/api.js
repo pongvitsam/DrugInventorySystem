@@ -479,6 +479,28 @@ function apiSaveTransfer_(p) {
   var heads = readObjects_('Transfers');
   var tLines = readObjects_('TransferLines');
   var moves = readObjects_('Movements');
+
+  if (p.id) {
+    var tr = findById_(heads, p.id);
+    if (!tr) throw new Error('ไม่พบใบเบิก');
+    tLines.filter(function (l) { return l.transferId === tr.id; }).forEach(function (line) {
+      var st = findById_(stock, line.stockId);
+      if (st) st.qty = round4_(num_(st.qty) + num_(line.qty));
+    });
+    tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
+    moves = moves.filter(function (m) { return !(m.refId === tr.id && m.type === 'ISSUE'); });
+    tr.date = toIsoDate_(p.date);
+    tr.notes = String(p.notes || '');
+    tr.totalQty = 0;
+    tr.totalValue = 0;
+    applyTransferLines_(tr, lines, stock, items, tLines, moves);
+    writeObjects_('Stock', stock);
+    writeObjects_('Transfers', heads);
+    writeObjects_('TransferLines', tLines);
+    writeObjects_('Movements', moves);
+    return { ok: true, transfer: tr };
+  }
+
   var tr = {
     id: nextId_('T'),
     date: toIsoDate_(p.date),
@@ -487,6 +509,16 @@ function apiSaveTransfer_(p) {
     totalValue: 0,
     createdAt: nowIso_()
   };
+  applyTransferLines_(tr, lines, stock, items, tLines, moves);
+  heads.push(tr);
+  writeObjects_('Stock', stock);
+  writeObjects_('Transfers', heads);
+  writeObjects_('TransferLines', tLines);
+  writeObjects_('Movements', moves);
+  return { ok: true, transfer: tr };
+}
+
+function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
   lines.forEach(function (line) {
     var from = findById_(stock, line.stockId);
     if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
@@ -512,12 +544,6 @@ function apiSaveTransfer_(p) {
     tr.totalQty = round4_(num_(tr.totalQty) + qty);
     tr.totalValue = round2_(num_(tr.totalValue) + amount);
   });
-  heads.push(tr);
-  writeObjects_('Stock', stock);
-  writeObjects_('Transfers', heads);
-  writeObjects_('TransferLines', tLines);
-  writeObjects_('Movements', moves);
-  return { ok: true, transfer: tr };
 }
 
 function apiListTransfers_() {
