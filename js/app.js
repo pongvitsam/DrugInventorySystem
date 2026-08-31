@@ -279,7 +279,7 @@ function renderDash(b) {
   var d = b.dashboard;
   document.getElementById('kpis').innerHTML =
     kpi('มูลค่าคลังหลัก', money(d.totalValue) + ' ฿', 'ยอดคงเหลือปัจจุบัน', 'teal') +
-    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลในเมือง', 'sky') +
+    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลคลองท่อม', 'sky') +
     kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก', 'sand') +
     kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์', 'leaf');
   document.getElementById('valueCats').innerHTML = '<h3>มูลค่าแยกหมวด</h3>' + ((d.byValue || []).length
