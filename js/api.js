@@ -1023,7 +1023,7 @@ function formatDate_(v) {
   }
   var p = iso.split('-');
   if (p.length !== 3) return iso;
-  return p[2] + '/' + p[1] + '/' + (Number(p[0]) + 543);
+  return p[2] + '/' + p[1] + '/' + (Number(p[0]) + 543) + ' (ค.ศ. ' + p[0] + ')';
 }
 
 function isNearExpiry_(v) {

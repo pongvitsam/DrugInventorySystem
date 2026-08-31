@@ -507,10 +507,15 @@ textarea { min-height: 70px; }
 }
 .th-cal-year {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
   opacity: .95;
   margin-top: 2px;
   font-weight: 600;
+  line-height: 1.35;
+}
+.th-date-btn-compact .th-date-text {
+  font-size: 12px;
+  line-height: 1.3;
 }
 .th-nav {
   appearance: none;
@@ -687,6 +692,24 @@ textarea { min-height: 70px; }
 #ocrReviewCard .table-wrap { overflow: visible; }
 #ocrReviewTable .th-date-field-inline { min-width: 170px; }
 #ocrReviewTable .th-date-btn-compact { width: 100%; }
+.ocr-unit-price {
+  display: inline-block;
+  min-width: 72px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #f3faf7;
+  border: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--ink);
+}
+.ocr-amount-input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+}
 .wd-pick-wrap {
   max-height: min(420px, 45vh);
   overflow: auto;

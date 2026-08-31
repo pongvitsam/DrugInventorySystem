@@ -557,10 +557,15 @@ function runBillOcr() {
     return BillOcr.scanFile(file, items);
   }).then(function (parsed) {
     STATE.ocrReview = (parsed.lines || []).map(function (l, i) {
-      return Object.assign({ _id: 'ocr' + i }, l, { keep: true });
+      var row = Object.assign({ _id: 'ocr' + i }, l, { keep: true });
+      syncOcrLinePricing(row);
+      return row;
     });
     if (parsed.receiptNumber && !document.getElementById('rcNumber').value) {
       document.getElementById('rcNumber').value = parsed.receiptNumber;
+    }
+    if (parsed.receiptDate) {
+      ThDate.set('rcDate', parsed.receiptDate);
     }
     renderOcrReview();
     if (!STATE.ocrReview.length) {
@@ -613,6 +618,21 @@ function ocrRegistrySelectHtml(i, row) {
   return html;
 }
 
+function ocrRound2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+function syncOcrLinePricing(row) {
+  if (!row) return;
+  var qty = Number(row.qty || 0);
+  var amount = Number(row.amount || 0);
+  if (qty > 0 && amount > 0) {
+    row.unitPrice = ocrRound2(amount / qty);
+  } else if (qty > 0 && Number(row.unitPrice || 0) > 0) {
+    row.amount = ocrRound2(row.unitPrice * qty);
+  }
+}
+
 function pickOcrRegistryItem(i, itemId) {
   var row = STATE.ocrReview[i];
   if (!row) return;
@@ -629,10 +649,14 @@ function pickOcrRegistryItem(i, itemId) {
   row.name = it.name;
   row.packSize = it.packSize || row.packSize || '';
   row._packCustom = false;
-  row.unitPrice = Number(it.unitPrice != null ? it.unitPrice : row.unitPrice) || 0;
   row.category = it.category || row.category || '';
   row.matched = true;
-  row.amount = Number(row.qty || 0) * Number(row.unitPrice || 0);
+  if (!(Number(row.amount || 0) > 0 && Number(row.qty || 0) > 0)) {
+    row.unitPrice = Number(it.unitPrice != null ? it.unitPrice : row.unitPrice) || 0;
+    row.amount = ocrRound2(Number(row.qty || 0) * Number(row.unitPrice || 0));
+  } else {
+    syncOcrLinePricing(row);
+  }
   row._filter = '';
   renderOcrReview();
 }
@@ -686,7 +710,8 @@ function renderOcrReview() {
   html += rows.map(function (l, i) {
     if (l.keep) {
       kept++;
-      tot += Number(l.qty || 0) * Number(l.unitPrice || 0);
+      syncOcrLinePricing(l);
+      tot += Number(l.amount || 0) || ocrRound2(Number(l.qty || 0) * Number(l.unitPrice || 0));
     }
     return '<tr class="' + (l.keep ? '' : 'ocr-skip') + '">' +
       '<td><input type="checkbox" ' + (l.keep ? 'checked' : '') + ' onchange="STATE.ocrReview[' + i + '].keep=this.checked;renderOcrReview()"></td>' +
@@ -694,8 +719,8 @@ function renderOcrReview() {
       '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
       '<td>' + ocrPackSelectHtml(i, l) + '</td>' +
       '<td>' + ThDate.fieldHtml('ocrExp_' + i, l.expiry || '', 'updateOcrField(' + i + ',\'expiry\',this.value)', true) + '</td>' +
-      '<td class="right"><input type="number" step="0.01" value="' + (l.unitPrice || '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'unitPrice\',this.value)"></td>' +
-      '<td class="right">' + money(Number(l.qty || 0) * Number(l.unitPrice || 0)) + '</td>' +
+      '<td class="right"><span class="ocr-unit-price" title="คำนวณจาก เป็นเงิน ÷ จำนวน">' + money(l.unitPrice || 0) + '</span></td>' +
+      '<td class="right"><input type="number" min="0" step="0.01" class="ocr-amount-input" value="' + (l.amount != null && l.amount !== '' ? l.amount : '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'amount\',this.value)"></td>' +
       '<td>' + (l.itemId ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
       '</tr>';
   }).join('');
@@ -707,9 +732,9 @@ function renderOcrReview() {
 function updateOcrField(i, key, value) {
   var row = STATE.ocrReview[i];
   if (!row) return;
-  if (key === 'qty' || key === 'unitPrice') row[key] = Number(value || 0);
+  if (key === 'qty' || key === 'amount') row[key] = Number(value || 0);
   else row[key] = value;
-  row.amount = Number(row.qty || 0) * Number(row.unitPrice || 0);
+  syncOcrLinePricing(row);
   renderOcrReview();
 }
 
@@ -729,9 +754,11 @@ function confirmOcrReview() {
   if (!rows.length) return toast('เลือกรายการที่ต้องการอย่างน้อย 1 รายการ');
   var kind = document.getElementById('rcKind').value;
   rows.forEach(function (l) {
+    syncOcrLinePricing(l);
     var pack = String(l.packSize || '').trim() || 'กล่อง';
     var qty = Number(l.qty || 0);
     var price = Number(l.unitPrice || 0);
+    var amount = Number(l.amount || 0) || ocrRound2(qty * price);
     STATE.receive.lines.push({
       itemId: l.itemId || '',
       name: String(l.name).trim(),
@@ -742,7 +769,7 @@ function confirmOcrReview() {
       approvedQty: qty,
       requestedQty: qty,
       unitPrice: price,
-      amount: qty * price,
+      amount: amount,
       expiry: l.expiry || '',
       notes: 'จาก OCR'
     });

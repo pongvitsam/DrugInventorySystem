@@ -1,0 +1,20 @@
+---
+description: Deploy to GitHub Pages after completing code changes
+alwaysApply: true
+---
+
+# Auto deploy (GitHub Pages)
+
+This site deploys from `main` via `.github/workflows/pages.yml` when changes are pushed.
+
+After finishing any code change to the app:
+
+1. Stage only project files (`css/`, `js/`, `index.html`, `.github/`, `.cursor/hooks*`).
+2. Commit with a short message describing the fix.
+3. Push to `origin/main` so GitHub Pages updates.
+
+Live URL: https://pongvitsam.github.io/DrugInventorySystem/
+
+Bump cache-bust `?v=N` on CSS/JS in `index.html` when static assets change. Tell the user to Ctrl+F5 after deploy.
+
+Do not commit secrets (`.env`, credentials). A Cursor `stop` hook also auto-pushes when the agent finishes.

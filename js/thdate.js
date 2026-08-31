@@ -7,6 +7,9 @@ var ThDate = (function () {
 
   function pad2(n) { return ('0' + n).slice(-2); }
   function be(y) { return y + 543; }
+  function formatYearDual(ceYear) {
+    return 'พ.ศ. ' + be(ceYear) + ' (ค.ศ. ' + ceYear + ')';
+  }
 
   function parseIsoDate(iso) {
     if (!iso) return null;
@@ -33,20 +36,20 @@ var ThDate = (function () {
     var p = parseIsoDate(iso);
     if (!p) return 'เลือกวันที่';
     var dow = WEEKDAYS[new Date(p.y, p.m - 1, p.d).getDay()];
-    return 'วัน' + dow + 'ที่ ' + p.d + ' ' + MONTHS[p.m] + ' พ.ศ. ' + be(p.y);
+    return 'วัน' + dow + 'ที่ ' + p.d + ' ' + MONTHS[p.m] + ' ' + formatYearDual(p.y);
   }
 
   function formatDateBtn(iso) {
     var p = parseIsoDate(iso);
     if (!p) return 'เลือกวันที่';
-    return p.d + ' ' + MONTHS[p.m] + ' พ.ศ. ' + be(p.y);
+    return p.d + ' ' + MONTHS[p.m] + ' ' + formatYearDual(p.y);
   }
 
   function formatMonthLong(isoMonth) {
     if (!isoMonth) return 'เลือกเดือน';
     var p = String(isoMonth).split('-');
     if (p.length !== 2) return 'เลือกเดือน';
-    return MONTHS[Number(p[1])] + ' พ.ศ. ' + be(Number(p[0]));
+    return MONTHS[Number(p[1])] + ' ' + formatYearDual(Number(p[0]));
   }
 
   function closePop() {
@@ -114,7 +117,7 @@ var ThDate = (function () {
     var monthEl = pop.querySelector('.th-cal-month');
     var yearEl = pop.querySelector('.th-cal-year');
     if (monthEl) monthEl.textContent = MONTHS[viewM];
-    if (yearEl) yearEl.textContent = 'พ.ศ. ' + be(viewY);
+    if (yearEl) yearEl.textContent = formatYearDual(viewY);
   }
 
   function buildDatePop(id, btn) {
@@ -169,7 +172,7 @@ var ThDate = (function () {
     for (var y = now.getFullYear() - 15; y <= now.getFullYear() + 20; y++) {
       var opt = document.createElement('option');
       opt.value = String(y);
-      opt.textContent = 'พ.ศ. ' + be(y);
+      opt.textContent = formatYearDual(y);
       yearSel.appendChild(opt);
     }
 
@@ -313,13 +316,13 @@ var ThDate = (function () {
     for (var y = now.getFullYear() - 8; y <= now.getFullYear() + 5; y++) {
       var o = document.createElement('option');
       o.value = String(y);
-      o.textContent = 'พ.ศ. ' + be(y);
+      o.textContent = formatYearDual(y);
       yearSel.appendChild(o);
     }
 
     function updateMonthHeader() {
       pop.querySelector('.th-cal-month').textContent = MONTHS[pickM];
-      pop.querySelector('.th-cal-year').textContent = 'พ.ศ. ' + be(Number(yearSel.value));
+      pop.querySelector('.th-cal-year').textContent = formatYearDual(Number(yearSel.value));
     }
 
     function syncFromHidden() {
