@@ -100,6 +100,7 @@ function callApi(name, payload) {
     saveTransfer: apiSaveTransfer_,
     listTransfers: apiListTransfers_,
     getTransfer: apiGetTransfer_,
+    deleteTransfer: apiDeleteTransfer_,
     monthReport: apiMonthReport_,
     moneyReport: apiMoneyReport_,
     importSeed: apiImportSeed_,
@@ -633,7 +634,48 @@ function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
 }
 
 function apiListTransfers_() {
-  return { transfers: readObjects_('Transfers').slice().reverse() };
+  return {
+    transfers: readObjects_('Transfers').slice().sort(function (a, b) {
+      return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
+    })
+  };
+}
+
+function apiDeleteTransfer_(p) {
+  if (!p.id) throw new Error('ไม่พบใบเบิก');
+  var stock = readObjects_('Stock');
+  var heads = readObjects_('Transfers');
+  var tLines = readObjects_('TransferLines');
+  var moves = readObjects_('Movements');
+  var tr = findById_(heads, p.id);
+  if (!tr) throw new Error('ไม่พบใบเบิก');
+  var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
+  var returnedQty = 0;
+  var returnedCount = 0;
+  var newMoves = [];
+  var returnDate = tr.date || toIsoDate_(new Date());
+
+  oldLines.forEach(function (old) {
+    var qty = num_(old.qty);
+    if (qty <= 1e-9) return;
+    returnStockQty_(stock, old, qty);
+    returnedQty = round4_(returnedQty + qty);
+    returnedCount += 1;
+    newMoves.push(movement_('RETURN', returnDate, LOC_MAIN, old.itemId, old.stockId, qty,
+      num_(old.unitPrice), round2_(qty * num_(old.unitPrice)), tr.id, 'ลบใบเบิก'));
+  });
+
+  tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
+  moves = moves.filter(function (m) {
+    return !(m.refId === tr.id && (m.type === 'ISSUE' || m.type === 'RETURN'));
+  }).concat(newMoves);
+  heads = heads.filter(function (h) { return h.id !== tr.id; });
+
+  writeObjects_('Stock', stock);
+  writeObjects_('Transfers', heads);
+  writeObjects_('TransferLines', tLines);
+  writeObjects_('Movements', moves);
+  return { ok: true, id: p.id, returnedQty: returnedQty, returnedCount: returnedCount };
 }
 
 function apiGetTransfer_(p) {

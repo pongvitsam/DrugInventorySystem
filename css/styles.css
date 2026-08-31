@@ -387,6 +387,10 @@ textarea { min-height: 70px; }
   gap: 8px;
 }
 .user-row span { font-weight: 600; }
+.wd-history-row { flex-wrap: wrap; gap: 8px; }
+.wd-history-time { color: var(--muted); font-weight: 500; }
+.btn.ghost.danger { color: var(--danger); }
+.btn.ghost.danger:hover { background: #fff0f0; }
 .card h3 {
   margin: 0 0 12px;
   font-size: 16px;

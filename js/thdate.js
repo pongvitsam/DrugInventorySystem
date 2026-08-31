@@ -431,6 +431,32 @@ var ThDate = (function () {
       '<span class="th-date-text">' + formatDateBtn(value) + '</span></button></div>';
   }
 
+  function parseDateTime(iso) {
+    if (!iso) return null;
+    var s = String(iso).trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    return {
+      y: Number(m[1]), m: Number(m[2]), d: Number(m[3]),
+      hh: Number(m[4] || 0), mm: Number(m[5] || 0), ss: Number(m[6] || 0)
+    };
+  }
+
+  function formatTimeShort(iso) {
+    var p = parseDateTime(iso);
+    if (!p) return '';
+    if (!/\d{2}:\d{2}/.test(String(iso))) return '';
+    return pad2(p.hh) + ':' + pad2(p.mm) + ' น.';
+  }
+
+  function formatDateTimeLong(iso) {
+    var p = parseDateTime(iso);
+    if (!p) return formatDateLong(iso);
+    var dateIso = toIsoDate(p.y, p.m, p.d);
+    var time = formatTimeShort(iso);
+    return formatDateLong(dateIso) + (time ? ' · ' + time : '');
+  }
+
   function initAll() {
     ['rcDate', 'rcExpiry', 'wdDate'].forEach(initDateField);
     initMonthField('rpMonth');
@@ -448,6 +474,8 @@ var ThDate = (function () {
     get: getValue,
     formatDateLong: formatDateLong,
     formatDateBtn: formatDateBtn,
-    formatMonthLong: formatMonthLong
+    formatMonthLong: formatMonthLong,
+    formatTimeShort: formatTimeShort,
+    formatDateTimeLong: formatDateTimeLong
   };
 })();

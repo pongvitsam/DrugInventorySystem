@@ -1160,15 +1160,38 @@ function saveWithdraw() {
     refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+function withdrawHistoryTime(x) {
+  return ThDate.formatTimeShort(x.createdAt || '') || '';
+}
 function loadWithdrawHistory() {
   api('listTransfers').then(function (r) {
     document.getElementById('wdHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
-      return '<div class="user-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿</span>' +
+      var time = withdrawHistoryTime(x);
+      return '<div class="user-row wd-history-row">' +
+        '<span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
+        (time ? ' · <span class="wd-history-time">' + esc(time) + '</span>' : '') + '</span>' +
         '<span class="row" style="gap:6px;margin:0">' +
         '<button type="button" class="btn ghost" onclick="editWithdraw(\'' + x.id + '\')">แก้ไข</button>' +
-        '<button type="button" class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button></span></div>';
+        '<button type="button" class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button>' +
+        '<button type="button" class="btn ghost danger" onclick="deleteWithdraw(\'' + x.id + '\')">ลบ</button></span></div>';
     }).join('') || 'ยังไม่มี';
   });
+}
+function deleteWithdraw(id) {
+  if (!confirm('ลบใบเบิก ' + id + ' และคืนยาทั้งหมดเข้าคลัง?')) return;
+  api('deleteTransfer', { id: id }).then(function (r) {
+    var msg = 'ลบใบเบิก ' + id + ' แล้ว';
+    if (r.returnedCount > 0) msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
+    toast(msg);
+    if (STATE.editingWithdrawId === id) cancelWithdrawEdit();
+    if (STATE.lastWithdrawId === id) {
+      document.getElementById('wdPrintCard').style.display = 'none';
+      STATE.lastWithdrawId = null;
+    }
+    loadWithdrawHistory();
+    loadWithdrawPick();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
 }
 function showWithdrawPrint(id) {
   api('getTransfer', { id: id }).then(function (data) {
