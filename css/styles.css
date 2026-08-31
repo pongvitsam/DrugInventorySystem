@@ -785,7 +785,8 @@ select option[value="__add__"] {
   font-size: 13px;
   background: #fff;
 }
-.wd-edit-banner {
+.low-stock-settings-wrap { max-height: min(420px, 50vh); overflow: auto; }
+.low-stock-input { text-align: right; }
   display: none;
   align-items: center;
   justify-content: space-between;

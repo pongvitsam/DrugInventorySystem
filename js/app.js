@@ -13,7 +13,8 @@ var STATE = {
   editWithdrawOrig: {},
   reportKind: 'month',
   lastWithdrawId: null,
-  optionLists: { categories: [], packSizes: [], forms: [] }
+  optionLists: { categories: [], packSizes: [], forms: [] },
+  lowStockItems: []
 };
 
 function api(name, payload) {
@@ -50,7 +51,10 @@ function showPage(id) {
     loadWithdrawPick();
     loadWithdrawHistory();
   }
-  if (id === 'import') loadLoginUsers();
+  if (id === 'import') {
+    loadLoginUsers();
+    loadLowStockSettings();
+  }
   if (id === 'reports') setReportTab(STATE.reportKind || 'month');
 }
 
@@ -91,6 +95,8 @@ function applyBoot(b) {
   document.getElementById('stRecvPos').value = s.receiverPosition || '';
   document.getElementById('stIss').value = s.issuerName || '';
   document.getElementById('stIssPos').value = s.issuerPosition || '';
+  var stLow = document.getElementById('stDefaultLowStock');
+  if (stLow) stLow.value = s.defaultLowStock || '10';
   renderDash(b);
   ThDate.set('rcDate', todayInput());
   ThDate.set('wdDate', todayInput());
@@ -316,12 +322,12 @@ function renderItems() {
       (!cat || i.category === cat) &&
       (!q || (i.name + i.packSize + i.code).toLowerCase().indexOf(q) >= 0);
   });
-  // ใกล้หมด (<10 และยังมีของ) ขึ้นก่อน แล้วค่อยรายการอื่น
+  // ใกล้หมด (ตามเกณฑ์) ขึ้นก่อน แล้วค่อยรายการอื่น
   rows = rows.slice().sort(function (a, b) {
     var aq = Number(a.stockQty || 0);
     var bq = Number(b.stockQty || 0);
-    var aLow = aq > 0 && aq < 10 ? 0 : 1;
-    var bLow = bq > 0 && bq < 10 ? 0 : 1;
+    var aLow = isItemLowStock(a.id, aq) ? 0 : 1;
+    var bLow = isItemLowStock(b.id, bq) ? 0 : 1;
     if (aLow !== bLow) return aLow - bLow;
     if (aLow === 0 && bLow === 0) return aq - bq;
     return String(a.name || '').localeCompare(String(b.name || ''), 'th');
@@ -456,8 +462,45 @@ function saveItem() {
 
 var LOW_STOCK_QTY = 10;
 
-function isLowStock(s) {
-  return Number(s.qty || 0) > 0 && Number(s.qty || 0) < LOW_STOCK_QTY;
+function getDefaultLowStock() {
+  var s = STATE.boot && STATE.boot.settings;
+  var n = Number(s && s.defaultLowStock);
+  return n > 0 ? n : LOW_STOCK_QTY;
+}
+
+function getItemLowStockThreshold(itemId, itemRow) {
+  if (itemRow && Number(itemRow.lowStock) > 0) return Number(itemRow.lowStock);
+  var it = itemRow || (STATE.items || []).filter(function (i) { return i.id === itemId; })[0];
+  if (it && Number(it.lowStock) > 0) return Number(it.lowStock);
+  return getDefaultLowStock();
+}
+
+function isItemLowStock(itemId, totalQty, itemRow) {
+  var threshold = getItemLowStockThreshold(itemId, itemRow);
+  return Number(totalQty || 0) > 0 && Number(totalQty || 0) < threshold;
+}
+
+function buildItemStockTotals(stock) {
+  var totals = {};
+  (stock || []).forEach(function (s) {
+    totals[s.itemId] = (totals[s.itemId] || 0) + Number(s.qty || 0);
+  });
+  return totals;
+}
+
+function isLowStock(s, itemTotals) {
+  itemTotals = itemTotals || buildItemStockTotals(STATE.stock);
+  var total = itemTotals[s.itemId] != null ? itemTotals[s.itemId] : Number(s.qty || 0);
+  var threshold = s.lowStockThreshold != null ? Number(s.lowStockThreshold) : getItemLowStockThreshold(s.itemId);
+  return total > 0 && total < threshold;
+}
+
+function isLowStockCritical(s, itemTotals) {
+  itemTotals = itemTotals || buildItemStockTotals(STATE.stock);
+  var total = itemTotals[s.itemId] != null ? itemTotals[s.itemId] : Number(s.qty || 0);
+  var threshold = s.lowStockThreshold != null ? Number(s.lowStockThreshold) : getItemLowStockThreshold(s.itemId);
+  var critical = Math.max(1, Math.floor(threshold * 0.3));
+  return total > 0 && total <= critical;
 }
 
 function setStockFilter(kind) {
@@ -484,15 +527,20 @@ function showStock() {
 function renderStockAlert(allRows) {
   var box = document.getElementById('stockAlert');
   if (!box) return;
+  var totals = buildItemStockTotals(allRows);
   var byItem = {};
   (allRows || []).forEach(function (s) {
-    if (!isLowStock(s)) return;
+    if (!isLowStock(s, totals)) return;
     var key = s.itemId || s.name;
     if (!byItem[key]) {
-      byItem[key] = { name: s.name, packSize: s.packSize, qty: 0, lots: 0, nearExpiry: false };
+      byItem[key] = {
+        name: s.name,
+        packSize: s.packSize,
+        qty: totals[s.itemId] || 0,
+        threshold: s.lowStockThreshold || getItemLowStockThreshold(s.itemId),
+        nearExpiry: false
+      };
     }
-    byItem[key].qty += Number(s.qty || 0);
-    byItem[key].lots += 1;
     if (s.nearExpiry) byItem[key].nearExpiry = true;
   });
   var lows = Object.keys(byItem).map(function (k) { return byItem[k]; })
@@ -505,6 +553,7 @@ function renderStockAlert(allRows) {
   box.style.display = 'block';
   var chips = lows.slice(0, 8).map(function (x) {
     return '<span class="stock-alert-item"><b>' + esc(x.name) + '</b> เหลือ <em>' + x.qty + '</em>' +
+      ' / เกณฑ์ ' + x.threshold +
       (x.packSize ? ' · ' + esc(x.packSize) : '') +
       (x.nearExpiry ? ' <span class="pill warn">หมดอายุใกล้</span>' : '') +
       '</span>';
@@ -512,7 +561,7 @@ function renderStockAlert(allRows) {
   var more = lows.length > 8 ? '<span class="muted">และอีก ' + (lows.length - 8) + ' รายการ</span>' : '';
   box.innerHTML =
     '<div class="stock-alert-head">' +
-    '<div><strong>เตือนใกล้หมด</strong> พบ <b>' + lows.length + '</b> รายการ คงเหลือน้อยกว่า ' + LOW_STOCK_QTY + '</div>' +
+    '<div><strong>เตือนใกล้หมด</strong> พบ <b>' + lows.length + '</b> รายการ ต่ำกว่าเกณฑ์ที่ตั้งไว้</div>' +
     '<button type="button" class="btn secondary" onclick="setStockFilter(\'low\')">ดูเฉพาะใกล้หมด</button>' +
     '</div>' +
     '<div class="stock-alert-list">' + chips + more + '</div>';
@@ -522,19 +571,20 @@ function renderStock() {
   var q = (document.getElementById('stockQ').value || '').toLowerCase();
   var filter = STATE.stockFilter || 'all';
   var all = STATE.stock || [];
+  var totals = buildItemStockTotals(all);
   renderStockAlert(all);
 
   var rows = all.filter(function (s) {
     if (q && String(s.name).toLowerCase().indexOf(q) < 0) return false;
-    if (filter === 'low' && !isLowStock(s)) return false;
+    if (filter === 'low' && !isLowStock(s, totals)) return false;
     if (filter === 'expiry' && !s.nearExpiry) return false;
     return true;
   });
 
   // ใกล้หมด / ใกล้หมดอายุ ขึ้นก่อน
   rows = rows.slice().sort(function (a, b) {
-    var al = isLowStock(a) ? 0 : 1;
-    var bl = isLowStock(b) ? 0 : 1;
+    var al = isLowStock(a, totals) ? 0 : 1;
+    var bl = isLowStock(b, totals) ? 0 : 1;
     if (al !== bl) return al - bl;
     var ae = a.nearExpiry ? 0 : 1;
     var be = b.nearExpiry ? 0 : 1;
@@ -547,20 +597,21 @@ function renderStock() {
     html += '<tr><td colspan="8" class="muted">ไม่พบรายการตามเงื่อนไข</td></tr>';
   } else {
     html += rows.map(function (s) {
-      var low = isLowStock(s);
+      var low = isLowStock(s, totals);
       var rowClass = [];
       if (low) rowClass.push('stock-low-row');
       else if (s.fefoRecommend) rowClass.push('fefo-row');
       if (s.nearExpiry) rowClass.push('stock-expiry-row');
 
       var status = '';
-      if (low && Number(s.qty) <= 3) status = '<span class="pill danger">วิกฤต</span>';
+      if (low && isLowStockCritical(s, totals)) status = '<span class="pill danger">วิกฤต</span>';
       else if (low) status = '<span class="pill warn">ใกล้หมด</span>';
       else if (s.nearExpiry) status = '<span class="pill warn">ใกล้หมดอายุ</span>';
       else status = '<span class="pill">ปกติ</span>';
 
+      var itemTotal = totals[s.itemId] != null ? totals[s.itemId] : Number(s.qty || 0);
       var qtyCell = low
-        ? '<span class="qty-low">' + s.qty + '</span>'
+        ? '<span class="qty-low">' + s.qty + '</span><div class="muted">รวม ' + itemTotal + '</div>'
         : '<b>' + s.qty + '</b>';
 
       return '<tr class="' + rowClass.join(' ') + '">' +
@@ -1297,6 +1348,63 @@ function doImport(force) {
     document.getElementById('btnImport').disabled = false;
   });
 }
+function loadLowStockSettings() {
+  api('listItems').then(function (r) {
+    STATE.lowStockItems = (r.items || []).filter(function (i) { return i.active !== '0'; });
+    renderLowStockSettings();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function renderLowStockSettings() {
+  var el = document.getElementById('lowStockTable');
+  if (!el) return;
+  var q = (document.getElementById('lowStockQ') && document.getElementById('lowStockQ').value || '').toLowerCase().trim();
+  var def = getDefaultLowStock();
+  var rows = (STATE.lowStockItems || []).filter(function (i) {
+    if (!q) return true;
+    return (String(i.name) + ' ' + String(i.code || '') + ' ' + String(i.category || '')).toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''), 'th');
+  });
+  var html = '<tr><th>รายการ</th><th>หมวด</th><th class="right">คงเหลือ</th><th class="right">เตือนเมื่อ &lt;</th></tr>';
+  if (!rows.length) {
+    html += '<tr><td colspan="4" class="muted">ไม่พบรายการ</td></tr>';
+  } else {
+    html += rows.map(function (i) {
+      var custom = Number(i.lowStock || 0);
+      var val = custom > 0 ? custom : '';
+      var low = isItemLowStock(i.id, i.stockQty, i);
+      return '<tr class="' + (low ? 'stock-low-row' : '') + '">' +
+        '<td>' + esc(i.name) + (i.code ? '<div class="muted">' + esc(i.code) + '</div>' : '') + '</td>' +
+        '<td>' + esc(i.category) + '</td>' +
+        '<td class="right"><b>' + Number(i.stockQty || 0) + '</b></td>' +
+        '<td class="right"><input type="number" min="1" step="1" class="low-stock-input" data-low-id="' + esc(i.id) + '" value="' + val + '" placeholder="' + def + '" style="width:88px"></td>' +
+        '</tr>';
+    }).join('');
+  }
+  el.innerHTML = html;
+}
+
+function saveLowStockSettings() {
+  var defaultLow = Number(document.getElementById('stDefaultLowStock').value || 10);
+  var items = [];
+  document.querySelectorAll('.low-stock-input').forEach(function (inp) {
+    items.push({ id: inp.getAttribute('data-low-id'), lowStock: inp.value === '' ? 0 : Number(inp.value) });
+  });
+  api('saveLowStockSettings', { defaultLowStock: defaultLow, items: items }).then(function (r) {
+    if (STATE.boot) {
+      STATE.boot.settings = r.settings || STATE.boot.settings;
+      if (STATE.boot.settings) STATE.boot.settings.defaultLowStock = String(r.defaultLowStock);
+    }
+    toast('บันทึกการเตือนใกล้หมดแล้ว');
+    loadLowStockSettings();
+    loadItems();
+    refreshStockCache().then(function () {
+      if (document.getElementById('page-stock').classList.contains('active')) renderStock();
+    });
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
 function saveSettings() {
   api('saveSettings', {
     unitName: document.getElementById('stUnit').value,

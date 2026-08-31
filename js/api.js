@@ -47,6 +47,14 @@ function getItemsIndex_() {
   return ITEMS_INDEX_CACHE_;
 }
 
+function getItemLowStockThreshold_(it, settings) {
+  settings = settings || readSettings_();
+  var custom = num_(it.lowStock);
+  if (custom > 0) return custom;
+  var def = num_(settings.defaultLowStock);
+  return def > 0 ? def : 10;
+}
+
 function enrichStockRow_(s, items) {
   var it = items[s.itemId] || {};
   return Object.assign({}, s, {
@@ -56,7 +64,8 @@ function enrichStockRow_(s, items) {
     amount: round2_(num_(s.qty) * num_(s.unitPrice)),
     locationLabel: LOC_LABEL[s.location] || s.location,
     expiryLabel: formatDate_(s.expiry),
-    nearExpiry: isNearExpiry_(s.expiry)
+    nearExpiry: isNearExpiry_(s.expiry),
+    lowStockThreshold: getItemLowStockThreshold_(it)
   });
 }
 
@@ -90,6 +99,7 @@ function callApi(name, payload) {
     saveSettings: apiSaveSettings_,
     saveOptionLists: apiSaveOptionLists_,
     saveItem: apiSaveItem_,
+    saveLowStockSettings: apiSaveLowStockSettings_,
     saveStockLots: apiSaveStockLots_,
     listItems: apiListItems_,
     listStock: apiListStock_,
@@ -297,11 +307,25 @@ function apiSaveItem_(p) {
   item.unit = String(p.unit || item.packSize || '').trim();
   item.unitPrice = num_(p.unitPrice);
   item.yearQuota = 0;
-  item.lowStock = 0;
+  if (p.lowStock != null && p.lowStock !== '') item.lowStock = Math.max(0, Math.round(num_(p.lowStock)));
+  else if (!p.id) item.lowStock = 0;
   item.active = p.active === false || p.active === '0' ? '0' : '1';
   item.notes = String(p.notes || '');
   writeObjects_('Items', rows);
   return { ok: true, item: item };
+}
+
+function apiSaveLowStockSettings_(p) {
+  var defaultLow = Math.max(1, Math.round(num_(p.defaultLowStock) || 10));
+  setSetting_('defaultLowStock', String(defaultLow));
+  var rows = readObjects_('Items');
+  (p.items || []).forEach(function (row) {
+    var item = findById_(rows, row.id);
+    if (!item) return;
+    item.lowStock = Math.max(0, Math.round(num_(row.lowStock)));
+  });
+  writeObjects_('Items', rows);
+  return { ok: true, defaultLowStock: defaultLow, settings: readSettings_() };
 }
 
 function apiSaveStockLots_(p) {
@@ -1064,7 +1088,8 @@ function ensureDb_() {
     issuerName: 'นางสาวสุภารัตน์ จงรักษ์',
     issuerPosition: '',
     imported: '0',
-    loginUsers: '["Napatsorn"]'
+    loginUsers: '["Napatsorn"]',
+    defaultLowStock: '10'
   };
   var cur = readSettings_();
   var changed = false;
