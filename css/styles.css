@@ -457,7 +457,13 @@ textarea { min-height: 70px; }
   background: rgba(255,255,255,.22);
   border: 1px solid rgba(255,255,255,.35);
 }
-.th-date-text { flex: 1; min-width: 0; }
+.th-date-text { flex: 1; min-width: 0; line-height: 1.35; }
+.th-date-field-inline { min-width: 190px; }
+.th-date-btn-compact {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 10px;
+}
 .th-date-pop {
   display: none;
   position: absolute;
@@ -469,7 +475,7 @@ textarea { min-height: 70px; }
   border-radius: 16px;
   box-shadow: 0 16px 40px rgba(16, 52, 43, 0.16);
   padding: 12px;
-  min-width: 300px;
+  min-width: 320px;
   animation: thPopIn .18s ease;
 }
 @keyframes thPopIn {
@@ -495,14 +501,16 @@ textarea { min-height: 70px; }
 }
 .th-cal-month {
   display: block;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
+  font-family: 'Prompt', 'Sarabun', sans-serif;
 }
 .th-cal-year {
   display: block;
-  font-size: 13px;
-  opacity: .92;
+  font-size: 14px;
+  opacity: .95;
   margin-top: 2px;
+  font-weight: 600;
 }
 .th-nav {
   appearance: none;
@@ -555,14 +563,19 @@ textarea { min-height: 70px; }
   border: 0;
   background: #f3faf7;
   border-radius: 10px;
-  padding: 8px 0;
+  padding: 7px 0;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   color: var(--ink);
   transition: background .12s, transform .08s, box-shadow .12s;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.th-day-num { line-height: 1; }
 .th-day.blank { background: transparent; cursor: default; }
 .th-day.sun:not(.selected) { color: #c0392b; background: #fff5f5; }
 .th-day.sat:not(.selected) { color: #1565c0; background: #f3f7ff; }
@@ -594,7 +607,24 @@ textarea { min-height: 70px; }
   color: #fff;
   border: 0;
 }
-.th-month-pop { min-width: 280px; }
+.th-cal-selected {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f3faf7;
+  border: 1px dashed #b8d9ce;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+.th-cal-selected.has-value {
+  background: linear-gradient(135deg, #edf8f4 0%, #dff3ec 100%);
+  border-style: solid;
+  border-color: #b8d9ce;
+  color: var(--ink);
+  font-weight: 600;
+}
+.th-month-pop { min-width: 300px; }
 .th-month-header { justify-content: center; }
 .th-month-grid {
   display: grid;
@@ -607,13 +637,14 @@ textarea { min-height: 70px; }
   border: 1px solid var(--line);
   background: #f3faf7;
   border-radius: 12px;
-  padding: 10px 6px;
-  font-size: 14px;
+  padding: 10px 8px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   color: var(--ink);
   font-family: inherit;
   transition: all .12s;
+  line-height: 1.25;
 }
 .th-month-cell:hover { border-color: var(--primary); background: var(--primary-soft); }
 .th-month-cell.selected {
@@ -646,22 +677,16 @@ textarea { min-height: 70px; }
 .lot-row { font-size: 13px; line-height: 1.35; }
 .item-lot-row {
   display: grid;
-  grid-template-columns: minmax(90px, 120px) minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(90px, 120px) minmax(190px, 1fr) auto;
   gap: 8px;
   align-items: end;
   margin-bottom: 8px;
 }
 .item-lot-row .field { margin: 0; }
 .item-lot-del { margin-bottom: 2px; }
-.ocr-expiry-input {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 7px 9px;
-  font-family: inherit;
-  font-size: 13px;
-  background: #fff;
-  min-width: 140px;
-}
+#ocrReviewCard .table-wrap { overflow: visible; }
+#ocrReviewTable .th-date-field-inline { min-width: 170px; }
+#ocrReviewTable .th-date-btn-compact { width: 100%; }
 .wd-pick-wrap {
   max-height: min(420px, 45vh);
   overflow: auto;

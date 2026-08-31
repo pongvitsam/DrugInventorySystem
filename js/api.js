@@ -1017,6 +1017,10 @@ function toIsoDate_(v) {
 function formatDate_(v) {
   var iso = toIsoDate_(v);
   if (!iso) return '';
+  if (typeof ThDate !== 'undefined' && ThDate.formatDateLong) {
+    var label = ThDate.formatDateLong(iso);
+    if (label && label !== 'เลือกวันที่') return label;
+  }
   var p = iso.split('-');
   if (p.length !== 3) return iso;
   return p[2] + '/' + p[1] + '/' + (Number(p[0]) + 543);

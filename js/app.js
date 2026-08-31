@@ -263,8 +263,9 @@ function itemLotRowHtml(i, l) {
   return '<div class="item-lot-row">' +
     '<div class="field"><label>คงเหลือ</label><input type="number" min="0" step="1" value="' + (l.qty || 0) +
     '" oninput="setItemLotField(' + i + ',\'qty\',this.value)"></div>' +
-    '<div class="field"><label>วันหมดอายุ</label><input type="date" value="' + esc(l.expiry || '') +
-    '" onchange="setItemLotField(' + i + ',\'expiry\',this.value)"></div>' +
+    '<div class="field"><label>วันหมดอายุ</label>' +
+    ThDate.fieldHtml('itLotExp_' + i, l.expiry || '', 'setItemLotField(' + i + ',\'expiry\',this.value)', true) +
+    '</div>' +
     '<button type="button" class="btn ghost item-lot-del" onclick="removeItemLotRow(' + i + ')">ลบ</button>' +
     '</div>';
 }
@@ -275,6 +276,7 @@ function paintItemStockLots() {
     ? lots.map(function (l, i) { return itemLotRowHtml(i, l); }).join('')
     : '<p class="muted">ยังไม่มีสต็อก — กดเพิ่มล็อตด้านล่าง</p>';
   document.getElementById('itStockLots').innerHTML = html;
+  ThDate.initFieldsIn(document.getElementById('itStockLots'));
 }
 
 function setItemLotField(i, key, val) {
@@ -691,7 +693,7 @@ function renderOcrReview() {
       '<td>' + ocrRegistrySelectHtml(i, l) + '</td>' +
       '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
       '<td>' + ocrPackSelectHtml(i, l) + '</td>' +
-      '<td><input type="date" class="ocr-expiry-input" value="' + esc(l.expiry || '') + '" onchange="updateOcrField(' + i + ',\'expiry\',this.value)"></td>' +
+      '<td>' + ThDate.fieldHtml('ocrExp_' + i, l.expiry || '', 'updateOcrField(' + i + ',\'expiry\',this.value)', true) + '</td>' +
       '<td class="right"><input type="number" step="0.01" value="' + (l.unitPrice || '') + '" style="width:100px" onchange="updateOcrField(' + i + ',\'unitPrice\',this.value)"></td>' +
       '<td class="right">' + money(Number(l.qty || 0) * Number(l.unitPrice || 0)) + '</td>' +
       '<td>' + (l.itemId ? '<span class="pill">ตรงทะเบียน</span>' : '<span class="pill warn">รายการใหม่</span>') + '</td>' +
@@ -699,6 +701,7 @@ function renderOcrReview() {
   }).join('');
   document.getElementById('ocrReviewTable').innerHTML = html || '<tr><td>ไม่มีรายการ</td></tr>';
   document.getElementById('ocrReviewCalc').textContent = kept + ' รายการที่เลือก · ' + money(tot) + ' บาท';
+  ThDate.initFieldsIn(document.getElementById('ocrReviewTable'));
 }
 
 function updateOcrField(i, key, value) {
