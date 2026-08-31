@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20">
+  <link rel="stylesheet" href="css/styles.css?v=21">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -305,9 +305,41 @@
         <div class="field"><label>รหัสยา</label><input id="itCode"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <div class="field"><label>หมวด</label><select id="itCat"></select></div>
-        <div class="field"><label>ขนาดบรรจุ</label><select id="itPack"></select><input id="itPackCustom" placeholder="ระบุขนาดบรรจุ" style="display:none;margin-top:6px"></div>
-        <div class="field"><label>รูปแบบ</label><select id="itForm"></select><input id="itFormCustom" placeholder="ระบุรูปแบบ เช่น TAB" style="display:none;margin-top:6px"></div>
+        <div class="field option-field">
+          <label>หมวด</label>
+          <select id="itCat"></select>
+          <div class="option-mgr">
+            <div class="row" style="margin-top:6px;gap:6px">
+              <input id="itCatNew" placeholder="เพิ่มหมวดใหม่" style="flex:1">
+              <button type="button" class="btn secondary" onclick="addOptionListItem('categories','itCatNew','itCat')">+ เพิ่ม</button>
+            </div>
+            <div id="itCatTags" class="option-tags"></div>
+          </div>
+        </div>
+        <div class="field option-field">
+          <label>ขนาดบรรจุ</label>
+          <select id="itPack"></select>
+          <input id="itPackCustom" placeholder="ระบุขนาดบรรจุ" style="display:none;margin-top:6px">
+          <div class="option-mgr">
+            <div class="row" style="margin-top:6px;gap:6px">
+              <input id="itPackNew" placeholder="เพิ่มขนาดบรรจุ" style="flex:1">
+              <button type="button" class="btn secondary" onclick="addOptionListItem('packSizes','itPackNew','itPack')">+ เพิ่ม</button>
+            </div>
+            <div id="itPackTags" class="option-tags"></div>
+          </div>
+        </div>
+        <div class="field option-field">
+          <label>รูปแบบ</label>
+          <select id="itForm"></select>
+          <input id="itFormCustom" placeholder="ระบุรูปแบบ เช่น TAB" style="display:none;margin-top:6px">
+          <div class="option-mgr">
+            <div class="row" style="margin-top:6px;gap:6px">
+              <input id="itFormNew" placeholder="เพิ่มรูปแบบ" style="flex:1">
+              <button type="button" class="btn secondary" onclick="addOptionListItem('forms','itFormNew','itForm')">+ เพิ่ม</button>
+            </div>
+            <div id="itFormTags" class="option-tags"></div>
+          </div>
+        </div>
       </div>
       <div class="row" style="margin-top:8px">
         <div class="field"><label>ราคาต่อหน่วย</label><input id="itPrice" type="number" step="0.01"></div>
@@ -315,7 +347,7 @@
       <div class="field" style="margin-top:8px"><label>หมายเหตุ</label><input id="itNotes"></div>
       <div id="itStockSection" style="margin-top:14px">
         <h4 style="margin:0 0 8px">สต็อกคลังหลัก</h4>
-        <p class="muted" style="margin:0 0 8px">แก้ไขจำนวนคงเหลือและวันหมดอายุแต่ละล็อต</p>
+        <p class="muted" style="margin:0 0 8px">ระบุจำนวนคงเหลือและวันหมดอายu — รายการใหม่ใส่ล็อตแรกพร้อมวันหมดอายuได้เลย</p>
         <div id="itStockLots"></div>
         <button type="button" class="btn secondary" style="margin-top:8px" onclick="addItemStockLotRow()">+ เพิ่มล็อต</button>
       </div>
@@ -327,13 +359,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=20"></script>
-  <script src="js/api.js?v=20"></script>
-  <script src="js/options.js?v=20"></script>
-  <script src="js/thdate.js?v=20"></script>
-  <script src="js/seed.js?v=20"></script>
-  <script src="js/ocr.js?v=20"></script>
-  <script src="js/app.js?v=20"></script>
-  <script src="js/auth.js?v=20"></script>
+  <script src="js/db.js?v=21"></script>
+  <script src="js/api.js?v=21"></script>
+  <script src="js/options.js?v=21"></script>
+  <script src="js/thdate.js?v=21"></script>
+  <script src="js/seed.js?v=21"></script>
+  <script src="js/ocr.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
+  <script src="js/auth.js?v=21"></script>
 </body>
 </html>

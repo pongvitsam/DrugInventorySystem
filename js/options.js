@@ -131,7 +131,11 @@ function readSelectWithCustom(selectId, customId) {
 }
 
 function initItemOptionSelects(items) {
-  fillSelectWithCustom('itPack', 'itPackCustom', Options.mergePackFromItems(items), '');
-  fillSelectWithCustom('itForm', 'itFormCustom', Options.mergeFormFromItems(items), '');
-  fillSelectWithCustom('rcPack', 'rcPackCustom', Options.mergePackFromItems(items), '');
+  refreshOptionLists();
+  var packs = STATE.optionLists.packSizes;
+  var forms = STATE.optionLists.forms;
+  fillSelectWithCustom('itPack', 'itPackCustom', packs, '');
+  fillSelectWithCustom('itForm', 'itFormCustom', forms, '');
+  fillSelectWithCustom('rcPack', 'rcPackCustom', packs, '');
+  renderOptionTags();
 }

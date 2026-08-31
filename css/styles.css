@@ -680,6 +680,37 @@ textarea { min-height: 70px; }
 }
 .lot-list { display: flex; flex-direction: column; gap: 4px; }
 .lot-row { font-size: 13px; line-height: 1.35; }
+.option-field { min-width: 0; }
+.option-mgr { margin-top: 4px; }
+.option-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.option-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #edf8f4;
+  border: 1px solid #c5e0d6;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.option-tag-del {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.option-tag-del:hover { color: var(--danger); }
+#itemModal .modal { width: min(820px, 100%); }
 .item-lot-row {
   display: grid;
   grid-template-columns: minmax(90px, 120px) minmax(190px, 1fr) auto;

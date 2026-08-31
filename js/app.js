@@ -10,7 +10,8 @@ var STATE = {
   pickStock: [],
   withdrawCart: [],
   reportKind: 'month',
-  lastWithdrawId: null
+  lastWithdrawId: null,
+  optionLists: { categories: [], packSizes: [], forms: [] }
 };
 
 function api(name, payload) {
@@ -75,8 +76,8 @@ function applyBoot(b) {
     link.onclick = function (e) { e.preventDefault(); exportBackup(); };
   }
   fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
-  fillSelect('itCat', b.categories || []);
   fillSelect('wdCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
+  refreshOptionLists();
   document.getElementById('stUnit').value = s.unitName || '';
   document.getElementById('stSub').value = s.unitSub || '';
   document.getElementById('stApp').value = s.approverName || '';
@@ -155,6 +156,116 @@ function fillSelect(id, arr, withBlank) {
     el.appendChild(o);
   });
   if (keep) el.value = keep;
+}
+
+function refreshOptionLists() {
+  var b = STATE.boot || {};
+  var savedPacks = b.packSizes && b.packSizes.length ? b.packSizes : null;
+  var savedForms = b.forms && b.forms.length ? b.forms : null;
+  STATE.optionLists = {
+    categories: (b.categories || []).slice(),
+    packSizes: savedPacks || Options.mergePackFromItems(STATE.items || []),
+    forms: savedForms || Options.mergeFormFromItems(STATE.items || [])
+  };
+}
+
+function renderOptionTags() {
+  var map = {
+    categories: 'itCatTags',
+    packSizes: 'itPackTags',
+    forms: 'itFormTags'
+  };
+  Object.keys(map).forEach(function (key) {
+    var box = document.getElementById(map[key]);
+    if (!box) return;
+    var list = (STATE.optionLists && STATE.optionLists[key]) || [];
+    box.innerHTML = list.map(function (v, idx) {
+      return '<span class="option-tag">' + esc(v) +
+        ' <button type="button" class="option-tag-del" title="ลบ" onclick="removeOptionListItem(\'' + key + '\',' + idx + ')">×</button></span>';
+    }).join('');
+  });
+}
+
+function refillItemModalSelects(opts) {
+  opts = opts || {};
+  refreshOptionLists();
+  fillSelect('itCat', STATE.optionLists.categories);
+  if (opts.category) document.getElementById('itCat').value = opts.category;
+  fillSelectWithCustom('itPack', 'itPackCustom', STATE.optionLists.packSizes, opts.packSize || '');
+  fillSelectWithCustom('itForm', 'itFormCustom', STATE.optionLists.forms, opts.form || '');
+  renderOptionTags();
+}
+
+function persistOptionLists() {
+  return api('saveOptionLists', {
+    categories: STATE.optionLists.categories,
+    packSizes: STATE.optionLists.packSizes,
+    forms: STATE.optionLists.forms
+  }).then(function (r) {
+    if (STATE.boot) {
+      STATE.boot.categories = r.categories || STATE.optionLists.categories;
+      STATE.boot.packSizes = r.packSizes || STATE.optionLists.packSizes;
+      STATE.boot.forms = r.forms || STATE.optionLists.forms;
+      if (STATE.boot.settings) {
+        STATE.boot.settings.listCategories = JSON.stringify(STATE.optionLists.categories);
+        STATE.boot.settings.listPackSizes = JSON.stringify(STATE.optionLists.packSizes);
+        STATE.boot.settings.listForms = JSON.stringify(STATE.optionLists.forms);
+      }
+    }
+    fillSelect('itemCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
+    fillSelect('wdCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
+    initItemOptionSelects(STATE.items || []);
+    renderOptionTags();
+  });
+}
+
+function addOptionListItem(listKey, inputId, selectId) {
+  var val = String(document.getElementById(inputId).value || '').trim();
+  if (!val) return toast('พิมพ์รายการที่ต้องการเพิ่ม');
+  var list = STATE.optionLists[listKey] || [];
+  if (list.some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) {
+    return toast('มีรายการนี้แล้ว');
+  }
+  list.push(val);
+  list.sort(function (a, b) { return String(a).localeCompare(String(b), 'th'); });
+  STATE.optionLists[listKey] = list;
+  document.getElementById(inputId).value = '';
+  persistOptionLists().then(function () {
+    if (selectId) document.getElementById(selectId).value = val;
+    toast('เพิ่มรายการแล้ว');
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function removeOptionListItem(listKey, index) {
+  var list = (STATE.optionLists[listKey] || []).slice();
+  var value = list[index];
+  if (value == null) return;
+  if (list.length <= 1) return toast('ต้องมีอย่างน้อย 1 รายการ');
+  if (!confirm('ลบ "' + value + '" จากรายการเลือก?')) return;
+  list.splice(index, 1);
+  STATE.optionLists[listKey] = list;
+  persistOptionLists().then(function () {
+    refillItemModalSelects({
+      category: document.getElementById('itCat').value,
+      packSize: readSelectWithCustom('itPack', 'itPackCustom'),
+      form: readSelectWithCustom('itForm', 'itFormCustom')
+    });
+    toast('ลบรายการแล้ว');
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function ensureOptionOnSave(listKey, value) {
+  value = String(value || '').trim();
+  if (!value) return Promise.resolve();
+  refreshOptionLists();
+  var list = STATE.optionLists[listKey] || [];
+  if (list.some(function (x) { return String(x).toLowerCase() === value.toLowerCase(); })) {
+    return Promise.resolve();
+  }
+  list.push(value);
+  list.sort(function (a, b) { return String(a).localeCompare(String(b), 'th'); });
+  STATE.optionLists[listKey] = list;
+  return persistOptionLists();
 }
 
 function renderDash(b) {
@@ -237,13 +348,18 @@ function openItem(id) {
   document.getElementById('itId').value = it.id || '';
   document.getElementById('itName').value = it.name || '';
   document.getElementById('itCode').value = it.code || '';
-  document.getElementById('itCat').value = it.category || 'ยาเม็ด';
-  fillSelectWithCustom('itPack', 'itPackCustom', Options.mergePackFromItems(STATE.items), it.packSize || '');
-  fillSelectWithCustom('itForm', 'itFormCustom', Options.mergeFormFromItems(STATE.items), it.form || '');
   document.getElementById('itPrice').value = it.unitPrice || '';
   document.getElementById('itNotes').value = it.notes || '';
   document.getElementById('itemModalTitle').textContent = it.id ? 'แก้ไขรายการ' : 'รายการใหม่';
+  refillItemModalSelects({
+    category: it.category || 'ยาเม็ด',
+    packSize: it.packSize || '',
+    form: it.form || ''
+  });
   renderItemStockLots(it);
+  if (!it.id && !(STATE.itemLotDraft && STATE.itemLotDraft.length)) {
+    addItemStockLotRow();
+  }
   document.getElementById('itemModal').style.display = 'flex';
 }
 function closeModal() { document.getElementById('itemModal').style.display = 'none'; }
@@ -313,12 +429,16 @@ function saveItem() {
   var origIds = (STATE.editingItemLots || []).map(function (l) { return l.stockId; }).filter(Boolean);
   var currentIds = lots.filter(function (l) { return l.stockId; }).map(function (l) { return l.stockId; });
   var removeStockIds = origIds.filter(function (id) { return currentIds.indexOf(id) < 0; });
-  api('saveItem', payload).then(function (r) {
-    var itemId = r.item.id;
-    if (lots.length || removeStockIds.length) {
-      return api('saveStockLots', { itemId: itemId, lots: lots, removeStockIds: removeStockIds });
-    }
-  }).then(function () {
+  ensureOptionOnSave('categories', payload.category)
+    .then(function () { return ensureOptionOnSave('packSizes', payload.packSize); })
+    .then(function () { return ensureOptionOnSave('forms', payload.form); })
+    .then(function () { return api('saveItem', payload); })
+    .then(function (r) {
+      var itemId = r.item.id;
+      if (lots.length || removeStockIds.length) {
+        return api('saveStockLots', { itemId: itemId, lots: lots, removeStockIds: removeStockIds });
+      }
+    }).then(function () {
     closeModal();
     toast('บันทึกรายการแล้ว');
     loadItems();

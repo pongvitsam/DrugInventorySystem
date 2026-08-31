@@ -88,6 +88,7 @@ function callApi(name, payload) {
   var fns = {
     bootstrap: apiBootstrap_,
     saveSettings: apiSaveSettings_,
+    saveOptionLists: apiSaveOptionLists_,
     saveItem: apiSaveItem_,
     saveStockLots: apiSaveStockLots_,
     listItems: apiListItems_,
@@ -116,6 +117,33 @@ function callApi(name, payload) {
   return result;
 }
 
+function parseJsonList_(raw) {
+  try {
+    if (!raw) return null;
+    var arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr.map(function (x) { return String(x || '').trim(); }).filter(Boolean) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function listCategories_() {
+  var custom = parseJsonList_(readSettings_().listCategories);
+  return custom && custom.length ? custom : CATEGORIES.slice();
+}
+
+function apiSaveOptionLists_(p) {
+  if (p.categories) setSetting_('listCategories', JSON.stringify(p.categories));
+  if (p.packSizes) setSetting_('listPackSizes', JSON.stringify(p.packSizes));
+  if (p.forms) setSetting_('listForms', JSON.stringify(p.forms));
+  return {
+    ok: true,
+    categories: listCategories_(),
+    packSizes: parseJsonList_(readSettings_().listPackSizes) || [],
+    forms: parseJsonList_(readSettings_().listForms) || []
+  };
+}
+
 function apiBootstrap_() {
   var settings = readSettings_();
   var items = normalizeItemPacks_(readObjects_('Items'));
@@ -125,7 +153,9 @@ function apiBootstrap_() {
   var dash = buildDashboard_(items, stock, receipts, transfers);
   return {
     settings: settings,
-    categories: CATEGORIES,
+    categories: listCategories_(),
+    packSizes: parseJsonList_(settings.listPackSizes) || [],
+    forms: parseJsonList_(settings.listForms) || [],
     locations: LOC_LABEL,
     itemCount: items.filter(function (i) { return i.active !== '0'; }).length,
     imported: String(settings.imported) === '1',
