@@ -1082,9 +1082,13 @@ function updateWithdrawCartQty(stockId, value) {
   renderWithdrawSummary();
 }
 function removeWithdrawLine(stockId) {
+  var removed = (STATE.withdrawCart || []).filter(function (c) { return c.stockId === stockId; })[0];
   STATE.withdrawCart = (STATE.withdrawCart || []).filter(function (c) { return c.stockId !== stockId; });
   renderWithdrawSummary();
   filterWithdrawStock();
+  if (STATE.editingWithdrawId && removed) {
+    toast('ลบ ' + removed.name + ' — จะคืน ' + removed.qty + ' เข้าคลังเมื่อบันทึก');
+  }
 }
 function clearWithdrawCart() {
   STATE.withdrawCart = [];
@@ -1127,7 +1131,10 @@ function renderWithdrawSummary() {
 function saveWithdraw() {
   var lines = (STATE.withdrawCart || []).filter(function (l) { return Number(l.qty) > 0; })
     .map(function (l) { return { stockId: l.stockId, qty: l.qty }; });
-  if (!lines.length) return toast('เพิ่มรายการที่ต้องการเบิกก่อน');
+  if (!lines.length && !STATE.editingWithdrawId) return toast('เพิ่มรายการที่ต้องการเบิกก่อน');
+  if (!lines.length && STATE.editingWithdrawId) {
+    if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลัง ต้องการบันทึก?')) return;
+  }
   var payload = {
     date: document.getElementById('wdDate').value,
     notes: document.getElementById('wdNotes').value,
@@ -1136,7 +1143,11 @@ function saveWithdraw() {
   if (STATE.editingWithdrawId) payload.id = STATE.editingWithdrawId;
   api('saveTransfer', payload).then(function (r) {
     var editing = !!STATE.editingWithdrawId;
-    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
+    var msg = (editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท';
+    if (editing && r.returnedCount > 0) {
+      msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
+    }
+    toast(msg);
     STATE.lastWithdrawId = r.transfer.id;
     STATE.editingWithdrawId = null;
     STATE.editWithdrawOrig = {};

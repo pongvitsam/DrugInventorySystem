@@ -473,7 +473,7 @@ function apiGetReceipt_(p) {
 function apiSaveTransfer_(p) {
   if (!p.date) throw new Error('กรุณาใส่วันที่เบิก');
   var lines = (p.lines || []).filter(function (l) { return l.stockId && num_(l.qty) > 0; });
-  if (!lines.length) throw new Error('กรุณาเลือกรายการจากคลังหลัก');
+  if (!lines.length && !p.id) throw new Error('กรุณาเลือกรายการจากคลังหลัก');
   var stock = readObjects_('Stock');
   var items = indexById_(readObjects_('Items'));
   var heads = readObjects_('Transfers');
@@ -481,24 +481,12 @@ function apiSaveTransfer_(p) {
   var moves = readObjects_('Movements');
 
   if (p.id) {
-    var tr = findById_(heads, p.id);
-    if (!tr) throw new Error('ไม่พบใบเบิก');
-    tLines.filter(function (l) { return l.transferId === tr.id; }).forEach(function (line) {
-      var st = findById_(stock, line.stockId);
-      if (st) st.qty = round4_(num_(st.qty) + num_(line.qty));
-    });
-    tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
-    moves = moves.filter(function (m) { return !(m.refId === tr.id && m.type === 'ISSUE'); });
-    tr.date = toIsoDate_(p.date);
-    tr.notes = String(p.notes || '');
-    tr.totalQty = 0;
-    tr.totalValue = 0;
-    applyTransferLines_(tr, lines, stock, items, tLines, moves);
+    var upd = apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves);
     writeObjects_('Stock', stock);
     writeObjects_('Transfers', heads);
-    writeObjects_('TransferLines', tLines);
-    writeObjects_('Movements', moves);
-    return { ok: true, transfer: tr };
+    writeObjects_('TransferLines', upd.tLines);
+    writeObjects_('Movements', upd.moves);
+    return { ok: true, transfer: upd.transfer, returnedQty: upd.returnedQty, returnedCount: upd.returnedCount };
   }
 
   var tr = {
@@ -516,6 +504,104 @@ function apiSaveTransfer_(p) {
   writeObjects_('TransferLines', tLines);
   writeObjects_('Movements', moves);
   return { ok: true, transfer: tr };
+}
+
+function returnStockQty_(stock, line, qty) {
+  qty = round4_(num_(qty));
+  if (qty <= 0) return null;
+  var st = findById_(stock, line.stockId);
+  if (st) {
+    st.qty = round4_(num_(st.qty) + qty);
+    return st;
+  }
+  st = {
+    id: line.stockId || nextId_('S'),
+    itemId: line.itemId,
+    location: LOC_MAIN,
+    qty: qty,
+    unitPrice: num_(line.unitPrice),
+    expiry: line.expiry || '',
+    lotNote: ''
+  };
+  stock.push(st);
+  return st;
+}
+
+function pushTransferLineRecord_(tr, line, stock, items, tLines) {
+  var from = findById_(stock, line.stockId);
+  if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+  var qty = num_(line.qty);
+  var price = num_(from.unitPrice);
+  var amount = round2_(qty * price);
+  tLines.push({
+    id: nextId_('TL'),
+    transferId: tr.id,
+    itemId: from.itemId,
+    stockId: from.id,
+    qty: qty,
+    approvedQty: qty,
+    unitPrice: price,
+    amount: amount,
+    expiry: from.expiry || '',
+    packSize: (items[from.itemId] || {}).packSize || '',
+    name: (items[from.itemId] || {}).name || line.name || ''
+  });
+  tr.totalQty = round4_(num_(tr.totalQty) + qty);
+  tr.totalValue = round2_(num_(tr.totalValue) + amount);
+}
+
+function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
+  var tr = findById_(heads, p.id);
+  if (!tr) throw new Error('ไม่พบใบเบิก');
+  var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
+  var editDate = toIsoDate_(p.date);
+  var returnedQty = 0;
+  var returnedCount = 0;
+  var newMoves = [];
+
+  oldLines.forEach(function (old) {
+    var oldQty = num_(old.qty);
+    var newLine = lines.filter(function (l) { return l.stockId === old.stockId; })[0];
+    var newQty = newLine ? num_(newLine.qty) : 0;
+    var returnQty = round4_(oldQty - newQty);
+    if (returnQty > 1e-9) {
+      returnStockQty_(stock, old, returnQty);
+      returnedQty = round4_(returnedQty + returnQty);
+      returnedCount += 1;
+      newMoves.push(movement_('RETURN', editDate, LOC_MAIN, old.itemId, old.stockId, returnQty,
+        num_(old.unitPrice), round2_(returnQty * num_(old.unitPrice)), tr.id, 'คืนจากแก้ไขใบเบิก'));
+    }
+  });
+
+  lines.forEach(function (line) {
+    var old = oldLines.filter(function (o) { return o.stockId === line.stockId; })[0];
+    var oldQty = old ? num_(old.qty) : 0;
+    var issueQty = round4_(num_(line.qty) - oldQty);
+    if (issueQty <= 1e-9) return;
+    var from = findById_(stock, line.stockId);
+    if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+    if (issueQty > num_(from.qty) + 1e-9) {
+      throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
+    }
+    var price = num_(from.unitPrice);
+    var amount = round2_(issueQty * price);
+    from.qty = round4_(num_(from.qty) - issueQty);
+    newMoves.push(movement_('ISSUE', editDate, LOC_MAIN, from.itemId, from.id, -issueQty, price, amount, tr.id, ''));
+  });
+
+  tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
+  moves = moves.filter(function (m) {
+    return !(m.refId === tr.id && (m.type === 'ISSUE' || m.type === 'RETURN'));
+  }).concat(newMoves);
+
+  tr.date = editDate;
+  tr.notes = String(p.notes || '');
+  tr.totalQty = 0;
+  tr.totalValue = 0;
+  lines.forEach(function (line) {
+    pushTransferLineRecord_(tr, line, stock, items, tLines);
+  });
+  return { transfer: tr, tLines: tLines, moves: moves, returnedQty: returnedQty, returnedCount: returnedCount };
 }
 
 function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
