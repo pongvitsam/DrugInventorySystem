@@ -1035,6 +1035,12 @@ select option[value="__add__"] {
   html.print-report .rp-chart-wrap { height: 200px; }
 }
 
+.readonly-field {
+  background: #f4faf8;
+  color: var(--muted);
+  cursor: default;
+}
+
 .stock-low-row td { background: #fff5f3; }
 .stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
 .qty-low {

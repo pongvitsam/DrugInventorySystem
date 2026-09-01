@@ -110,6 +110,12 @@ function applyBoot(b) {
   if (stLow) stLow.value = s.defaultLowStock || '10';
   var stExp = document.getElementById('stExpiryWarnMonths');
   if (stExp) stExp.value = s.expiryWarnMonths || '6';
+  var stHist = document.getElementById('stHistoryFrom');
+  if (stHist) {
+    stHist.value = s.historyFromDate
+      ? (typeof ThDate !== 'undefined' && ThDate.formatDateLong ? ThDate.formatDateLong(s.historyFromDate) : s.historyFromDate)
+      : '-';
+  }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
   ThDate.set('rcDate', todayInput());

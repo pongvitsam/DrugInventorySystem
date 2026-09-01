@@ -193,8 +193,8 @@ function apiBootstrap_() {
   var stock = readObjects_('Stock').filter(function (s) {
     return s.location === LOC_MAIN && num_(s.qty) > 0;
   });
-  var receipts = readObjects_('Receipts');
-  var transfers = readObjects_('Transfers');
+  var receipts = filterHistoryDocs_(readObjects_('Receipts'));
+  var transfers = filterHistoryDocs_(readObjects_('Transfers'));
   var dash = buildDashboard_(items, stock, receipts, transfers);
   return {
     settings: settings,
@@ -632,7 +632,9 @@ function apiUpdateReceipt_(p) {
 }
 
 function apiListReceipts_() {
-  return { receipts: readObjects_('Receipts').slice().reverse() };
+  return {
+    receipts: filterHistoryDocs_(readObjects_('Receipts')).slice().reverse()
+  };
 }
 
 function apiGetReceipt_(p) {
@@ -816,7 +818,7 @@ function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
 
 function apiListTransfers_() {
   return {
-    transfers: readObjects_('Transfers').slice().sort(function (a, b) {
+    transfers: filterHistoryDocs_(readObjects_('Transfers')).slice().sort(function (a, b) {
       return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
     })
   };
@@ -945,6 +947,7 @@ function apiMonthReport_(p) {
   });
   moves.forEach(function (m) {
     if (m.location !== LOC_MAIN || !itemMap[m.itemId]) return;
+    if (!shouldCountMovement_(m)) return;
     var lot = moveReportLot_(m, stockById, itemMap);
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
     if (!row) return;
@@ -1051,6 +1054,7 @@ function apiMoneyReport_(p) {
   });
   moves.forEach(function (m) {
     if (m.location !== LOC_MAIN) return;
+    if (!shouldCountMovement_(m)) return;
     var it = items[m.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
     if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
@@ -1310,7 +1314,8 @@ function ensureDb_() {
     imported: '0',
     loginUsers: '["Napatsorn"]',
     defaultLowStock: '10',
-    expiryWarnMonths: '6'
+    expiryWarnMonths: '6',
+    historyFromDate: ''
   };
   var cur = readSettings_();
   var changed = false;
@@ -1322,6 +1327,10 @@ function ensureDb_() {
   });
   if (!cur.loginUsers) {
     cur.loginUsers = '["Napatsorn"]';
+    changed = true;
+  }
+  if (!toIsoDate_(cur.historyFromDate)) {
+    cur.historyFromDate = todayIsoDate_();
     changed = true;
   }
   if (changed) {
@@ -1463,6 +1472,41 @@ function getExpiryWarnMonths_(settings) {
   return Math.min(60, n);
 }
 
+function todayIsoDate_() {
+  return toIsoDate_(new Date());
+}
+
+function getHistoryFromDate_(settings) {
+  settings = settings || readSettings_();
+  return toIsoDate_(settings.historyFromDate);
+}
+
+function docInHistory_(dateIso) {
+  var cut = getHistoryFromDate_();
+  var d = toIsoDate_(dateIso);
+  if (!cut) return true;
+  return !!(d && d >= cut);
+}
+
+function filterHistoryDocs_(docs) {
+  return (docs || []).filter(function (d) {
+    return docInHistory_(d.date || d.createdAt);
+  });
+}
+
+function shouldCountMovement_(m) {
+  if (!m) return false;
+  var cut = getHistoryFromDate_();
+  if (cut) {
+    var d = toIsoDate_(m.date);
+    if (!d || d < cut) return false;
+  }
+  if (m.type === 'OPENING') return false;
+  if (String(m.refId || '') === 'SEED') return false;
+  if (String(m.notes || '').indexOf('เปิดระบบ') >= 0) return false;
+  return true;
+}
+
 function isNearExpiry_(v, settings) {
   var iso = toIsoDate_(v);
   if (!iso) return false;
@@ -1544,6 +1588,7 @@ function listMonthKeysInRange_(startIso, endIso) {
 
 function itemTrendRange_(p) {
   var lookback = Math.round(num_(p.lookbackMonths));
+  var result;
   if (lookback > 0) {
     lookback = Math.max(1, Math.min(60, lookback));
     var now = new Date();
@@ -1553,20 +1598,28 @@ function itemTrendRange_(p) {
     var end = endY + '-' + ('0' + endM).slice(-2) + '-' + ('0' + endD).slice(-2);
     var startDate = new Date(now.getFullYear(), now.getMonth() - lookback + 1, 1);
     var start = startDate.getFullYear() + '-' + ('0' + (startDate.getMonth() + 1)).slice(-2) + '-01';
-    return {
+    result = {
       start: start,
       end: end,
       label: 'ย้อนหลัง ' + lookback + ' เดือน (ถึงวันนี้)',
       lookbackMonths: lookback
     };
+  } else {
+    var rr = reportRange_(p);
+    result = {
+      start: rr.start,
+      end: rr.end,
+      label: rr.label,
+      lookbackMonths: 0
+    };
   }
-  var rr = reportRange_(p);
-  return {
-    start: rr.start,
-    end: rr.end,
-    label: rr.label,
-    lookbackMonths: 0
-  };
+  var cut = getHistoryFromDate_();
+  if (cut && result.start < cut) {
+    result.start = cut;
+    result.label = rangeLabel_(cut, result.end) + ' · นับประวัติตั้งแต่ ' +
+      (typeof ThDate !== 'undefined' && ThDate.formatDateLong ? ThDate.formatDateLong(cut) : formatDate_(cut));
+  }
+  return result;
 }
 
 function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemMap, stock, stockById, moves) {
@@ -1581,6 +1634,7 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
   });
   moves.forEach(function (m) {
     if (m.location !== LOC_MAIN || m.itemId !== itemId) return;
+    if (!shouldCountMovement_(m)) return;
     var lot = moveReportLot_(m, stockById, itemMap);
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
     if (!row) return;
