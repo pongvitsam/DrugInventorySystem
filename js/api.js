@@ -844,19 +844,12 @@ function apiGetTransfer_(p) {
   return { transfer: tr, lines: lines, settings: readSettings_() };
 }
 
-function reportMoveBuckets_(m, ch) {
-  var recv = 0;
-  var issue = 0;
-  if (m.type === 'RECEIVE' || m.type === 'OPENING') {
-    recv = Math.max(ch, 0);
-  } else if (m.type === 'RETURN' && ch > 0) {
-    recv = ch;
-  } else if (m.type === 'COUNT' && ch > 0) {
-    recv = ch;
-  } else if (m.type === 'ISSUE' && ch < 0) {
-    issue = -ch;
-  }
-  return { recv: recv, issue: issue, change: ch };
+function reportPeriodReceive_(m, ch) {
+  return m.type === 'RECEIVE' && ch > 0 ? ch : 0;
+}
+
+function reportPeriodIssue_(m, ch) {
+  return m.type === 'ISSUE' && ch < 0 ? -ch : 0;
 }
 
 function apiMonthReport_(p) {
@@ -896,14 +889,13 @@ function apiMonthReport_(p) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
     } else if (d >= range.start && d <= range.end) {
-      var buckets = reportMoveBuckets_(m, ch);
       var price = num_(m.unitPrice);
-      row.periodChange += buckets.change;
-      row.periodChangeValue += buckets.change * price;
-      row.received += buckets.recv;
-      row.receivedValue += buckets.recv * price;
-      row.issued += buckets.issue;
-      row.issuedValue += buckets.issue * price;
+      row.periodChange += ch;
+      row.periodChangeValue += ch * price;
+      row.received += reportPeriodReceive_(m, ch);
+      row.receivedValue += reportPeriodReceive_(m, ch) * price;
+      row.issued += reportPeriodIssue_(m, ch);
+      row.issuedValue += reportPeriodIssue_(m, ch) * price;
     }
   });
   Object.keys(byItem).forEach(function (id) {
@@ -996,11 +988,10 @@ function apiMoneyReport_(p) {
     if (d > range.end) {
       map[cat].remain -= val;
     } else if (d >= range.start && d <= range.end) {
-      var buckets = reportMoveBuckets_(m, ch);
       var price = num_(m.unitPrice);
       map[cat].periodChange += ch * price;
-      map[cat].receive += buckets.recv * price;
-      map[cat].used += buckets.issue * price;
+      map[cat].receive += reportPeriodReceive_(m, ch) * price;
+      map[cat].used += reportPeriodIssue_(m, ch) * price;
     }
   });
   var rows = Object.keys(map).map(function (c) {

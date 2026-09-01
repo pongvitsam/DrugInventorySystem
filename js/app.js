@@ -1565,7 +1565,7 @@ function renderMonth(d) {
   var html = hdr(d.settings, 'สรุปคลังหลัก', period);
   html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
     kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
-    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · ในช่วงที่เลือก', 'sky') +
+    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · จากใบรับเข้าในช่วงที่เลือก', 'sky') +
     kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
     '</div>';
@@ -1585,7 +1585,7 @@ function renderMoney(d) {
   var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', d.label || '');
   html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
     kpi('ยอดคงเหลือเดิม', money(t.opening) + ' ฿', 'ต้นช่วงที่เลือก', 'leaf') +
-    kpi('รับเข้า', money(t.receive) + ' ฿', 'ในช่วงที่เลือก', 'sky') +
+    kpi('รับเข้า', money(t.receive) + ' ฿', 'จากใบรับเข้าในช่วงที่เลือก', 'sky') +
     kpi('เบิกออก', money(t.used) + ' ฿', 'เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ', money(t.remain) + ' ฿', 'ณ สิ้นช่วง', 'teal') +
     '</div>';
