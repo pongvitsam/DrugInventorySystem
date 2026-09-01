@@ -55,7 +55,8 @@ function getItemLowStockThreshold_(it, settings) {
   return def > 0 ? def : 10;
 }
 
-function enrichStockRow_(s, items) {
+function enrichStockRow_(s, items, settings) {
+  settings = settings || readSettings_();
   var it = items[s.itemId] || {};
   return Object.assign({}, s, {
     name: it.name || '',
@@ -64,7 +65,7 @@ function enrichStockRow_(s, items) {
     amount: round2_(num_(s.qty) * num_(s.unitPrice)),
     locationLabel: LOC_LABEL[s.location] || s.location,
     expiryLabel: formatDate_(s.expiry),
-    nearExpiry: isNearExpiry_(s.expiry),
+    nearExpiry: isNearExpiry_(s.expiry, settings),
     lowStockThreshold: getItemLowStockThreshold_(it)
   });
 }
@@ -290,7 +291,7 @@ function apiListItems_() {
       packSize: preferSpacedPack_(String(s.packSize || it.packSize || '')),
       expiry: s.expiry || '',
       expiryLabel: formatDate_(s.expiry),
-      nearExpiry: isNearExpiry_(s.expiry),
+      nearExpiry: isNearExpiry_(s.expiry, readSettings_()),
       amount: round2_(num_(s.qty) * num_(s.unitPrice))
     });
   });
@@ -371,6 +372,8 @@ function apiDeleteItem_(p) {
 function apiSaveLowStockSettings_(p) {
   var defaultLow = Math.max(1, Math.round(num_(p.defaultLowStock) || 10));
   setSetting_('defaultLowStock', String(defaultLow));
+  var warnMonths = Math.max(1, Math.min(60, Math.round(num_(p.expiryWarnMonths) || 6)));
+  setSetting_('expiryWarnMonths', String(warnMonths));
   var rows = readObjects_('Items');
   (p.items || []).forEach(function (row) {
     var item = findById_(rows, row.id);
@@ -378,7 +381,7 @@ function apiSaveLowStockSettings_(p) {
     item.lowStock = Math.max(0, Math.round(num_(row.lowStock)));
   });
   writeObjects_('Items', rows);
-  return { ok: true, defaultLowStock: defaultLow, settings: readSettings_() };
+  return { ok: true, defaultLowStock: defaultLow, expiryWarnMonths: warnMonths, settings: readSettings_() };
 }
 
 function applyReceiveMovementDelta_(moves, stockId, delta, itemId, rLines, receipts) {
@@ -1175,7 +1178,7 @@ function buildDashboard_(items, stock, receipts, transfers) {
     var it = itemMap[s.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
     byCat[cat] = round2_((byCat[cat] || 0) + amt);
-    if (isNearExpiry_(s.expiry)) {
+    if (isNearExpiry_(s.expiry, readSettings_())) {
       expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: 'คลังหลัก' });
     }
   });
@@ -1306,7 +1309,8 @@ function ensureDb_() {
     issuerPosition: '',
     imported: '0',
     loginUsers: '["Napatsorn"]',
-    defaultLowStock: '10'
+    defaultLowStock: '10',
+    expiryWarnMonths: '6'
   };
   var cur = readSettings_();
   var changed = false;
@@ -1452,12 +1456,19 @@ function formatDate_(v) {
   return p[2] + '/' + p[1] + '/' + (Number(p[0]) + 543) + ' (ค.ศ. ' + p[0] + ')';
 }
 
-function isNearExpiry_(v) {
+function getExpiryWarnMonths_(settings) {
+  settings = settings || readSettings_();
+  var n = Math.round(num_(settings.expiryWarnMonths));
+  if (!n || n < 1) n = 6;
+  return Math.min(60, n);
+}
+
+function isNearExpiry_(v, settings) {
   var iso = toIsoDate_(v);
   if (!iso) return false;
   var d = new Date(iso + 'T00:00:00+07:00');
   var limit = new Date();
-  limit.setMonth(limit.getMonth() + 6);
+  limit.setMonth(limit.getMonth() + getExpiryWarnMonths_(settings));
   return d.getTime() <= limit.getTime();
 }
 

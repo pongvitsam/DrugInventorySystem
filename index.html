@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=51">
+  <link rel="stylesheet" href="css/styles.css?v=52">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -68,7 +68,7 @@
         <div class="card" id="valueCats" style="margin-bottom:14px"></div>
         <div class="grid-2">
           <div class="card">
-            <h3>ใกล้หมดอายุ (6 เดือน)</h3>
+            <h3 id="dashExpiryTitle">ใกล้หมดอายุ (6 เดือน)</h3>
             <div id="dashExpiry" class="muted">ไม่มีรายการ</div>
           </div>
           <div class="card">
@@ -310,14 +310,15 @@
           <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
         </div>
         <div class="card" style="margin-top:14px">
-          <h3>เตือนใกล้หมด</h3>
-          <p class="muted">กำหนดจำนวนขั้นต่ำแยกแต่ละรายการ — คงเหลือรวมต่ำกว่านี้จะเตือนในคลังหลัก</p>
+          <h3>เตือนใกล้หมด / ใกล้หมดอายุ</h3>
+          <p class="muted">กำหนดเกณฑ์เตือนในคลังหลัก — ใกล้หมด = คงเหลือต่ำกว่าขั้นต่ำ · ใกล้หมดอายุ = หมดอายุภายในเดือนที่กำหนด</p>
           <div class="row" style="align-items:flex-end;margin-top:8px">
-            <div class="field"><label>ค่าเริ่มต้น (รายการที่ไม่ได้กำหนด)</label><input id="stDefaultLowStock" type="number" min="1" step="1" value="10"></div>
+            <div class="field"><label>เตือนใกล้หมด — ค่าเริ่มต้น (รายการที่ไม่ได้กำหนด)</label><input id="stDefaultLowStock" type="number" min="1" step="1" value="10"></div>
+            <div class="field"><label>เตือนใกล้หมดอายุ — ล่วงหน้า (เดือน)</label><input id="stExpiryWarnMonths" type="number" min="1" max="60" step="1" value="6"></div>
             <div class="field" style="flex:2"><label>ค้นหารายการ</label><input id="lowStockQ" placeholder="ชื่อ / รหัส / หมวด" oninput="renderLowStockSettings()"></div>
           </div>
           <div class="table-wrap low-stock-settings-wrap" style="margin-top:10px"><table id="lowStockTable"></table></div>
-          <button type="button" class="btn secondary" style="margin-top:10px" onclick="saveLowStockSettings()">บันทึกการเตือนใกล้หมด</button>
+          <button type="button" class="btn secondary" style="margin-top:10px" onclick="saveLowStockSettings()">บันทึกการตั้งค่าเตือน</button>
         </div>
         <div class="card" style="margin-top:14px">
           <h3>ผู้ใช้ที่ Login ได้</h3>
@@ -399,13 +400,13 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=51"></script>
-  <script src="js/api.js?v=51"></script>
-  <script src="js/options.js?v=51"></script>
-  <script src="js/thdate.js?v=51"></script>
-  <script src="js/seed.js?v=51"></script>
-  <script src="js/ocr.js?v=51"></script>
-  <script src="js/app.js?v=51"></script>
-  <script src="js/auth.js?v=51"></script>
+  <script src="js/db.js?v=52"></script>
+  <script src="js/api.js?v=52"></script>
+  <script src="js/options.js?v=52"></script>
+  <script src="js/thdate.js?v=52"></script>
+  <script src="js/seed.js?v=52"></script>
+  <script src="js/ocr.js?v=52"></script>
+  <script src="js/app.js?v=52"></script>
+  <script src="js/auth.js?v=52"></script>
 </body>
 </html>

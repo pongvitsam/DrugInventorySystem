@@ -108,6 +108,9 @@ function applyBoot(b) {
   document.getElementById('stIssPos').value = s.issuerPosition || '';
   var stLow = document.getElementById('stDefaultLowStock');
   if (stLow) stLow.value = s.defaultLowStock || '10';
+  var stExp = document.getElementById('stExpiryWarnMonths');
+  if (stExp) stExp.value = s.expiryWarnMonths || '6';
+  updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
   ThDate.set('rcDate', todayInput());
   ThDate.set('wdDate', todayInput());
@@ -294,6 +297,17 @@ function ensureOptionOnSave(listKey, value) {
   return persistOptionLists();
 }
 
+function getExpiryWarnMonths() {
+  var s = (STATE.boot && STATE.boot.settings) || {};
+  var n = Math.round(Number(s.expiryWarnMonths));
+  if (!n || n < 1) n = 6;
+  return Math.min(60, n);
+}
+function updateExpiryWarnLabels(months) {
+  months = Math.max(1, Math.min(60, Math.round(Number(months) || 6)));
+  var title = document.getElementById('dashExpiryTitle');
+  if (title) title.textContent = 'ใกล้หมดอายุ (' + months + ' เดือน)';
+}
 function renderDash(b) {
   var d = b.dashboard;
   var total = Number(d.totalValue || 0);
@@ -1990,20 +2004,29 @@ function renderLowStockSettings() {
 
 function saveLowStockSettings() {
   var defaultLow = Number(document.getElementById('stDefaultLowStock').value || 10);
+  var expiryWarnMonths = Number(document.getElementById('stExpiryWarnMonths').value || 6);
   var items = [];
   document.querySelectorAll('.low-stock-input').forEach(function (inp) {
     items.push({ id: inp.getAttribute('data-low-id'), lowStock: inp.value === '' ? 0 : Number(inp.value) });
   });
-  api('saveLowStockSettings', { defaultLowStock: defaultLow, items: items }).then(function (r) {
+  api('saveLowStockSettings', { defaultLowStock: defaultLow, expiryWarnMonths: expiryWarnMonths, items: items }).then(function (r) {
     if (STATE.boot) {
       STATE.boot.settings = r.settings || STATE.boot.settings;
-      if (STATE.boot.settings) STATE.boot.settings.defaultLowStock = String(r.defaultLowStock);
+      if (STATE.boot.settings) {
+        STATE.boot.settings.defaultLowStock = String(r.defaultLowStock);
+        if (r.expiryWarnMonths != null) STATE.boot.settings.expiryWarnMonths = String(r.expiryWarnMonths);
+      }
     }
-    toast('บันทึกการเตือนใกล้หมดแล้ว');
+    updateExpiryWarnLabels(r.expiryWarnMonths || expiryWarnMonths);
+    toast('บันทึกการตั้งค่าเตือนแล้ว');
     loadLowStockSettings();
     loadItems();
     refreshStockCache().then(function () {
       if (document.getElementById('page-stock').classList.contains('active')) renderStock();
+    });
+    api('bootstrap').then(function (b) {
+      if (STATE.boot) STATE.boot.dashboard = b.dashboard;
+      renderDash(b);
     });
   }).catch(function (e) { toast(e.message || String(e)); });
 }
