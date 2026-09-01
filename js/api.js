@@ -19,9 +19,9 @@ var CATEGORIES = [
 var SHEET_DEFS = {
   Settings: ['key', 'value'],
   Items: ['id', 'code', 'name', 'form', 'category', 'valueCategory', 'packSize', 'unit', 'unitPrice', 'yearQuota', 'lowStock', 'active', 'notes'],
-  Stock: ['id', 'itemId', 'location', 'qty', 'unitPrice', 'expiry', 'lotNote'],
+  Stock: ['id', 'itemId', 'location', 'qty', 'unitPrice', 'packSize', 'expiry', 'lotNote'],
   Receipts: ['id', 'number', 'date', 'source', 'kind', 'notes', 'totalValue', 'createdAt'],
-  ReceiptLines: ['id', 'receiptId', 'itemId', 'qtyText', 'qty', 'unitPrice', 'amount', 'expiry', 'requestedQty', 'approvedQty', 'notes'],
+  ReceiptLines: ['id', 'receiptId', 'itemId', 'qtyText', 'qty', 'unitPrice', 'amount', 'packSize', 'expiry', 'requestedQty', 'approvedQty', 'notes'],
   Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
@@ -60,7 +60,7 @@ function enrichStockRow_(s, items) {
   return Object.assign({}, s, {
     name: it.name || '',
     category: it.category || '',
-    packSize: it.packSize || '',
+    packSize: preferSpacedPack_(String(s.packSize || it.packSize || '')),
     amount: round2_(num_(s.qty) * num_(s.unitPrice)),
     locationLabel: LOC_LABEL[s.location] || s.location,
     expiryLabel: formatDate_(s.expiry),
@@ -69,11 +69,28 @@ function enrichStockRow_(s, items) {
   });
 }
 
+function migrateStockPackSizes_() {
+  var items = indexById_(readObjects_('Items'));
+  var stock = readObjects_('Stock');
+  var changed = false;
+  stock.forEach(function (s) {
+    if (!String(s.packSize || '').trim() && items[s.itemId]) {
+      s.packSize = preferSpacedPack_(items[s.itemId].packSize || '');
+      if (s.packSize) changed = true;
+    }
+  });
+  if (changed) {
+    writeObjects_('Stock', stock);
+    invalidateStockCaches_();
+  }
+}
+
 function sortStockRows_(rows) {
   rows.sort(function (a, b) {
     var ae = a.expiry || '9999-99-99';
     var be = b.expiry || '9999-99-99';
     return String(a.name).localeCompare(String(b.name), 'th') ||
+      String(a.packSize || '').localeCompare(String(b.packSize || ''), 'th') ||
       ae.localeCompare(be) ||
       String(a.category).localeCompare(String(b.category), 'th');
   });
@@ -94,6 +111,7 @@ function markFefoRecommend_(rows) {
 
 function callApi(name, payload) {
   ensureDb_();
+  migrateStockPackSizes_();
   var fns = {
     bootstrap: apiBootstrap_,
     saveSettings: apiSaveSettings_,
@@ -243,16 +261,19 @@ function apiRemoveUser_(p) {
 
 function apiListItems_() {
   var items = normalizeItemPacks_(readObjects_('Items'));
+  var itemMap = indexById_(items);
   var stock = readObjects_('Stock').filter(function (s) {
     return s.location === LOC_MAIN && num_(s.qty) > 0;
   });
   var byItem = {};
   stock.forEach(function (s) {
     if (!byItem[s.itemId]) byItem[s.itemId] = [];
+    var it = itemMap[s.itemId] || {};
     byItem[s.itemId].push({
       stockId: s.id,
       qty: round4_(num_(s.qty)),
       unitPrice: num_(s.unitPrice),
+      packSize: preferSpacedPack_(String(s.packSize || it.packSize || '')),
       expiry: s.expiry || '',
       expiryLabel: formatDate_(s.expiry),
       nearExpiry: isNearExpiry_(s.expiry),
@@ -376,6 +397,9 @@ function apiSaveStockLots_(p) {
       if (!row || row.itemId !== itemId) throw new Error('ไม่พบล็อตสต็อก');
       var oldQty = num_(row.qty);
       row.expiry = expiry;
+      if (lot.packSize != null && String(lot.packSize).trim()) {
+        row.packSize = preferSpacedPack_(String(lot.packSize));
+      }
       if (qty <= 0) {
         if (oldQty > 0) {
           moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, -oldQty, num_(row.unitPrice),
@@ -394,7 +418,8 @@ function apiSaveStockLots_(p) {
     }
     if (qty <= 0) return;
     var unitPrice = num_(lot.unitPrice != null ? lot.unitPrice : defaultPrice);
-    var added = addStock_(stock, itemId, LOC_MAIN, qty, unitPrice, expiry, 'ทะเบียน');
+    var lotPack = preferSpacedPack_(String(lot.packSize || item.packSize || ''));
+    var added = addStock_(stock, itemId, LOC_MAIN, qty, unitPrice, expiry, 'ทะเบียน', lotPack);
     moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, added.id, qty, unitPrice,
       round2_(qty * unitPrice), '', 'เพิ่มล็อตจากทะเบียน'));
   });
@@ -462,6 +487,7 @@ function appendReceiptLines_(rec, lines, items, stock, rLines, moves) {
     var pricing = receiptLinePricing_(line, item, qty);
     var price = pricing.unitPrice;
     var amount = pricing.amount;
+    var linePack = preferSpacedPack_(String(line.packSize || item.packSize || ''));
     rec.totalValue = round2_(num_(rec.totalValue) + amount);
     rLines.push({
       id: nextId_('RL'),
@@ -471,15 +497,16 @@ function appendReceiptLines_(rec, lines, items, stock, rLines, moves) {
       qty: qty,
       unitPrice: price,
       amount: amount,
+      packSize: linePack,
       expiry: toIsoDate_(line.expiry),
       requestedQty: num_(line.requestedQty != null ? line.requestedQty : qty),
       approvedQty: qty,
       notes: String(line.notes || '')
     });
     item.unitPrice = price;
-    if (line.packSize) item.packSize = String(line.packSize);
+    if (!item.packSize && linePack) item.packSize = linePack;
     if (line.code) item.code = String(line.code).trim();
-    var lot = addStock_(stock, item.id, LOC_MAIN, qty, price, toIsoDate_(line.expiry), rec.number);
+    var lot = addStock_(stock, item.id, LOC_MAIN, qty, price, toIsoDate_(line.expiry), rec.number, linePack);
     moves.push(movement_('RECEIVE', rec.date, LOC_MAIN, item.id, lot.id, qty, price, amount, rec.id, rec.number));
   });
 }
@@ -569,7 +596,12 @@ function apiGetReceipt_(p) {
   var items = indexById_(readObjects_('Items'));
   var lines = readObjects_('ReceiptLines').filter(function (l) { return l.receiptId === rec.id; }).map(function (l) {
     var it = items[l.itemId] || {};
-    return Object.assign({}, l, { name: it.name || '', code: it.code || '', packSize: it.packSize || '', category: it.category || '' });
+    return Object.assign({}, l, {
+      name: it.name || '',
+      code: it.code || '',
+      packSize: preferSpacedPack_(String(l.packSize || it.packSize || '')),
+      category: it.category || ''
+    });
   });
   return { receipt: rec, lines: lines };
 }
@@ -624,6 +656,7 @@ function returnStockQty_(stock, line, qty) {
     location: LOC_MAIN,
     qty: qty,
     unitPrice: num_(line.unitPrice),
+    packSize: preferSpacedPack_(String(line.packSize || '')),
     expiry: line.expiry || '',
     lotNote: ''
   };
@@ -647,7 +680,7 @@ function pushTransferLineRecord_(tr, line, stock, items, tLines) {
     unitPrice: price,
     amount: amount,
     expiry: from.expiry || '',
-    packSize: (items[from.itemId] || {}).packSize || '',
+    packSize: preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || '')),
     name: (items[from.itemId] || {}).name || line.name || ''
   });
   tr.totalQty = round4_(num_(tr.totalQty) + qty);
@@ -727,7 +760,7 @@ function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
       unitPrice: price,
       amount: amount,
       expiry: from.expiry || '',
-      packSize: (items[from.itemId] || {}).packSize || '',
+      packSize: preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || '')),
       name: (items[from.itemId] || {}).name || ''
     });
     moves.push(movement_('ISSUE', tr.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, tr.id, ''));
@@ -998,7 +1031,7 @@ function apiImportSeed_(p) {
     var remain = num_(row.remain);
     var price = num_(row.unitPrice) || num_(item.unitPrice);
     if (remain > 0) {
-      var lot = addStock_(stock, item.id, LOC_MAIN, remain, price, '', 'ยอดยกมา พ.ค.69');
+      var lot = addStock_(stock, item.id, LOC_MAIN, remain, price, '', 'ยอดยกมา พ.ค.69', preferSpacedPack_(item.packSize || row.packSize || ''));
       var amt = round2_(remain * price);
       moves.push(movement_('OPENING', '2026-05-31', LOC_MAIN, item.id, lot.id, remain, price, amt, 'SEED', 'เปิดระบบ'));
     }
@@ -1060,14 +1093,18 @@ function buildDashboard_(items, stock, receipts, transfers) {
   };
 }
 
-function addStock_(stock, itemId, location, qty, price, expiry, lotNote) {
+function addStock_(stock, itemId, location, qty, price, expiry, lotNote, packSize) {
   expiry = expiry || '';
   price = num_(price);
+  packSize = preferSpacedPack_(String(packSize || ''));
+  var packKey = packKey_(packSize);
   var found = stock.filter(function (s) {
-    return s.itemId === itemId && s.location === location && num_(s.unitPrice) === price && String(s.expiry || '') === expiry;
+    return s.itemId === itemId && s.location === location && num_(s.unitPrice) === price &&
+      String(s.expiry || '') === expiry && packKey_(s.packSize) === packKey;
   })[0];
   if (found) {
     found.qty = round4_(num_(found.qty) + num_(qty));
+    if (packSize && !found.packSize) found.packSize = packSize;
     return found;
   }
   var row = {
@@ -1076,6 +1113,7 @@ function addStock_(stock, itemId, location, qty, price, expiry, lotNote) {
     location: location,
     qty: round4_(num_(qty)),
     unitPrice: price,
+    packSize: packSize,
     expiry: expiry,
     lotNote: lotNote || ''
   };

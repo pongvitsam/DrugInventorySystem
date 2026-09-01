@@ -316,6 +316,16 @@ function loadItems() {
     renderItems();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+function formatItemPackLabel(it, lots) {
+  var seen = {};
+  (lots || []).forEach(function (l) {
+    if (l.packSize) seen[l.packSize] = 1;
+  });
+  var keys = Object.keys(seen);
+  if (keys.length > 1) return keys.sort().join(', ');
+  if (keys.length === 1) return keys[0];
+  return it.packSize || '';
+}
 function renderItems() {
   var q = (document.getElementById('itemQ').value || '').toLowerCase();
   var cat = document.getElementById('itemCatFilter').value;
@@ -344,13 +354,15 @@ function renderItems() {
       lotHtml = '<div class="lot-list">' + lots.map(function (l) {
         var exp = l.expiryLabel || (l.expiry ? ThDate.formatDateLong(l.expiry) : 'ไม่ระบุวันหมดอายุ');
         var pill = l.nearExpiry ? 'pill warn' : 'pill';
-        return '<div class="lot-row"><b>' + l.qty + '</b> · <span class="' + pill + '">' + esc(exp) + '</span></div>';
+        return '<div class="lot-row"><b>' + l.qty + '</b>' +
+          (l.packSize ? ' · ' + esc(l.packSize) : '') +
+          ' · <span class="' + pill + '">' + esc(exp) + '</span></div>';
       }).join('') + '</div>';
     }
     var qty = Number(i.stockQty || 0);
     return '<tr><td>' + (i.code ? esc(i.code) : '<span class="muted">—</span>') +
       '</td><td>' + esc(i.name) +
-      '</td><td>' + esc(i.category) + '</td><td>' + esc(i.packSize) +
+      '</td><td>' + esc(i.category) + '</td><td>' + esc(formatItemPackLabel(i, lots)) +
       '</td><td class="right">' + money(i.unitPrice) +
       '</td><td class="right"><b>' + qty + '</b>' +
       (i.stockValue && qty > 0 ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
@@ -396,10 +408,10 @@ function deleteItem(id) {
 function renderItemStockLots(it) {
   var lots = (it && it.lots && it.lots.length) ? it.lots : [];
   STATE.editingItemLots = lots.map(function (l) {
-    return { stockId: l.stockId || '', qty: Number(l.qty || 0), expiry: l.expiry || '' };
+    return { stockId: l.stockId || '', qty: Number(l.qty || 0), expiry: l.expiry || '', packSize: l.packSize || '' };
   });
   STATE.itemLotDraft = STATE.editingItemLots.map(function (l) {
-    return { stockId: l.stockId, qty: l.qty, expiry: l.expiry };
+    return { stockId: l.stockId, qty: l.qty, expiry: l.expiry, packSize: l.packSize || '' };
   });
   paintItemStockLots();
 }
@@ -408,6 +420,8 @@ function itemLotRowHtml(i, l) {
   return '<div class="item-lot-row">' +
     '<div class="field"><label>คงเหลือ</label><input type="number" min="0" step="1" value="' + (l.qty || 0) +
     '" oninput="setItemLotField(' + i + ',\'qty\',this.value)"></div>' +
+    '<div class="field"><label>บรรจุ</label><input value="' + esc(l.packSize || '') + '" placeholder="เช่น 100\'s" ' +
+    'oninput="setItemLotField(' + i + ',\'packSize\',this.value)"></div>' +
     '<div class="field"><label>วันหมดอายุ</label>' +
     ThDate.fieldHtml('itLotExp_' + i, l.expiry || '', 'setItemLotField(' + i + ',\'expiry\',this.value)', true) +
     '</div>' +
@@ -431,7 +445,8 @@ function setItemLotField(i, key, val) {
 
 function addItemStockLotRow() {
   STATE.itemLotDraft = STATE.itemLotDraft || [];
-  STATE.itemLotDraft.push({ stockId: '', qty: 0, expiry: '' });
+  var defPack = readOptionSelect('itPack') || '';
+  STATE.itemLotDraft.push({ stockId: '', qty: 0, expiry: '', packSize: defPack });
   paintItemStockLots();
 }
 
@@ -453,7 +468,7 @@ function saveItem() {
     notes: document.getElementById('itNotes').value
   };
   var lots = (STATE.itemLotDraft || []).filter(function (l) {
-    return l.stockId || Number(l.qty) > 0 || l.expiry;
+    return l.stockId || Number(l.qty) > 0 || l.expiry || l.packSize;
   });
   var origIds = (STATE.editingItemLots || []).map(function (l) { return l.stockId; }).filter(Boolean);
   var currentIds = lots.filter(function (l) { return l.stockId; }).map(function (l) { return l.stockId; });
