@@ -390,7 +390,7 @@ textarea { min-height: 70px; }
   .print-sheet strong { font-weight: 700; }
   .print-sheet .rp-table-wrap { overflow: visible; page-break-inside: auto; }
   .print-sheet h3 { page-break-after: avoid; }
-  .print-sheet .sign-grid { font-size: 16pt; }
+  .print-sheet .sign-grid { font-size: 14pt; }
   .print-sheet::before {
     content: 'รพ.สต.ทรายขาว';
     position: fixed; top: 45%; left: 50%;
