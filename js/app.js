@@ -1018,7 +1018,7 @@ function renderOcrReview() {
   var rows = STATE.ocrReview || [];
   var card = document.getElementById('ocrReviewCard');
   if (card) card.style.display = rows.length ? 'block' : 'none';
-  var html = '<tr><th></th><th>รายการ (เลือกจากทะเบียน)</th><th class="right">จำนวน</th><th>หน่วยบรรจุ</th><th>วันหมดอายุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>สถานะ</th></tr>';
+  var html = '<tr><th></th><th>รหัสยา</th><th>รายการ (เลือกจากทะเบียน)</th><th class="right">จำนวน</th><th>หน่วยบรรจุ</th><th>วันหมดอายุ</th><th class="right">ราคา/หน่วย</th><th class="right">เป็นเงิน</th><th>สถานะ</th></tr>';
   var tot = 0;
   var kept = 0;
   html += rows.map(function (l, i) {
@@ -1029,6 +1029,7 @@ function renderOcrReview() {
     }
     return '<tr class="' + (l.keep ? '' : 'ocr-skip') + '">' +
       '<td><input type="checkbox" ' + (l.keep ? 'checked' : '') + ' onchange="STATE.ocrReview[' + i + '].keep=this.checked;renderOcrReview()"></td>' +
+      '<td><input class="ocr-code-input" value="' + esc(l.code || '') + '" placeholder="รหัส" style="width:88px" onchange="updateOcrField(' + i + ',\'code\',this.value)"></td>' +
       '<td>' + ocrRegistrySelectHtml(i, l) + '</td>' +
       '<td class="right"><input type="number" min="0" step="1" value="' + (l.qty || '') + '" style="width:80px" onchange="updateOcrField(' + i + ',\'qty\',this.value)"></td>' +
       '<td>' + ocrPackSelectHtml(i, l) + '</td>' +
@@ -1076,7 +1077,7 @@ function confirmOcrReview() {
     var it = l.itemId ? (STATE.items || []).filter(function (x) { return String(x.id) === String(l.itemId); })[0] : null;
     STATE.receive.lines.push({
       itemId: l.itemId || '',
-      code: (it && it.code) || l.code || '',
+      code: String(l.code || (it && it.code) || '').trim(),
       name: String(l.name).trim(),
       packSize: pack,
       category: l.category || (kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
