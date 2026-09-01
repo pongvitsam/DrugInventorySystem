@@ -1563,13 +1563,14 @@ function renderMonth(d) {
   var sm = d.summary || {};
   var period = d.label || '';
   var html = hdr(d.settings, 'สรุปคลังหลัก', period);
-  html += '<div class="cards" style="margin-bottom:14px">' +
-    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย', 'sky') +
-    kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย', 'sand') +
+  html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
+    kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
+    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · ในช่วงที่เลือก', 'sky') +
+    kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
-    html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยกมา</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
+    html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
     g.rows.forEach(function (r) {
       html += '<tr><td>' + esc(r.item.name) + '</td><td>' + esc(r.item.packSize) + '</td><td class="right">' + money(r.item.unitPrice) + '</td><td class="right">' + r.opening + '</td><td class="right">' + r.received + '</td><td class="right">' + r.issued + '</td><td class="right"><b>' + r.remain + '</b></td><td class="right">' + money(r.remainValue) + '</td></tr>';
     });
@@ -1582,12 +1583,13 @@ function renderMonth(d) {
 function renderMoney(d) {
   var t = d.totals || {};
   var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', d.label || '');
-  html += '<div class="cards" style="margin-bottom:14px">' +
+  html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
+    kpi('ยอดคงเหลือเดิม', money(t.opening) + ' ฿', 'ต้นช่วงที่เลือก', 'leaf') +
     kpi('รับเข้า', money(t.receive) + ' ฿', 'ในช่วงที่เลือก', 'sky') +
-    kpi('เบิกออก', money(t.used) + ' ฿', 'ในช่วงที่เลือก', 'sand') +
+    kpi('เบิกออก', money(t.used) + ' ฿', 'เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ', money(t.remain) + ' ฿', 'ณ สิ้นช่วง', 'teal') +
     '</div>';
-  html += '<table><tr><th>หมวด</th><th class="right">ยอดยกมา</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
+  html += '<table><tr><th>หมวด</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
   (d.rows || []).forEach(function (r) {
     html += '<tr><td>' + esc(r.category) + '</td><td class="right">' + money(r.opening) + '</td><td class="right">' + money(r.receive) + '</td><td class="right">' + money(r.used) + '</td><td class="right"><b>' + money(r.remain) + '</b></td></tr>';
   });

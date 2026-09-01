@@ -897,6 +897,7 @@ select option[value="__add__"] {
 .rp-toolbar { flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .rp-range-mode { display: flex; gap: 6px; flex-wrap: wrap; }
 .rp-range-row { gap: 10px; margin: 0; flex: 1 1 320px; }
+.rp-summary-cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .stock-low-row td { background: #fff5f3; }
 .stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
 .qty-low {

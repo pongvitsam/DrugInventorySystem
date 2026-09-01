@@ -844,6 +844,21 @@ function apiGetTransfer_(p) {
   return { transfer: tr, lines: lines, settings: readSettings_() };
 }
 
+function reportMoveBuckets_(m, ch) {
+  var recv = 0;
+  var issue = 0;
+  if (m.type === 'RECEIVE' || m.type === 'OPENING') {
+    recv = Math.max(ch, 0);
+  } else if (m.type === 'RETURN' && ch > 0) {
+    recv = ch;
+  } else if (m.type === 'COUNT' && ch > 0) {
+    recv = ch;
+  } else if (m.type === 'ISSUE' && ch < 0) {
+    issue = -ch;
+  }
+  return { recv: recv, issue: issue, change: ch };
+}
+
 function apiMonthReport_(p) {
   var rr = reportRange_(p);
   var range = { start: rr.start, end: rr.end };
@@ -857,10 +872,13 @@ function apiMonthReport_(p) {
       opening: 0,
       received: 0,
       issued: 0,
+      periodChange: 0,
+      periodChangeValue: 0,
       remain: 0,
       receivedValue: 0,
       issuedValue: 0,
-      remainValue: 0
+      remainValue: 0,
+      openingValue: 0
     };
   });
   stock.forEach(function (s) {
@@ -878,19 +896,20 @@ function apiMonthReport_(p) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
     } else if (d >= range.start && d <= range.end) {
-      if (m.type === 'RECEIVE' || m.type === 'OPENING') {
-        row.received += Math.max(ch, 0);
-        row.receivedValue += Math.max(ch, 0) * num_(m.unitPrice);
-      }
-      if (ch < 0) {
-        row.issued += -ch;
-        row.issuedValue += (-ch) * num_(m.unitPrice);
-      }
+      var buckets = reportMoveBuckets_(m, ch);
+      var price = num_(m.unitPrice);
+      row.periodChange += buckets.change;
+      row.periodChangeValue += buckets.change * price;
+      row.received += buckets.recv;
+      row.receivedValue += buckets.recv * price;
+      row.issued += buckets.issue;
+      row.issuedValue += buckets.issue * price;
     }
   });
   Object.keys(byItem).forEach(function (id) {
     var r = byItem[id];
-    r.opening = round4_(r.remain - r.received + r.issued);
+    r.opening = round4_(r.remain - r.periodChange);
+    r.openingValue = round2_(r.remainValue - r.periodChangeValue);
     r.remain = round4_(r.remain);
     r.received = round4_(r.received);
     r.issued = round4_(r.issued);
@@ -927,6 +946,10 @@ function apiMonthReport_(p) {
     }
   }
   var summary = {
+    openingValue: round2_(Object.keys(byItem).reduce(function (s, id) {
+      return s + byItem[id].openingValue;
+    }, 0)),
+    openingQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].opening; }, 0)),
     receivedValue: round2_(groups.reduce(function (s, g) { return s + g.receivedValue; }, 0)),
     issuedValue: round2_(groups.reduce(function (s, g) { return s + g.issuedValue; }, 0)),
     remainValue: round2_(groups.reduce(function (s, g) { return s + g.totalValue; }, 0)),
@@ -953,7 +976,7 @@ function apiMoneyReport_(p) {
   var moves = readObjects_('Movements');
   var map = {};
   CATEGORIES.forEach(function (c) {
-    map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0 };
+    map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
   });
   stock.forEach(function (s) {
     if (s.location !== LOC_MAIN) return;
@@ -966,16 +989,18 @@ function apiMoneyReport_(p) {
     if (m.location !== LOC_MAIN) return;
     var it = items[m.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
-    if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0 };
+    if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
     var d = m.date;
-    var amt = num_(m.qtyChange) * num_(m.unitPrice);
+    var ch = num_(m.qtyChange);
+    var val = ch * num_(m.unitPrice);
     if (d > range.end) {
-      map[cat].remain -= amt;
+      map[cat].remain -= val;
     } else if (d >= range.start && d <= range.end) {
-      if (m.type === 'RECEIVE' || m.type === 'OPENING') map[cat].receive += Math.max(amt, 0);
-      if (m.type === 'ISSUE' || m.type === 'TRANSFER_OUT' || m.type === 'USAGE' || (m.type === 'COUNT' && num_(m.qtyChange) < 0)) {
-        map[cat].used += Math.max(-amt, 0);
-      }
+      var buckets = reportMoveBuckets_(m, ch);
+      var price = num_(m.unitPrice);
+      map[cat].periodChange += ch * price;
+      map[cat].receive += buckets.recv * price;
+      map[cat].used += buckets.issue * price;
     }
   });
   var rows = Object.keys(map).map(function (c) {
@@ -983,7 +1008,7 @@ function apiMoneyReport_(p) {
     r.remain = round2_(r.remain);
     r.receive = round2_(r.receive);
     r.used = round2_(r.used);
-    r.opening = round2_(r.remain - r.receive + r.used);
+    r.opening = round2_(r.remain - (r.periodChange || 0));
     return r;
   }).filter(function (r) { return r.opening || r.receive || r.used || r.remain; });
   return {
@@ -993,6 +1018,7 @@ function apiMoneyReport_(p) {
     settings: readSettings_(),
     rows: rows,
     totals: {
+      opening: round2_(rows.reduce(function (s, r) { return s + r.opening; }, 0)),
       receive: round2_(rows.reduce(function (s, r) { return s + r.receive; }, 0)),
       used: round2_(rows.reduce(function (s, r) { return s + r.used; }, 0)),
       remain: round2_(rows.reduce(function (s, r) { return s + r.remain; }, 0))
