@@ -1579,10 +1579,59 @@ function rpTableHead() {
     '<th class="col-val right">มูลค่า</th>' +
     '</tr></thead>';
 }
+function renderMonthIssueBrief(d) {
+  var sm = d.summary || {};
+  var period = d.label || '';
+  var rows = [];
+  (d.groups || []).forEach(function (g) {
+    g.rows.forEach(function (r) {
+      if (Number(r.issued) > 0) {
+        rows.push({
+          name: r.item.name,
+          packSize: r.item.packSize,
+          issued: r.issued,
+          issuedValue: Number(r.issuedValue || 0) || round2_(Number(r.issued) * Number(r.item.unitPrice || 0))
+        });
+      }
+    });
+  });
+  rows.sort(function (a, b) {
+    return String(a.name).localeCompare(String(b.name), 'th') ||
+      String(a.packSize).localeCompare(String(b.packSize), 'th');
+  });
+  var html = '<div class="rp-print-brief print-only">';
+  html += hdr(d.settings, 'สรุปเบิกออกจากคลังหลัก', period);
+  html += '<div class="rp-print-total">' +
+    '<p class="rp-print-big"><b>' + money(sm.issuedValue) + ' บาท</b></p>' +
+    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจากคลังหลักในช่วงที่เลือก</p>' +
+    '</div>';
+  if (rows.length) {
+    html += '<table class="rp-table rp-print-table"><thead><tr>' +
+      '<th class="col-item">รายการ</th><th class="col-pack">บรรจุ</th>' +
+      '<th class="col-num right">จำนวนเบิก</th><th class="col-val right">มูลค่า (บาท)</th>' +
+      '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      html += '<tr><td class="col-item">' + esc(r.name) + '</td><td class="col-pack">' + esc(r.packSize) +
+        '</td><td class="col-num right">' + r.issued + '</td><td class="col-val right">' + money(r.issuedValue) + '</td></tr>';
+    });
+    html += '<tr class="rp-total-row"><td colspan="3" class="right"><b>รวมเบิกออก</b></td>' +
+      '<td class="col-val right"><b>' + money(sm.issuedValue) + '</b></td></tr></tbody></table>';
+  } else {
+    html += '<p class="rp-print-empty" style="text-align:center;margin:28px 0">ไม่มีรายการเบิกออกจากคลังหลักในช่วงที่เลือก</p>';
+  }
+  html += signBlock4(d.settings);
+  html += '</div>';
+  return html;
+}
+function round2(n) {
+  return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
+}
 function renderMonth(d) {
   var sm = d.summary || {};
   var period = d.label || '';
-  var html = hdr(d.settings, 'สรุปคลังหลัก', period);
+  var html = renderMonthIssueBrief(d);
+  html += '<div class="rp-screen-only">';
+  html += hdr(d.settings, 'สรุปคลังหลัก', period);
   html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
     kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
     kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · จากใบรับเข้าในช่วงที่เลือก', 'sky') +
@@ -1599,7 +1648,7 @@ function renderMonth(d) {
     html += '<tr class="rp-total-row"><td colspan="8" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="col-val right"><b>' + money(g.totalValue) + '</b></td></tr></tbody></table></div>';
   });
   html += '<p class="right"><b>รวมคงเหลือทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
-  html += signBlock4(d.settings);
+  html += '</div>';
   document.getElementById('reportOut').innerHTML = html;
 }
 function renderMoney(d) {
