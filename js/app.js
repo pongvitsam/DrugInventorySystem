@@ -188,7 +188,6 @@ function refillItemModalSelects(opts) {
   fillOptionSelect('itCat', STATE.optionLists.categories, opts.category || 'ยาเม็ด', false);
   fillOptionSelect('itPack', STATE.optionLists.packSizes, opts.packSize || '', true);
   fillOptionSelect('itForm', STATE.optionLists.forms, opts.form || '', true);
-  ['itCat', 'itPack', 'itForm'].forEach(function () {});
   document.querySelectorAll('.opt-manage-pop').forEach(function (p) { p.style.display = 'none'; });
 }
 
@@ -388,8 +387,57 @@ function openItem(id) {
     addItemStockLotRow();
   }
   document.getElementById('itemModal').style.display = 'flex';
+  hideItemNameSuggest();
 }
-function closeModal() { document.getElementById('itemModal').style.display = 'none'; }
+function closeModal() {
+  document.getElementById('itemModal').style.display = 'none';
+  hideItemNameSuggest();
+}
+function hideItemNameSuggest() {
+  var box = document.getElementById('itNameSuggest');
+  if (!box) return;
+  box.style.display = 'none';
+  box.innerHTML = '';
+}
+var itemNameTimer = 0;
+function searchItemNameSuggest() {
+  clearTimeout(itemNameTimer);
+  itemNameTimer = setTimeout(function () {
+    var q = (document.getElementById('itName').value || '').trim();
+    var box = document.getElementById('itNameSuggest');
+    if (!box) return;
+    if (!q || q.length < 2) {
+      hideItemNameSuggest();
+      return;
+    }
+    var ql = q.toLowerCase();
+    var items = (STATE.items || []).filter(function (i) {
+      if (i.active === '0') return false;
+      var curId = document.getElementById('itId').value;
+      if (curId && i.id === curId) return false;
+      return (String(i.name) + ' ' + (i.code || '') + ' ' + (i.packSize || '')).toLowerCase().indexOf(ql) >= 0;
+    }).slice(0, 12);
+    if (!items.length) {
+      box.style.display = 'block';
+      box.innerHTML = '<div class="muted" style="padding:9px 12px">ไม่พบชื่อใกล้เคียง — ใช้ชื่อนี้เป็นรายการใหม่ได้</div>';
+      return;
+    }
+    box.style.display = 'block';
+    box.innerHTML = items.map(function (i) {
+      return '<div onclick="pickItemNameSuggest(\'' + i.id + '\')">' +
+        (i.code ? esc(i.code) + ' · ' : '') + esc(i.name) +
+        ' <span class="pill">มีแล้ว</span> <span class="muted">' + esc(i.packSize || '') +
+        (Number(i.stockQty || 0) > 0 ? ' · คงเหลือ ' + i.stockQty : '') + '</span></div>';
+    }).join('');
+  }, 200);
+}
+function pickItemNameSuggest(id) {
+  hideItemNameSuggest();
+  var it = (STATE.items || []).filter(function (x) { return x.id === id; })[0];
+  if (!it) return;
+  if (!confirm('พบ "' + it.name + '" ในทะเบียนแล้ว — เปิดแก้ไขแทนการสร้างใหม่?')) return;
+  openItem(id);
+}
 
 function deleteItem(id) {
   var it = (STATE.items || []).filter(function (x) { return x.id === id; })[0];

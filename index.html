@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=34">
+  <link rel="stylesheet" href="css/styles.css?v=35">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -320,7 +320,11 @@
       <h3 id="itemModalTitle">รายการยา</h3>
       <input type="hidden" id="itId">
       <div class="row">
-        <div class="field" style="flex:2"><label>ชื่อ</label><input id="itName"></div>
+        <div class="field suggest" style="flex:2">
+          <label>ชื่อ</label>
+          <input id="itName" autocomplete="off" oninput="searchItemNameSuggest()" onfocus="searchItemNameSuggest()">
+          <div class="suggest-list" id="itNameSuggest"></div>
+        </div>
         <div class="field"><label>รหัสยา</label><input id="itCode"></div>
       </div>
       <div class="row" style="margin-top:8px">
@@ -370,13 +374,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=34"></script>
-  <script src="js/api.js?v=34"></script>
-  <script src="js/options.js?v=34"></script>
-  <script src="js/thdate.js?v=34"></script>
-  <script src="js/seed.js?v=34"></script>
-  <script src="js/ocr.js?v=34"></script>
-  <script src="js/app.js?v=34"></script>
-  <script src="js/auth.js?v=34"></script>
+  <script src="js/db.js?v=35"></script>
+  <script src="js/api.js?v=35"></script>
+  <script src="js/options.js?v=35"></script>
+  <script src="js/thdate.js?v=35"></script>
+  <script src="js/seed.js?v=35"></script>
+  <script src="js/ocr.js?v=35"></script>
+  <script src="js/app.js?v=35"></script>
+  <script src="js/auth.js?v=35"></script>
 </body>
 </html>
