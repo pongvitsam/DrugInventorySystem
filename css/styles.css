@@ -289,10 +289,6 @@ textarea { min-height: 70px; }
     size: A4 portrait;
     margin: 12mm 10mm;
   }
-  @page report-landscape {
-    size: A4 landscape;
-    margin: 10mm 8mm;
-  }
   .sidebar, .toolbar, .btn, .toast, .nav-btn, .sheet-link, .stock-alert, .stock-filters { display: none !important; }
   .app { display: block; }
   .main { max-width: none; padding: 0; }
@@ -335,14 +331,13 @@ textarea { min-height: 70px; }
   .print-sheet table { font-size: 11px; }
   .print-sheet th, .print-sheet td { padding: 4px 5px; }
   html.print-report .print-sheet {
-    page: report-landscape;
-    max-width: none;
+    max-width: 190mm;
   }
   html.print-report .rp-summary-cards { display: none !important; }
-  .print-sheet .rp-table { font-size: 9px; }
+  .print-sheet .rp-table { font-size: 8px; }
   .print-sheet .rp-table thead { display: table-header-group; }
   .print-sheet .rp-table tr { page-break-inside: avoid; break-inside: avoid; }
-  .print-sheet .rp-table td, .print-sheet .rp-table th { border: 1px solid #bbb; }
+  .print-sheet .rp-table td, .print-sheet .rp-table th { border: 1px solid #bbb; padding: 2px 3px; }
   .print-sheet .rp-table-wrap { overflow: visible; page-break-inside: auto; }
   .print-sheet h3 { page-break-after: avoid; margin-top: 10px; }
   .print-sheet::before {
