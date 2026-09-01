@@ -990,6 +990,25 @@ select option[value="__add__"] {
 #reportOut.print-sheet h3 { font-size: 14pt; font-weight: 700; }
 #reportOut.print-sheet .rp-table { font-size: 14pt; }
 #reportOut.print-sheet .rp-table th { font-weight: 700; }
+
+/* หน้าสรุปรายเดือน — ขนาดตัวอักษรบนจอ (สอดคล้อง PDF 14pt) */
+#page-reports .top h2 { font-size: 22px; }
+#page-reports .top .sub { font-size: 13px; }
+#reportOut.print-sheet { font-size: 14px; }
+#reportOut.print-sheet h2 { font-size: 16px; margin: 6px 0 4px; }
+#reportOut.print-sheet h3 { font-size: 14px; font-weight: 700; margin: 10px 0 6px; }
+#reportOut.print-sheet .muted { font-size: 13px; }
+#reportOut.print-sheet .rp-table,
+#reportOut.print-sheet .rp-table th,
+#reportOut.print-sheet .rp-table td { font-size: 14px; }
+#reportOut.print-sheet .rp-table th,
+#reportOut.print-sheet .rp-table td { padding: 5px 4px; }
+#reportOut.print-sheet .rp-summary-cards .kpi { padding: 10px 12px; }
+#reportOut.print-sheet .rp-summary-cards .kpi .value { font-size: 18px; margin-top: 4px; }
+#reportOut.print-sheet .rp-summary-cards .kpi .label { font-size: 12px; }
+#reportOut.print-sheet .rp-summary-cards .kpi .hint { font-size: 11px; margin-top: 4px; }
+#reportOut.print-sheet > .rp-screen-only > p.right { font-size: 14px; }
+#reportOut.print-sheet .sign-grid { font-size: 14px; }
 .stock-low-row td { background: #fff5f3; }
 .stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
 .qty-low {
