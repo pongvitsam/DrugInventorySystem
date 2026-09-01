@@ -880,16 +880,32 @@ function reportPeriodIssue_(m, ch) {
   return m.type === 'ISSUE' && ch < 0 ? -ch : 0;
 }
 
-function apiMonthReport_(p) {
-  var rr = reportRange_(p);
-  var range = { start: rr.start, end: rr.end };
-  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
-  var stock = readObjects_('Stock');
-  var moves = readObjects_('Movements');
-  var byItem = {};
-  items.forEach(function (it) {
-    byItem[it.id] = {
-      item: it,
+function reportRowKey_(itemId, packSize, unitPrice) {
+  return String(itemId) + '|' + packKey_(packSize) + '|' + round2_(num_(unitPrice));
+}
+
+function moveReportLot_(m, stockById, items) {
+  var st = stockById[m.stockId];
+  var it = items[m.itemId] || {};
+  return {
+    packSize: preferSpacedPack_(String((st && st.packSize) || it.packSize || '')),
+    unitPrice: num_(m.unitPrice) || (st ? num_(st.unitPrice) : num_(it.unitPrice))
+  };
+}
+
+function ensureReportRow_(map, itemId, packSize, unitPrice, items) {
+  var it = items[itemId];
+  if (!it) return null;
+  var key = reportRowKey_(itemId, packSize, unitPrice);
+  if (!map[key]) {
+    map[key] = {
+      item: {
+        id: it.id,
+        name: it.name,
+        category: it.category,
+        packSize: preferSpacedPack_(String(packSize || it.packSize || '')),
+        unitPrice: num_(unitPrice) || num_(it.unitPrice)
+      },
       opening: 0,
       received: 0,
       issued: 0,
@@ -903,18 +919,33 @@ function apiMonthReport_(p) {
       remainValue: 0,
       openingValue: 0
     };
-  });
+  }
+  return map[key];
+}
+
+function apiMonthReport_(p) {
+  var rr = reportRange_(p);
+  var range = { start: rr.start, end: rr.end };
+  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
+  var itemMap = indexById_(items);
+  var stock = readObjects_('Stock');
+  var stockById = indexById_(stock);
+  var moves = readObjects_('Movements');
+  var byKey = {};
   stock.forEach(function (s) {
-    if (s.location !== LOC_MAIN || !byItem[s.itemId]) return;
-    byItem[s.itemId].remain += num_(s.qty);
-    byItem[s.itemId].remainValue += num_(s.qty) * num_(s.unitPrice);
+    if (s.location !== LOC_MAIN || !itemMap[s.itemId]) return;
+    var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
+    if (!row) return;
+    row.remain += num_(s.qty);
+    row.remainValue += num_(s.qty) * num_(s.unitPrice);
   });
   moves.forEach(function (m) {
-    var row = byItem[m.itemId];
-    if (!row || m.location !== LOC_MAIN) return;
+    if (m.location !== LOC_MAIN || !itemMap[m.itemId]) return;
+    var lot = moveReportLot_(m, stockById, itemMap);
+    var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
+    if (!row) return;
     var d = m.date;
     var ch = num_(m.qtyChange);
-    var amt = Math.abs(ch) * num_(m.unitPrice);
     if (d > range.end) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
@@ -928,8 +959,8 @@ function apiMonthReport_(p) {
       row.issuedValue += reportPeriodIssue_(m, ch) * price;
     }
   });
-  Object.keys(byItem).forEach(function (id) {
-    var r = byItem[id];
+  Object.keys(byKey).forEach(function (key) {
+    var r = byKey[key];
     r.opening = round4_(r.remain - r.periodChange);
     r.openingValue = round2_(r.remainValue - r.periodChangeValue);
     r.adjusted = round4_(r.periodChange - r.received + r.issued);
@@ -941,10 +972,16 @@ function apiMonthReport_(p) {
     r.issuedValue = round2_(r.issuedValue);
     r.remainValue = round2_(r.remainValue);
   });
+  var allRows = Object.keys(byKey).map(function (k) { return byKey[k]; });
   var groups = [];
   CATEGORIES.forEach(function (cat) {
-    var rows = items.filter(function (i) { return i.category === cat; }).map(function (i) { return byItem[i.id]; })
-      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; });
+    var rows = allRows.filter(function (r) { return r.item.category === cat; })
+      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; })
+      .sort(function (a, b) {
+        return String(a.item.name).localeCompare(String(b.item.name), 'th') ||
+          String(a.item.packSize).localeCompare(String(b.item.packSize), 'th') ||
+          num_(a.item.unitPrice) - num_(b.item.unitPrice);
+      });
     if (rows.length) {
       groups.push({
         category: cat,
@@ -955,31 +992,30 @@ function apiMonthReport_(p) {
       });
     }
   });
-  var extra = items.filter(function (i) { return CATEGORIES.indexOf(i.category) < 0; });
+  var extra = allRows.filter(function (r) { return CATEGORIES.indexOf(r.item.category) < 0; })
+      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; })
+      .sort(function (a, b) {
+        return String(a.item.name).localeCompare(String(b.item.name), 'th') ||
+          String(a.item.packSize).localeCompare(String(b.item.packSize), 'th');
+      });
   if (extra.length) {
-    var erows = extra.map(function (i) { return byItem[i.id]; })
-      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; });
-    if (erows.length) {
       groups.push({
         category: 'อื่น ๆ',
-        rows: erows,
-        totalValue: round2_(erows.reduce(function (s, r) { return s + r.remainValue; }, 0)),
-        receivedValue: round2_(erows.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
-        issuedValue: round2_(erows.reduce(function (s, r) { return s + r.issuedValue; }, 0))
+        rows: extra,
+        totalValue: round2_(extra.reduce(function (s, r) { return s + r.remainValue; }, 0)),
+        receivedValue: round2_(extra.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
+        issuedValue: round2_(extra.reduce(function (s, r) { return s + r.issuedValue; }, 0))
       });
-    }
   }
   var summary = {
-    openingValue: round2_(Object.keys(byItem).reduce(function (s, id) {
-      return s + byItem[id].openingValue;
-    }, 0)),
-    openingQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].opening; }, 0)),
+    openingValue: round2_(allRows.reduce(function (s, r) { return s + r.openingValue; }, 0)),
+    openingQty: round4_(allRows.reduce(function (s, r) { return s + r.opening; }, 0)),
     receivedValue: round2_(groups.reduce(function (s, g) { return s + g.receivedValue; }, 0)),
     issuedValue: round2_(groups.reduce(function (s, g) { return s + g.issuedValue; }, 0)),
     remainValue: round2_(groups.reduce(function (s, g) { return s + g.totalValue; }, 0)),
-    receivedQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].received; }, 0)),
-    issuedQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].issued; }, 0)),
-    remainQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].remain; }, 0))
+    receivedQty: round4_(allRows.reduce(function (s, r) { return s + r.received; }, 0)),
+    issuedQty: round4_(allRows.reduce(function (s, r) { return s + r.issued; }, 0)),
+    remainQty: round4_(allRows.reduce(function (s, r) { return s + r.remain; }, 0))
   };
   return {
     monthKey: rr.monthKey,

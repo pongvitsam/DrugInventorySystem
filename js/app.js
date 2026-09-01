@@ -1587,14 +1587,16 @@ function renderMonth(d) {
     kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
     kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · จากใบรับเข้าในช่วงที่เลือก', 'sky') +
     kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
-    kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
+    kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' แพ็ก · แยกตามบรรจุ', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
     html += '<h3>' + esc(g.category) + '</h3><div class="rp-table-wrap"><table class="rp-table">' + rpTableHead() + '<tbody>';
     g.rows.forEach(function (r) {
-      html += '<tr><td class="col-item">' + esc(r.item.name) + '</td><td class="col-pack">' + esc(r.item.packSize) + '</td><td class="col-price right">' + money(r.item.unitPrice) + '</td><td class="col-num right">' + r.opening + '</td><td class="col-num right">' + r.received + '</td><td class="col-num right">' + r.issued + '</td><td class="col-num right"><b>' + r.remain + '</b></td><td class="col-val right">' + money(r.remainValue) + '</td></tr>';
+      var adj = Number(r.adjusted || 0);
+      var adjCell = adj ? (adj > 0 ? '+' : '') + adj : '0';
+      html += '<tr><td class="col-item">' + esc(r.item.name) + '</td><td class="col-pack">' + esc(r.item.packSize) + '</td><td class="col-price right">' + money(r.item.unitPrice) + '</td><td class="col-num right">' + r.opening + '</td><td class="col-num right">' + r.received + '</td><td class="col-num right">' + r.issued + '</td><td class="col-num right">' + adjCell + '</td><td class="col-num right"><b>' + r.remain + '</b></td><td class="col-val right">' + money(r.remainValue) + '</td></tr>';
     });
-    html += '<tr class="rp-total-row"><td colspan="7" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="col-val right"><b>' + money(g.totalValue) + '</b></td></tr></tbody></table></div>';
+    html += '<tr class="rp-total-row"><td colspan="8" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="col-val right"><b>' + money(g.totalValue) + '</b></td></tr></tbody></table></div>';
   });
   html += '<p class="right"><b>รวมคงเหลือทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
   html += signBlock4(d.settings);
