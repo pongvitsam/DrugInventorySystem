@@ -402,8 +402,13 @@ textarea { min-height: 70px; }
   border: 1px solid var(--line);
   font-weight: 600;
 }
-.btn.ghost.danger { color: var(--danger); }
-.btn.ghost.danger:hover { background: #fff0f0; }
+.btn.ghost.danger {
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 4px 12px rgba(192, 57, 43, 0.2);
+}
+.btn.ghost.danger:hover { background: linear-gradient(135deg, #c0392b, #e74c3c); filter: brightness(1.06); }
 .card h3 {
   margin: 0 0 12px;
   font-size: 16px;
