@@ -951,30 +951,37 @@ function activeRegistryItems() {
 
 function ocrRegistrySelectHtml(i, row) {
   var items = activeRegistryItems();
-  var q = String(row._filter || '').toLowerCase().trim();
   var html = '<div class="ocr-pick">';
-  html += '<input class="ocr-pick-filter" type="search" placeholder="ค้นหาในทะเบียน…" value="' + esc(row._filter || '') + '" ' +
-    'oninput="STATE.ocrReview[' + i + ']._filter=this.value;renderOcrReview()">' ;
-  html += '<select class="ocr-item-select" onchange="pickOcrRegistryItem(' + i + ', this.value)">';
-  html += '<option value="">— เลือกจากทะเบียน —</option>';
-  var shown = 0;
+  html += '<input class="ocr-name-input" data-row="' + i + '" value="' + esc(row.name || '') + '" placeholder="พิมพ์ชื่อยา (แก้จาก OCR ได้)" ' +
+    'oninput="updateOcrNameInput(' + i + ', this.value)">';
+  html += '<select class="ocr-item-select" data-row="' + i + '" onchange="pickOcrRegistryItem(' + i + ', this.value)">';
+  html += '<option value="__custom__"' + (!row.itemId ? ' selected' : '') + '>— พิมพ์ชื่อเอง —</option>';
   items.forEach(function (it) {
     var label = it.name + (it.packSize ? ' · ' + it.packSize : '');
     var isSel = row.itemId && String(row.itemId) === String(it.id);
-    if (q && !isSel && (it.name + ' ' + (it.packSize || '') + ' ' + (it.code || '')).toLowerCase().indexOf(q) < 0) return;
-    shown++;
     html += '<option value="' + esc(it.id) + '"' + (isSel ? ' selected' : '') + '>' + esc(label) + '</option>';
   });
-  if (q && !shown) html += '<option value="" disabled>ไม่พบในทะเบียน</option>';
-  html += '<option value="__custom__"' + (!row.itemId ? ' selected' : '') + '>อื่น ๆ (พิมพ์ชื่อเอง)</option>';
   html += '</select>';
-  if (!row.itemId) {
-    html += '<input class="ocr-name-input" value="' + esc(row.name || '') + '" placeholder="ชื่อรายการใหม่" ' +
-      'onchange="updateOcrField(' + i + ',\'name\',this.value)">';
-  }
   if (row.raw) html += '<div class="muted ocr-raw">จาก OCR: ' + esc(row.raw) + '</div>';
   html += '</div>';
   return html;
+}
+
+function updateOcrNameInput(i, value) {
+  var row = STATE.ocrReview[i];
+  if (!row) return;
+  row.name = String(value || '');
+  if (row.itemId) {
+    var it = (STATE.items || []).filter(function (x) { return String(x.id) === String(row.itemId); })[0];
+    if (!it || String(it.name).trim().toLowerCase() !== row.name.trim().toLowerCase()) {
+      row.itemId = '';
+      row.matched = false;
+      var sel = document.querySelector('.ocr-item-select[data-row="' + i + '"]');
+      if (sel) sel.value = '__custom__';
+    }
+  } else {
+    row.matched = false;
+  }
 }
 
 function ocrRound2(n) {
@@ -998,8 +1005,11 @@ function pickOcrRegistryItem(i, itemId) {
   if (!itemId || itemId === '__custom__') {
     row.itemId = '';
     row.matched = false;
-    if (!row.name && row.raw) row.name = row.raw;
     renderOcrReview();
+    setTimeout(function () {
+      var inp = document.querySelector('.ocr-name-input[data-row="' + i + '"]');
+      if (inp) { inp.focus(); var len = inp.value.length; inp.setSelectionRange(len, len); }
+    }, 0);
     return;
   }
   var it = (STATE.items || []).filter(function (x) { return String(x.id) === String(itemId); })[0];

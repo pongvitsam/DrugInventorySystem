@@ -908,9 +908,8 @@ select option[value="__add__"] {
 .fefo-row td { background: #fff8e6; }
 .ocr-skip td { opacity: .45; }
 .ocr-pick { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
-.ocr-pick-filter,
-.ocr-item-select,
-.ocr-name-input {
+.ocr-name-input,
+.ocr-item-select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -919,7 +918,8 @@ select option[value="__add__"] {
   font-size: 13px;
   background: #fff;
 }
-.ocr-pick-filter { background: #f7fbf9; }
+.ocr-name-input { font-weight: 600; }
+.ocr-item-select { font-size: 12px; color: var(--muted); }
 .ocr-pack-pick { display: flex; flex-direction: column; gap: 6px; min-width: 110px; }
 .ocr-pack-select,
 .ocr-pack-custom {
