@@ -14,6 +14,8 @@ var STATE = {
   editWithdrawOrig: {},
   reportKind: 'month',
   reportRangeMode: 'month',
+  reportLookback: 12,
+  reportDrugItem: null,
   lastWithdrawId: null,
   optionLists: { categories: [], packSizes: [], forms: [] },
   lowStockItems: [],
@@ -63,6 +65,7 @@ function showPage(id) {
   if (id === 'reports') {
     setReportTab(STATE.reportKind || 'month');
     setReportRangeMode(STATE.reportRangeMode || 'month', true);
+    setReportLookback(STATE.reportLookback != null ? STATE.reportLookback : 12);
   }
 }
 
@@ -752,6 +755,12 @@ function searchPick(kind) {
 function chooseItem(kind, id) {
   var it = (STATE._search || []).filter(function (x) { return x.id === id; })[0];
   if (!it) return;
+  if (kind === 'rpDrug') {
+    STATE.reportDrugItem = it;
+    document.getElementById('rpDrugSearch').value = it.name;
+    document.getElementById('rpDrugSuggest').style.display = 'none';
+    return;
+  }
   STATE.receive.item = it;
   document.getElementById(kind + 'Search').value = it.name;
   var amountEl = document.getElementById('rcAmount');
@@ -1496,6 +1505,23 @@ function setReportTab(kind) {
     var on = b.dataset.rp === kind;
     b.className = on ? 'btn rp-tab active' : 'btn secondary rp-tab';
   });
+  var drugWrap = document.getElementById('rpDrugWrap');
+  var monthWrap = document.getElementById('rpMonthWrap');
+  var rangeMode = document.getElementById('rpRangeMode');
+  var rangeWrap = document.getElementById('rpRangeWrap');
+  var isDrug = kind === 'drug';
+  var useCustomRange = isDrug && Number(STATE.reportLookback) === 0;
+  if (drugWrap) drugWrap.style.display = isDrug ? 'flex' : 'none';
+  if (rangeMode) rangeMode.style.display = (!isDrug || useCustomRange) ? '' : 'none';
+  if (monthWrap) monthWrap.style.display = ((!isDrug || useCustomRange) && STATE.reportRangeMode === 'month') ? '' : 'none';
+  if (rangeWrap) rangeWrap.style.display = ((!isDrug || useCustomRange) && STATE.reportRangeMode === 'range') ? 'flex' : 'none';
+}
+function setReportLookback(n) {
+  STATE.reportLookback = Number(n);
+  document.querySelectorAll('#rpLookback .chip').forEach(function (b) {
+    b.classList.toggle('active', Number(b.dataset.lb) === Number(n));
+  });
+  if (STATE.reportKind === 'drug') setReportTab('drug');
 }
 function setReportRangeMode(mode, silent) {
   mode = mode === 'range' ? 'range' : 'month';
@@ -1503,10 +1529,6 @@ function setReportRangeMode(mode, silent) {
   document.querySelectorAll('#rpRangeMode .chip').forEach(function (b) {
     b.classList.toggle('active', b.dataset.rm === mode);
   });
-  var monthWrap = document.getElementById('rpMonthWrap');
-  var rangeWrap = document.getElementById('rpRangeWrap');
-  if (monthWrap) monthWrap.style.display = mode === 'month' ? '' : 'none';
-  if (rangeWrap) rangeWrap.style.display = mode === 'range' ? 'flex' : 'none';
   if (mode === 'range') {
     if (typeof ThDate.initDateField === 'function') {
       ThDate.initDateField('rpFrom');
@@ -1524,6 +1546,7 @@ function setReportRangeMode(mode, silent) {
       }
     }
   }
+  setReportTab(STATE.reportKind || 'month');
 }
 function getReportParams() {
   if (STATE.reportRangeMode === 'range') {
@@ -1538,8 +1561,38 @@ function getReportParams() {
   return { monthKey: beMonthKey(iso) };
 }
 function runReport(kind) {
-  setReportTab(kind);
-  var fn = kind === 'money' ? 'moneyReport' : 'monthReport';
+  if (kind) setReportTab(kind);
+  kind = kind || STATE.reportKind || 'month';
+  if (kind === 'drug') {
+    if (!STATE.reportDrugItem || !STATE.reportDrugItem.id) {
+      document.getElementById('reportOut').textContent = 'เลือกรายการยา แล้วกดดูการวิเคราะห์';
+      toast('เลือกรายการยาก่อน');
+      return;
+    }
+    document.getElementById('reportOut').textContent = 'กำลังวิเคราะห์...';
+    var drugParams = { itemId: STATE.reportDrugItem.id };
+    var lb = STATE.reportLookback != null ? Number(STATE.reportLookback) : 12;
+    if (lb > 0) {
+      drugParams.lookbackMonths = lb;
+    } else {
+      try {
+        var rp = getReportParams();
+        if (rp.monthKey) drugParams.monthKey = rp.monthKey;
+        if (rp.rangeStart) drugParams.rangeStart = rp.rangeStart;
+        if (rp.rangeEnd) drugParams.rangeEnd = rp.rangeEnd;
+      } catch (e) {
+        document.getElementById('reportOut').textContent = e.message || String(e);
+        toast(e.message || String(e));
+        return;
+      }
+    }
+    api('itemTrendReport', drugParams).then(function (data) {
+      renderDrugTrend(data);
+    }).catch(function (e) {
+      document.getElementById('reportOut').textContent = e.message || String(e);
+    });
+    return;
+  }
   document.getElementById('reportOut').textContent = 'กำลังสร้างรายงาน...';
   var params;
   try {
@@ -1549,6 +1602,7 @@ function runReport(kind) {
     toast(e.message || String(e));
     return;
   }
+  var fn = kind === 'money' ? 'moneyReport' : 'monthReport';
   api(fn, params).then(function (data) {
     if (kind === 'money') renderMoney(data);
     else renderMonth(data);
@@ -1650,6 +1704,165 @@ function renderMonth(d) {
   html += '<p class="right"><b>รวมคงเหลือทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
   html += '</div>';
   document.getElementById('reportOut').innerHTML = html;
+}
+var DRUG_CHARTS_ = [];
+function destroyDrugCharts_() {
+  DRUG_CHARTS_.forEach(function (c) {
+    try { c.destroy(); } catch (e) { /* ignore */ }
+  });
+  DRUG_CHARTS_ = [];
+}
+function initDrugCharts_(d) {
+  if (typeof Chart === 'undefined') return;
+  var months = d.months || [];
+  var labels = months.map(function (m) { return m.shortLabel || m.label; });
+  var issued = months.map(function (m) { return m.issued; });
+  var received = months.map(function (m) { return m.received; });
+  var fontFamily = "'Prompt', 'Sarabun', sans-serif";
+  var gridColor = 'rgba(10, 122, 102, 0.08)';
+  var commonOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { font: { family: fontFamily, size: 12 }, color: '#5a736b' } }
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { family: fontFamily, size: 11 }, color: '#5a736b' } },
+      y: { beginAtZero: true, grid: { color: gridColor }, ticks: { font: { family: fontFamily, size: 11 }, color: '#5a736b' } }
+    }
+  };
+  var issueEl = document.getElementById('drugChartIssue');
+  if (issueEl) {
+    DRUG_CHARTS_.push(new Chart(issueEl, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'เบิกออก',
+          data: issued,
+          backgroundColor: 'rgba(196, 122, 26, 0.75)',
+          borderColor: '#c47a1a',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 42
+        }]
+      },
+      options: Object.assign({}, commonOpts, {
+        plugins: Object.assign({}, commonOpts.plugins, { legend: { display: false } })
+      })
+    }));
+  }
+  var flowEl = document.getElementById('drugChartFlow');
+  if (flowEl) {
+    DRUG_CHARTS_.push(new Chart(flowEl, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'เบิกออก',
+            data: issued,
+            borderColor: '#c47a1a',
+            backgroundColor: 'rgba(196, 122, 26, 0.12)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointBackgroundColor: '#c47a1a'
+          },
+          {
+            label: 'รับเข้า',
+            data: received,
+            borderColor: '#1d7a9c',
+            backgroundColor: 'rgba(29, 122, 156, 0.08)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointBackgroundColor: '#1d7a9c'
+          }
+        ]
+      },
+      options: commonOpts
+    }));
+  }
+  var packs = (d.packs || []).filter(function (p) { return p.issued > 0; });
+  var packEl = document.getElementById('drugChartPack');
+  if (packEl && packs.length > 1) {
+    var packColors = ['#0a7a66', '#12a08a', '#1d7a9c', '#c47a1a', '#3d7a3a', '#b8892c', '#7a5c9e'];
+    DRUG_CHARTS_.push(new Chart(packEl, {
+      type: 'doughnut',
+      data: {
+        labels: packs.map(function (p) { return p.packSize; }),
+        datasets: [{
+          data: packs.map(function (p) { return p.issued; }),
+          backgroundColor: packs.map(function (_, i) { return packColors[i % packColors.length]; }),
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '58%',
+        plugins: {
+          legend: { position: 'right', labels: { font: { family: fontFamily, size: 12 }, color: '#5a736b', padding: 14 } }
+        }
+      }
+    }));
+  }
+}
+function renderDrugTrend(d) {
+  destroyDrugCharts_();
+  var sm = d.summary || {};
+  var u = sm.unitLabel || 'หน่วย';
+  var html = '<div class="rp-drug-view rp-screen-only">';
+  html += '<div class="rp-drug-hero">';
+  html += '<div class="rp-drug-hero-text">';
+  html += '<p class="rp-drug-eyebrow">' + esc(d.item.category || '') + (d.item.code ? ' · ' + esc(d.item.code) : '') + '</p>';
+  html += '<h2 class="rp-drug-title">' + esc(d.item.name) + '</h2>';
+  html += '<p class="muted rp-drug-period">' + esc(d.label) + ' · บรรจุ ' + esc(d.item.packSize || '-') + '</p>';
+  html += '</div>';
+  html += '<div class="rp-drug-hero-stat">';
+  html += '<div class="rp-drug-hero-num">' + sm.avgIssuedPerMonth + '</div>';
+  html += '<div class="rp-drug-hero-unit">' + esc(u) + ' / เดือน (เฉลี่ย)</div>';
+  if (sm.monthsSupplyLeft != null) {
+    html += '<div class="rp-drug-supply">คงเหลือ ~' + sm.monthsSupplyLeft + ' เดือน ที่อัตราเบิกปัจจุบัน</div>';
+  }
+  html += '</div></div>';
+  html += '<div class="cards rp-summary-cards rp-drug-kpis">';
+  html += kpi('เบิกรวมช่วงที่เลือก', sm.totalIssued + ' ' + esc(u), money(sm.totalIssuedValue) + ' บาท · ' + sm.monthCount + ' เดือน', 'sand');
+  html += kpi('รับเข้ารวม', sm.totalReceived + ' ' + esc(u), money(sm.totalReceivedValue) + ' บาท', 'sky');
+  html += kpi('คงเหลือปัจจุบัน', sm.currentRemain + ' ' + esc(u), money(sm.currentRemainValue) + ' บาท', 'leaf');
+  html += kpi('เดือนที่เบิกสูงสุด', (sm.peakIssueQty || 0) + ' ' + esc(u), sm.peakIssueMonth || '-', 'teal');
+  html += '</div>';
+  html += '<div class="rp-chart-grid">';
+  html += '<div class="card rp-chart-card"><h3>แนวโน้มการเบิกรายเดือน</h3><div class="rp-chart-wrap"><canvas id="drugChartIssue"></canvas></div></div>';
+  html += '<div class="card rp-chart-card"><h3>เบิก vs รับเข้า</h3><div class="rp-chart-wrap"><canvas id="drugChartFlow"></canvas></div></div>';
+  html += '</div>';
+  if ((d.packs || []).filter(function (p) { return p.issued > 0; }).length > 1) {
+    html += '<div class="card rp-chart-card rp-chart-wide"><h3>สัดส่วนการเบิกตามบรรจุ</h3><div class="rp-chart-wrap rp-chart-wrap-sm"><canvas id="drugChartPack"></canvas></div></div>';
+  }
+  html += '<h3 class="rp-drug-table-title">รายละเอียดรายเดือน</h3>';
+  html += '<div class="rp-table-wrap"><table class="rp-table rp-drug-table"><thead><tr>';
+  html += '<th>เดือน</th><th class="right">ยอดต้นเดือน</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">ปรับยอด</th><th class="right">คงเหลือ</th><th class="right">มูลค่าเบิก</th>';
+  html += '</tr></thead><tbody>';
+  (d.months || []).forEach(function (m) {
+    var adj = Number(m.adjusted || 0);
+    var adjCell = adj ? (adj > 0 ? '+' : '') + adj : '0';
+    var peakCls = m.issued > 0 && m.issued === sm.peakIssueQty ? ' class="rp-peak-row"' : '';
+    html += '<tr' + peakCls + '><td>' + esc(m.label) + '</td><td class="right">' + m.opening + '</td><td class="right">' + m.received + '</td><td class="right"><b>' + m.issued + '</b></td><td class="right">' + adjCell + '</td><td class="right">' + m.remain + '</td><td class="right">' + money(m.issuedValue) + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  if ((d.packs || []).length > 1) {
+    html += '<h3 class="rp-drug-table-title">แยกตามบรรจุ</h3>';
+    html += '<div class="rp-table-wrap"><table class="rp-table"><thead><tr><th>บรรจุ</th><th class="right">ราคา</th><th class="right">เบิกรวม</th><th class="right">เฉลี่ย/เดือน</th><th class="right">รับเข้า</th><th class="right">คงเหลือ</th></tr></thead><tbody>';
+    d.packs.forEach(function (pk) {
+      html += '<tr><td>' + esc(pk.packSize) + '</td><td class="right">' + money(pk.unitPrice) + '</td><td class="right"><b>' + pk.issued + '</b></td><td class="right">' + pk.avgIssued + '</td><td class="right">' + pk.received + '</td><td class="right">' + pk.remain + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  document.getElementById('reportOut').innerHTML = html;
+  requestAnimationFrame(function () { initDrugCharts_(d); });
 }
 function renderMoney(d) {
   var t = d.totals || {};

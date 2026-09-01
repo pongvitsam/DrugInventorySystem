@@ -143,6 +143,7 @@ function callApi(name, payload) {
     deleteTransfer: apiDeleteTransfer_,
     monthReport: apiMonthReport_,
     moneyReport: apiMoneyReport_,
+    itemTrendReport: apiItemTrendReport_,
     importSeed: apiImportSeed_,
     parseQty: function (p) { return parseQty_(p && p.text); },
     searchItems: apiSearchItems_,
@@ -1503,6 +1504,232 @@ function reportRange_(p) {
   var monthKey = p.monthKey || currentMonthKey_();
   var range = monthRange_(monthKey);
   return { start: range.start, end: range.end, label: monthLabel_(monthKey), monthKey: monthKey };
+}
+
+function listMonthKeysInRange_(startIso, endIso) {
+  var keys = [];
+  var seen = {};
+  var sp = String(startIso).slice(0, 7).split('-');
+  var ep = String(endIso).slice(0, 7).split('-');
+  var y = Number(sp[0]);
+  var m = Number(sp[1]);
+  var endY = Number(ep[0]);
+  var endM = Number(ep[1]);
+  if (!y || !m || !endY || !endM) return keys;
+  while (y < endY || (y === endY && m <= endM)) {
+    var key = (y + 543) + '-' + ('0' + m).slice(-2);
+    if (!seen[key]) {
+      seen[key] = 1;
+      keys.push(key);
+    }
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return keys;
+}
+
+function itemTrendRange_(p) {
+  var lookback = Math.round(num_(p.lookbackMonths));
+  if (lookback > 0) {
+    lookback = Math.max(1, Math.min(60, lookback));
+    var now = new Date();
+    var endY = now.getFullYear();
+    var endM = now.getMonth() + 1;
+    var endD = now.getDate();
+    var end = endY + '-' + ('0' + endM).slice(-2) + '-' + ('0' + endD).slice(-2);
+    var startDate = new Date(now.getFullYear(), now.getMonth() - lookback + 1, 1);
+    var start = startDate.getFullYear() + '-' + ('0' + (startDate.getMonth() + 1)).slice(-2) + '-01';
+    return {
+      start: start,
+      end: end,
+      label: 'ย้อนหลัง ' + lookback + ' เดือน (ถึงวันนี้)',
+      lookbackMonths: lookback
+    };
+  }
+  var rr = reportRange_(p);
+  return {
+    start: rr.start,
+    end: rr.end,
+    label: rr.label,
+    lookbackMonths: 0
+  };
+}
+
+function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemMap, stock, stockById, moves) {
+  var byKey = {};
+  stock.forEach(function (s) {
+    if (s.location !== LOC_MAIN || s.itemId !== itemId) return;
+    var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
+    if (!row) return;
+    if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
+    row.remain += num_(s.qty);
+    row.remainValue += num_(s.qty) * num_(s.unitPrice);
+  });
+  moves.forEach(function (m) {
+    if (m.location !== LOC_MAIN || m.itemId !== itemId) return;
+    var lot = moveReportLot_(m, stockById, itemMap);
+    var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
+    if (!row) return;
+    if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
+    var d = m.date;
+    var ch = num_(m.qtyChange);
+    if (d > rangeEnd) {
+      row.remain -= ch;
+      row.remainValue -= ch * num_(m.unitPrice);
+    } else if (d >= rangeStart && d <= rangeEnd) {
+      var price = num_(m.unitPrice);
+      row.periodChange += ch;
+      row.periodChangeValue += ch * price;
+      row.received += reportPeriodReceive_(m, ch);
+      row.receivedValue += reportPeriodReceive_(m, ch) * price;
+      row.issued += reportPeriodIssue_(m, ch);
+      row.issuedValue += reportPeriodIssue_(m, ch) * price;
+    }
+  });
+  var rows = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  rows.forEach(function (r) {
+    r.opening = round4_(r.remain - r.periodChange);
+    r.openingValue = round2_(r.remainValue - r.periodChangeValue);
+    r.adjusted = round4_(r.periodChange - r.received + r.issued);
+    r.adjustedValue = round2_(r.periodChangeValue - r.receivedValue + r.issuedValue);
+    r.remain = round4_(r.remain);
+    r.received = round4_(r.received);
+    r.issued = round4_(r.issued);
+    r.receivedValue = round2_(r.receivedValue);
+    r.issuedValue = round2_(r.issuedValue);
+    r.remainValue = round2_(r.remainValue);
+  });
+  return {
+    issued: round4_(rows.reduce(function (s, r) { return s + r.issued; }, 0)),
+    received: round4_(rows.reduce(function (s, r) { return s + r.received; }, 0)),
+    adjusted: round4_(rows.reduce(function (s, r) { return s + r.adjusted; }, 0)),
+    opening: round4_(rows.reduce(function (s, r) { return s + r.opening; }, 0)),
+    remain: round4_(rows.reduce(function (s, r) { return s + r.remain; }, 0)),
+    issuedValue: round2_(rows.reduce(function (s, r) { return s + r.issuedValue; }, 0)),
+    receivedValue: round2_(rows.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
+    remainValue: round2_(rows.reduce(function (s, r) { return s + r.remainValue; }, 0)),
+    openingValue: round2_(rows.reduce(function (s, r) { return s + r.openingValue; }, 0)),
+    packs: rows.filter(function (r) {
+      return r.opening || r.received || r.issued || r.adjusted || r.remain;
+    })
+  };
+}
+
+function apiItemTrendReport_(p) {
+  var itemId = String(p.itemId || '');
+  if (!itemId) throw new Error('เลือกรายการยา');
+  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
+  var itemMap = indexById_(items);
+  var it = itemMap[itemId];
+  if (!it) throw new Error('ไม่พบรายการยา');
+  var packFilter = p.packSize ? preferSpacedPack_(String(p.packSize)) : '';
+  var range = itemTrendRange_(p);
+  var monthKeys = listMonthKeysInRange_(range.start, range.end);
+  if (!monthKeys.length) throw new Error('ช่วงวันที่ไม่ถูกต้อง');
+  var stock = readObjects_('Stock');
+  var stockById = indexById_(stock);
+  var moves = readObjects_('Movements');
+  var months = monthKeys.map(function (mk) {
+    var mr = monthRange_(mk);
+    var stats = computeItemPeriodStats_(itemId, mr.start, mr.end, packFilter, itemMap, stock, stockById, moves);
+    return {
+      monthKey: mk,
+      label: monthLabel_(mk),
+      shortLabel: String(mk).split('-')[1] + '/' + String(Number(String(mk).split('-')[0]) % 100),
+      issued: stats.issued,
+      received: stats.received,
+      adjusted: stats.adjusted,
+      opening: stats.opening,
+      remain: stats.remain,
+      issuedValue: stats.issuedValue,
+      receivedValue: stats.receivedValue,
+      remainValue: stats.remainValue
+    };
+  });
+  var totalIssued = round4_(months.reduce(function (s, m) { return s + m.issued; }, 0));
+  var totalReceived = round4_(months.reduce(function (s, m) { return s + m.received; }, 0));
+  var totalIssuedValue = round2_(months.reduce(function (s, m) { return s + m.issuedValue; }, 0));
+  var totalReceivedValue = round2_(months.reduce(function (s, m) { return s + m.receivedValue; }, 0));
+  var monthCount = months.length;
+  var avgIssued = monthCount ? round4_(totalIssued / monthCount) : 0;
+  var avgReceived = monthCount ? round4_(totalReceived / monthCount) : 0;
+  var lastMonth = months[months.length - 1] || {};
+  var currentRemain = lastMonth.remain || 0;
+  var currentRemainValue = lastMonth.remainValue || 0;
+  var peak = { monthKey: '', label: '', issued: 0 };
+  months.forEach(function (m) {
+    if (m.issued > peak.issued) peak = { monthKey: m.monthKey, label: m.label, issued: m.issued };
+  });
+  var monthsWithIssue = months.filter(function (m) { return m.issued > 0; }).length;
+  var monthsSupplyLeft = avgIssued > 0 ? round2_(currentRemain / avgIssued) : null;
+  var packMap = {};
+  monthKeys.forEach(function (mk) {
+    var mr = monthRange_(mk);
+    var stats = computeItemPeriodStats_(itemId, mr.start, mr.end, '', itemMap, stock, stockById, moves);
+    stats.packs.forEach(function (pk) {
+      var key = packKey_(pk.item.packSize) + '|' + round2_(pk.item.unitPrice);
+      if (!packMap[key]) {
+        packMap[key] = {
+          packSize: pk.item.packSize,
+          unitPrice: pk.item.unitPrice,
+          issued: 0,
+          received: 0,
+          remain: 0,
+          issuedValue: 0
+        };
+      }
+      packMap[key].issued += pk.issued;
+      packMap[key].received += pk.received;
+      packMap[key].issuedValue += pk.issuedValue;
+      packMap[key].remain = pk.remain;
+    });
+  });
+  var packs = Object.keys(packMap).map(function (k) {
+    var pk = packMap[k];
+    pk.issued = round4_(pk.issued);
+    pk.received = round4_(pk.received);
+    pk.issuedValue = round2_(pk.issuedValue);
+    pk.avgIssued = monthCount ? round4_(pk.issued / monthCount) : 0;
+    pk.remain = round4_(pk.remain);
+    return pk;
+  }).sort(function (a, b) { return b.issued - a.issued; });
+  var unitLabel = String(it.unit || it.packSize || 'หน่วย').trim() || 'หน่วย';
+  return {
+    item: {
+      id: it.id,
+      name: it.name,
+      code: it.code || '',
+      category: it.category || '',
+      packSize: it.packSize || '',
+      unit: unitLabel
+    },
+    packFilter: packFilter,
+    label: range.label,
+    lookbackMonths: range.lookbackMonths,
+    range: { start: range.start, end: range.end },
+    months: months,
+    packs: packs,
+    summary: {
+      totalIssued: totalIssued,
+      totalReceived: totalReceived,
+      totalIssuedValue: totalIssuedValue,
+      totalReceivedValue: totalReceivedValue,
+      avgIssuedPerMonth: avgIssued,
+      avgReceivedPerMonth: avgReceived,
+      monthCount: monthCount,
+      monthsWithIssue: monthsWithIssue,
+      peakIssueMonth: peak.label,
+      peakIssueQty: peak.issued,
+      currentRemain: currentRemain,
+      currentRemainValue: currentRemainValue,
+      monthsSupplyLeft: monthsSupplyLeft,
+      unitLabel: unitLabel
+    },
+    settings: readSettings_()
+  };
 }
 
 return {

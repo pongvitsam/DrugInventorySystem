@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=50">
+  <link rel="stylesheet" href="css/styles.css?v=51">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -237,7 +237,7 @@
         <div class="top">
           <div>
             <h2>สรุปรายเดือน</h2>
-            <div class="sub">ยอดคงเหลือเดิม · รับเข้า · เบิกออก · คงเหลือ — เลือกรายเดือนหรือช่วงวันที่</div>
+            <div class="sub">ยอดคงเหลือ · รับเข้า · เบิกออก · วิเคราะห์รายยาและกราฟ</div>
           </div>
         </div>
         <div class="card">
@@ -254,6 +254,22 @@
             <div class="rp-tabs">
               <button type="button" class="btn rp-tab active" data-rp="month" onclick="runReport('month')">สรุปคลังหลัก</button>
               <button type="button" class="btn secondary rp-tab" data-rp="money" onclick="runReport('money')">สรุปมูลค่ารายหมวด</button>
+              <button type="button" class="btn secondary rp-tab" data-rp="drug" onclick="setReportTab('drug')">วิเคราะห์รายยา</button>
+            </div>
+            <div id="rpDrugWrap" class="rp-drug-wrap" style="display:none">
+              <div class="field rp-drug-search">
+                <label>เลือกรายการยา</label>
+                <input id="rpDrugSearch" placeholder="พิมพ์ชื่อยา แล้วเลือก" oninput="searchPick('rpDrug')" autocomplete="off">
+                <div class="suggest-list" id="rpDrugSuggest"></div>
+              </div>
+              <div class="rp-lookback" id="rpLookback">
+                <label class="rp-lookback-label">ช่วงวิเคราะห์</label>
+                <button type="button" class="chip" data-lb="6" onclick="setReportLookback(6)">6 เดือน</button>
+                <button type="button" class="chip active" data-lb="12" onclick="setReportLookback(12)">12 เดือน</button>
+                <button type="button" class="chip" data-lb="24" onclick="setReportLookback(24)">24 เดือน</button>
+                <button type="button" class="chip" data-lb="0" onclick="setReportLookback(0)">ตามช่วงด้านบน</button>
+              </div>
+              <button type="button" class="btn" onclick="runReport('drug')">ดูการวิเคราะห์</button>
             </div>
             <button type="button" class="btn ghost" onclick="printReport()">พิมพ์</button>
           </div>
@@ -381,14 +397,15 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=50"></script>
-  <script src="js/api.js?v=50"></script>
-  <script src="js/options.js?v=50"></script>
-  <script src="js/thdate.js?v=50"></script>
-  <script src="js/seed.js?v=50"></script>
-  <script src="js/ocr.js?v=50"></script>
-  <script src="js/app.js?v=50"></script>
-  <script src="js/auth.js?v=50"></script>
+  <script src="js/db.js?v=51"></script>
+  <script src="js/api.js?v=51"></script>
+  <script src="js/options.js?v=51"></script>
+  <script src="js/thdate.js?v=51"></script>
+  <script src="js/seed.js?v=51"></script>
+  <script src="js/ocr.js?v=51"></script>
+  <script src="js/app.js?v=51"></script>
+  <script src="js/auth.js?v=51"></script>
 </body>
 </html>
