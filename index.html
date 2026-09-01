@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=37">
+  <link rel="stylesheet" href="css/styles.css?v=38">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -237,12 +237,20 @@
         <div class="top">
           <div>
             <h2>สรุปรายเดือน</h2>
-            <div class="sub">รับเข้า · เบิกออก · คงเหลือ ณ สิ้นเดือน</div>
+            <div class="sub">รับเข้า · เบิกออก · คงเหลือ — เลือกรายเดือนหรือช่วงวันที่</div>
           </div>
         </div>
         <div class="card">
-          <div class="toolbar">
-            <div class="field th-date-field"><label>เดือน</label><input id="rpMonth" type="hidden"><button type="button" class="th-date-btn" data-for="rpMonth">เลือกเดือน</button></div>
+          <div class="toolbar rp-toolbar">
+            <div class="rp-range-mode" id="rpRangeMode">
+              <button type="button" class="chip active" data-rm="month" onclick="setReportRangeMode('month')">รายเดือน</button>
+              <button type="button" class="chip" data-rm="range" onclick="setReportRangeMode('range')">ช่วงวันที่</button>
+            </div>
+            <div id="rpMonthWrap" class="field th-date-field"><label>เดือน</label><input id="rpMonth" type="hidden"><button type="button" class="th-date-btn" data-for="rpMonth">เลือกเดือน</button></div>
+            <div id="rpRangeWrap" class="row rp-range-row" style="display:none">
+              <div class="field th-date-field"><label>ตั้งแต่</label><input id="rpFrom" type="hidden"><button type="button" class="th-date-btn" data-for="rpFrom">เลือกวันที่</button></div>
+              <div class="field th-date-field"><label>ถึง</label><input id="rpTo" type="hidden"><button type="button" class="th-date-btn" data-for="rpTo">เลือกวันที่</button></div>
+            </div>
             <div class="rp-tabs">
               <button type="button" class="btn rp-tab active" data-rp="month" onclick="runReport('month')">สรุปคลังหลัก</button>
               <button type="button" class="btn secondary rp-tab" data-rp="money" onclick="runReport('money')">สรุปมูลค่ารายหมวด</button>
@@ -374,13 +382,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=37"></script>
-  <script src="js/api.js?v=37"></script>
-  <script src="js/options.js?v=37"></script>
-  <script src="js/thdate.js?v=37"></script>
-  <script src="js/seed.js?v=37"></script>
-  <script src="js/ocr.js?v=37"></script>
-  <script src="js/app.js?v=37"></script>
-  <script src="js/auth.js?v=37"></script>
+  <script src="js/db.js?v=38"></script>
+  <script src="js/api.js?v=38"></script>
+  <script src="js/options.js?v=38"></script>
+  <script src="js/thdate.js?v=38"></script>
+  <script src="js/seed.js?v=38"></script>
+  <script src="js/ocr.js?v=38"></script>
+  <script src="js/app.js?v=38"></script>
+  <script src="js/auth.js?v=38"></script>
 </body>
 </html>

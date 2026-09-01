@@ -845,8 +845,8 @@ function apiGetTransfer_(p) {
 }
 
 function apiMonthReport_(p) {
-  var monthKey = p.monthKey || currentMonthKey_();
-  var range = monthRange_(monthKey);
+  var rr = reportRange_(p);
+  var range = { start: rr.start, end: rr.end };
   var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
@@ -935,8 +935,8 @@ function apiMonthReport_(p) {
     remainQty: round4_(Object.keys(byItem).reduce(function (s, id) { return s + byItem[id].remain; }, 0))
   };
   return {
-    monthKey: monthKey,
-    label: monthLabel_(monthKey),
+    monthKey: rr.monthKey,
+    label: rr.label,
     range: range,
     settings: readSettings_(),
     summary: summary,
@@ -946,8 +946,8 @@ function apiMonthReport_(p) {
 }
 
 function apiMoneyReport_(p) {
-  var monthKey = p.monthKey || currentMonthKey_();
-  var range = monthRange_(monthKey);
+  var rr = reportRange_(p);
+  var range = { start: rr.start, end: rr.end };
   var items = indexById_(normalizeItemPacks_(readObjects_('Items'), false));
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
@@ -987,8 +987,9 @@ function apiMoneyReport_(p) {
     return r;
   }).filter(function (r) { return r.opening || r.receive || r.used || r.remain; });
   return {
-    monthKey: monthKey,
-    label: monthLabel_(monthKey),
+    monthKey: rr.monthKey,
+    label: rr.label,
+    range: range,
     settings: readSettings_(),
     rows: rows,
     totals: {
@@ -1396,6 +1397,27 @@ function monthLabel_(monthKey) {
   var months = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   var p = String(monthKey).split('-');
   return months[Number(p[1])] + ' ' + p[0];
+}
+
+function rangeLabel_(startIso, endIso) {
+  if (typeof ThDate !== 'undefined' && ThDate.formatDateLong) {
+    var a = ThDate.formatDateLong(startIso);
+    var b = ThDate.formatDateLong(endIso);
+    if (a && b && a !== 'เลือกวันที่' && b !== 'เลือกวันที่') return a + ' – ' + b;
+  }
+  return formatDate_(startIso) + ' – ' + formatDate_(endIso);
+}
+
+function reportRange_(p) {
+  var start = toIsoDate_(p.rangeStart);
+  var end = toIsoDate_(p.rangeEnd);
+  if (start && end) {
+    if (start > end) throw new Error('วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด');
+    return { start: start, end: end, label: rangeLabel_(start, end), monthKey: null };
+  }
+  var monthKey = p.monthKey || currentMonthKey_();
+  var range = monthRange_(monthKey);
+  return { start: range.start, end: range.end, label: monthLabel_(monthKey), monthKey: monthKey };
 }
 
 return {

@@ -13,6 +13,7 @@ var STATE = {
   editingWithdrawId: null,
   editWithdrawOrig: {},
   reportKind: 'month',
+  reportRangeMode: 'month',
   lastWithdrawId: null,
   optionLists: { categories: [], packSizes: [], forms: [] },
   lowStockItems: [],
@@ -59,7 +60,10 @@ function showPage(id) {
     loadLoginUsers();
     loadLowStockSettings();
   }
-  if (id === 'reports') setReportTab(STATE.reportKind || 'month');
+  if (id === 'reports') {
+    setReportTab(STATE.reportKind || 'month');
+    setReportRangeMode(STATE.reportRangeMode || 'month', true);
+  }
 }
 
 document.querySelectorAll('.nav-btn').forEach(function (btn) {
@@ -106,6 +110,8 @@ function applyBoot(b) {
   ThDate.set('wdDate', todayInput());
   var now = new Date();
   ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
+  ThDate.set('rpFrom', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01');
+  ThDate.set('rpTo', todayInput());
   initItemOptionSelects(STATE.items || []);
 }
 function refreshStockCache(cb) {
@@ -1491,13 +1497,59 @@ function setReportTab(kind) {
     b.className = on ? 'btn rp-tab active' : 'btn secondary rp-tab';
   });
 }
+function setReportRangeMode(mode, silent) {
+  mode = mode === 'range' ? 'range' : 'month';
+  STATE.reportRangeMode = mode;
+  document.querySelectorAll('#rpRangeMode .chip').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.rm === mode);
+  });
+  var monthWrap = document.getElementById('rpMonthWrap');
+  var rangeWrap = document.getElementById('rpRangeWrap');
+  if (monthWrap) monthWrap.style.display = mode === 'month' ? '' : 'none';
+  if (rangeWrap) rangeWrap.style.display = mode === 'range' ? 'flex' : 'none';
+  if (mode === 'range') {
+    if (typeof ThDate.initDateField === 'function') {
+      ThDate.initDateField('rpFrom');
+      ThDate.initDateField('rpTo');
+    }
+    if (!ThDate.get('rpFrom') || !ThDate.get('rpTo')) {
+      var iso = ThDate.get('rpMonth') || '';
+      if (iso) {
+        ThDate.set('rpFrom', iso + '-01');
+        var p = iso.split('-');
+        var y = Number(p[0]);
+        var m = Number(p[1]);
+        var endDay = new Date(y, m, 0).getDate();
+        ThDate.set('rpTo', iso + '-' + String(endDay).padStart(2, '0'));
+      }
+    }
+  }
+}
+function getReportParams() {
+  if (STATE.reportRangeMode === 'range') {
+    var start = ThDate.get('rpFrom');
+    var end = ThDate.get('rpTo');
+    if (!start || !end) throw new Error('เลือกวันที่เริ่มและสิ้นสุด');
+    if (start > end) throw new Error('วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด');
+    return { rangeStart: start, rangeEnd: end };
+  }
+  var iso = ThDate.get('rpMonth') || document.getElementById('rpMonth').value;
+  if (!iso) throw new Error('เลือกเดือน');
+  return { monthKey: beMonthKey(iso) };
+}
 function runReport(kind) {
   setReportTab(kind);
-  var iso = ThDate.get('rpMonth') || document.getElementById('rpMonth').value;
-  var monthKey = beMonthKey(iso);
   var fn = kind === 'money' ? 'moneyReport' : 'monthReport';
   document.getElementById('reportOut').textContent = 'กำลังสร้างรายงาน...';
-  api(fn, { monthKey: monthKey }).then(function (data) {
+  var params;
+  try {
+    params = getReportParams();
+  } catch (e) {
+    document.getElementById('reportOut').textContent = e.message || String(e);
+    toast(e.message || String(e));
+    return;
+  }
+  api(fn, params).then(function (data) {
     if (kind === 'money') renderMoney(data);
     else renderMonth(data);
   }).catch(function (e) {
@@ -1509,11 +1561,12 @@ function hdr(s, title, sub) {
 }
 function renderMonth(d) {
   var sm = d.summary || {};
-  var html = hdr(d.settings, 'สรุปคลังหลักรายเดือน', d.label);
+  var period = d.label || '';
+  var html = hdr(d.settings, 'สรุปคลังหลัก', period);
   html += '<div class="cards" style="margin-bottom:14px">' +
-    kpi('รับเข้าเดือนนี้', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย', 'sky') +
-    kpi('เบิกออกเดือนนี้', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย', 'sand') +
-    kpi('คงเหลือสิ้นเดือน', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
+    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย', 'sky') +
+    kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย', 'sand') +
+    kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
     html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยกมา</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
@@ -1528,11 +1581,11 @@ function renderMonth(d) {
 }
 function renderMoney(d) {
   var t = d.totals || {};
-  var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', 'ประจำเดือน ' + d.label);
+  var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', d.label || '');
   html += '<div class="cards" style="margin-bottom:14px">' +
-    kpi('รับเข้า', money(t.receive) + ' ฿', 'เดือนนี้', 'sky') +
-    kpi('เบิกออก', money(t.used) + ' ฿', 'เดือนนี้', 'sand') +
-    kpi('คงเหลือ', money(t.remain) + ' ฿', 'สิ้นเดือน', 'teal') +
+    kpi('รับเข้า', money(t.receive) + ' ฿', 'ในช่วงที่เลือก', 'sky') +
+    kpi('เบิกออก', money(t.used) + ' ฿', 'ในช่วงที่เลือก', 'sand') +
+    kpi('คงเหลือ', money(t.remain) + ' ฿', 'ณ สิ้นช่วง', 'teal') +
     '</div>';
   html += '<table><tr><th>หมวด</th><th class="right">ยอดยกมา</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
   (d.rows || []).forEach(function (r) {

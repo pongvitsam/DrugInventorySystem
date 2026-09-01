@@ -458,7 +458,7 @@ var ThDate = (function () {
   }
 
   function initAll() {
-    ['rcDate', 'rcExpiry', 'wdDate'].forEach(initDateField);
+    ['rcDate', 'rcExpiry', 'wdDate', 'rpFrom', 'rpTo'].forEach(initDateField);
     initMonthField('rpMonth');
   }
 
