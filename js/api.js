@@ -380,6 +380,28 @@ function apiSaveLowStockSettings_(p) {
   return { ok: true, defaultLowStock: defaultLow, settings: readSettings_() };
 }
 
+function applyReceiveMovementDelta_(moves, stockId, delta, itemId, rLines, receipts) {
+  if (Math.abs(delta) < 1e-9) return false;
+  var recvM = moves.filter(function (m) { return m.stockId === stockId && m.type === 'RECEIVE'; })[0];
+  if (!recvM) return false;
+  var newQty = round4_(num_(recvM.qtyChange) + delta);
+  if (newQty < -1e-9) return false;
+  recvM.qtyChange = Math.max(0, newQty);
+  recvM.amount = round2_(recvM.qtyChange * num_(recvM.unitPrice));
+  var line = rLines.filter(function (l) { return l.receiptId === recvM.refId && l.itemId === itemId; })[0];
+  if (line) {
+    line.qty = recvM.qtyChange;
+    line.approvedQty = recvM.qtyChange;
+    line.amount = recvM.amount;
+  }
+  var rec = findById_(receipts, recvM.refId);
+  if (rec) {
+    rec.totalValue = round2_(rLines.filter(function (l) { return l.receiptId === rec.id; })
+      .reduce(function (s, l) { return s + num_(l.amount); }, 0));
+  }
+  return true;
+}
+
 function apiSaveStockLots_(p) {
   var itemId = String(p.itemId || '');
   if (!itemId) throw new Error('ไม่พบรายการ');
@@ -388,6 +410,8 @@ function apiSaveStockLots_(p) {
   if (!item) throw new Error('ไม่พบรายการ');
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
+  var receipts = readObjects_('Receipts');
+  var rLines = readObjects_('ReceiptLines');
   var todayIso = new Date().toISOString().slice(0, 10);
   var defaultPrice = num_(item.unitPrice);
   var lots = p.lots || [];
@@ -423,8 +447,10 @@ function apiSaveStockLots_(p) {
         var delta = round4_(qty - oldQty);
         row.qty = round4_(qty);
         if (Math.abs(delta) > 1e-9) {
-          moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, delta, num_(row.unitPrice),
-            round2_(delta * num_(row.unitPrice)), '', 'แก้ไขยอดจากทะเบียน'));
+          if (!applyReceiveMovementDelta_(moves, row.id, delta, itemId, rLines, receipts)) {
+            moves.push(movement_('COUNT', todayIso, LOC_MAIN, itemId, row.id, delta, num_(row.unitPrice),
+              round2_(delta * num_(row.unitPrice)), '', 'แก้ไขยอดจากทะเบียน'));
+          }
         }
       }
       return;
@@ -439,6 +465,8 @@ function apiSaveStockLots_(p) {
   stock = stock.filter(function (s) { return num_(s.qty) > 0; });
   writeObjects_('Stock', stock);
   writeObjects_('Movements', moves);
+  writeObjects_('ReceiptLines', rLines);
+  writeObjects_('Receipts', receipts);
   return { ok: true };
 }
 
@@ -865,11 +893,13 @@ function apiMonthReport_(p) {
       opening: 0,
       received: 0,
       issued: 0,
+      adjusted: 0,
       periodChange: 0,
       periodChangeValue: 0,
       remain: 0,
       receivedValue: 0,
       issuedValue: 0,
+      adjustedValue: 0,
       remainValue: 0,
       openingValue: 0
     };
@@ -902,6 +932,8 @@ function apiMonthReport_(p) {
     var r = byItem[id];
     r.opening = round4_(r.remain - r.periodChange);
     r.openingValue = round2_(r.remainValue - r.periodChangeValue);
+    r.adjusted = round4_(r.periodChange - r.received + r.issued);
+    r.adjustedValue = round2_(r.periodChangeValue - r.receivedValue + r.issuedValue);
     r.remain = round4_(r.remain);
     r.received = round4_(r.received);
     r.issued = round4_(r.issued);
@@ -912,7 +944,7 @@ function apiMonthReport_(p) {
   var groups = [];
   CATEGORIES.forEach(function (cat) {
     var rows = items.filter(function (i) { return i.category === cat; }).map(function (i) { return byItem[i.id]; })
-      .filter(function (r) { return r.opening || r.received || r.issued || r.remain; });
+      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; });
     if (rows.length) {
       groups.push({
         category: cat,
@@ -926,7 +958,7 @@ function apiMonthReport_(p) {
   var extra = items.filter(function (i) { return CATEGORIES.indexOf(i.category) < 0; });
   if (extra.length) {
     var erows = extra.map(function (i) { return byItem[i.id]; })
-      .filter(function (r) { return r.opening || r.received || r.issued || r.remain; });
+      .filter(function (r) { return r.opening || r.received || r.issued || r.adjusted || r.remain; });
     if (erows.length) {
       groups.push({
         category: 'อื่น ๆ',

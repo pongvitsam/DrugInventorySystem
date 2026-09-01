@@ -1574,6 +1574,7 @@ function rpTableHead() {
     '<th class="col-num right">ยอดคงเหลือเดิม</th>' +
     '<th class="col-num right">รับ</th>' +
     '<th class="col-num right">เบิก</th>' +
+    '<th class="col-num right">ปรับยอด</th>' +
     '<th class="col-num right">คงเหลือ</th>' +
     '<th class="col-val right">มูลค่า</th>' +
     '</tr></thead>';

@@ -927,11 +927,11 @@ select option[value="__add__"] {
   color: #fff;
   font-weight: 700;
 }
-.rp-table .col-item { width: 28%; }
-.rp-table .col-pack { width: 10%; }
-.rp-table .col-price { width: 8%; }
-.rp-table .col-num { width: 8%; }
-.rp-table .col-val { width: 10%; }
+.rp-table .col-item { width: 24%; }
+.rp-table .col-pack { width: 9%; }
+.rp-table .col-price { width: 7%; }
+.rp-table .col-num { width: 7%; }
+.rp-table .col-val { width: 9%; }
 .rp-table .rp-total-row td { background: #f4faf8; font-weight: 700; }
 .stock-low-row td { background: #fff5f3; }
 .stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
