@@ -99,6 +99,7 @@ function callApi(name, payload) {
     saveSettings: apiSaveSettings_,
     saveOptionLists: apiSaveOptionLists_,
     saveItem: apiSaveItem_,
+    deleteItem: apiDeleteItem_,
     saveLowStockSettings: apiSaveLowStockSettings_,
     saveStockLots: apiSaveStockLots_,
     listItems: apiListItems_,
@@ -315,6 +316,23 @@ function apiSaveItem_(p) {
   return { ok: true, item: item };
 }
 
+function apiDeleteItem_(p) {
+  var id = String(p.id || '');
+  if (!id) throw new Error('ไม่พบรายการ');
+  var rows = readObjects_('Items');
+  var item = findById_(rows, id);
+  if (!item) throw new Error('ไม่พบรายการ');
+  var hasStock = readObjects_('Stock').some(function (s) {
+    return s.itemId === id && s.location === LOC_MAIN && num_(s.qty) > 0;
+  });
+  if (hasStock) {
+    throw new Error('ไม่สามารถลบได้ — ยังมียอดคงเหลือในคลัง กรุณาเบิกหรือปรับยอดให้เป็น 0 ก่อน');
+  }
+  item.active = '0';
+  writeObjects_('Items', rows);
+  return { ok: true, id: id };
+}
+
 function apiSaveLowStockSettings_(p) {
   var defaultLow = Math.max(1, Math.round(num_(p.defaultLowStock) || 10));
   setSetting_('defaultLowStock', String(defaultLow));
@@ -405,25 +423,18 @@ function apiListStockAll_() {
   return { MAIN: r.stock };
 }
 
-function apiSaveReceipt_(p) {
-  if (!p.date) throw new Error('กรุณาใส่วันที่รับ');
-  var lines = (p.lines || []).filter(function (l) { return l.itemId || l.name; });
-  if (!lines.length) throw new Error('กรุณาเพิ่มอย่างน้อย 1 รายการ');
-  var items = readObjects_('Items');
-  var stock = readObjects_('Stock');
-  var receipts = readObjects_('Receipts');
-  var rLines = readObjects_('ReceiptLines');
-  var moves = readObjects_('Movements');
-  var rec = {
-    id: nextId_('R'),
-    number: String(p.number || '').trim(),
-    date: toIsoDate_(p.date),
-    source: String(p.source || 'โรงพยาบาลคลองท่อม'),
-    kind: p.kind || 'ยา',
-    notes: String(p.notes || ''),
-    totalValue: 0,
-    createdAt: nowIso_()
-  };
+function receiptLinePricing_(line, item, qty) {
+  var amount = round2_(num_(line.amount != null && line.amount !== '' ? line.amount : 0));
+  var price = num_(line.unitPrice != null && line.unitPrice !== '' ? line.unitPrice : item.unitPrice);
+  if (qty > 0 && amount > 0) {
+    price = round2_(amount / qty);
+  } else if (qty > 0 && price > 0) {
+    amount = round2_(qty * price);
+  }
+  return { qty: qty, unitPrice: price, amount: amount };
+}
+
+function appendReceiptLines_(rec, lines, items, stock, rLines, moves) {
   lines.forEach(function (line) {
     var item = line.itemId ? findById_(items, line.itemId) : null;
     if (!item && line.name) {
@@ -448,12 +459,12 @@ function apiSaveReceipt_(p) {
     var parsed = parseQty_(line.qtyText || line.qty);
     var qty = num_(line.approvedQty != null && line.approvedQty !== '' ? line.approvedQty : parsed.packs);
     if (qty <= 0) return;
-    var price = num_(line.unitPrice != null ? line.unitPrice : item.unitPrice);
-    var amount = round2_(qty * price);
+    var pricing = receiptLinePricing_(line, item, qty);
+    var price = pricing.unitPrice;
+    var amount = pricing.amount;
     rec.totalValue = round2_(num_(rec.totalValue) + amount);
-    var lid = nextId_('RL');
     rLines.push({
-      id: lid,
+      id: nextId_('RL'),
       receiptId: rec.id,
       itemId: item.id,
       qtyText: parsed.raw || String(qty),
@@ -467,11 +478,79 @@ function apiSaveReceipt_(p) {
     });
     item.unitPrice = price;
     if (line.packSize) item.packSize = String(line.packSize);
+    if (line.code) item.code = String(line.code).trim();
     var lot = addStock_(stock, item.id, LOC_MAIN, qty, price, toIsoDate_(line.expiry), rec.number);
     moves.push(movement_('RECEIVE', rec.date, LOC_MAIN, item.id, lot.id, qty, price, amount, rec.id, rec.number));
   });
+}
+
+function apiSaveReceipt_(p) {
+  if (p.id) return apiUpdateReceipt_(p);
+  if (!p.date) throw new Error('กรุณาใส่วันที่รับ');
+  var lines = (p.lines || []).filter(function (l) { return l.itemId || l.name; });
+  if (!lines.length) throw new Error('กรุณาเพิ่มอย่างน้อย 1 รายการ');
+  var items = readObjects_('Items');
+  var stock = readObjects_('Stock');
+  var receipts = readObjects_('Receipts');
+  var rLines = readObjects_('ReceiptLines');
+  var moves = readObjects_('Movements');
+  var rec = {
+    id: nextId_('R'),
+    number: String(p.number || '').trim(),
+    date: toIsoDate_(p.date),
+    source: String(p.source || 'โรงพยาบาลคลองท่อม'),
+    kind: p.kind || 'ยา',
+    notes: String(p.notes || ''),
+    totalValue: 0,
+    createdAt: nowIso_()
+  };
+  appendReceiptLines_(rec, lines, items, stock, rLines, moves);
   rec.totalValue = round2_(rec.totalValue);
   receipts.push(rec);
+  writeObjects_('Items', items);
+  writeObjects_('Stock', stock);
+  writeObjects_('Receipts', receipts);
+  writeObjects_('ReceiptLines', rLines);
+  writeObjects_('Movements', moves);
+  return { ok: true, receipt: rec };
+}
+
+function apiUpdateReceipt_(p) {
+  if (!p.id) throw new Error('ไม่พบใบรับ');
+  if (!p.date) throw new Error('กรุณาใส่วันที่รับ');
+  var lines = (p.lines || []).filter(function (l) { return l.itemId || l.name; });
+  if (!lines.length) throw new Error('กรุณาเพิ่มอย่างน้อย 1 รายการ');
+  var items = readObjects_('Items');
+  var stock = readObjects_('Stock');
+  var receipts = readObjects_('Receipts');
+  var rLines = readObjects_('ReceiptLines');
+  var moves = readObjects_('Movements');
+  var rec = findById_(receipts, p.id);
+  if (!rec) throw new Error('ไม่พบใบรับ');
+
+  moves.filter(function (m) { return m.refId === rec.id && m.type === 'RECEIVE'; }).forEach(function (m) {
+    var st = findById_(stock, m.stockId);
+    if (!st) throw new Error('ไม่พบสต็อกที่เกี่ยวข้อง — ไม่สามารถแก้ไขใบรับนี้ได้');
+    var recvQty = num_(m.qtyChange);
+    if (num_(st.qty) < recvQty - 1e-9) {
+      var it = findById_(items, m.itemId) || {};
+      throw new Error('ไม่สามารถแก้ไขได้ — ' + (it.name || 'รายการ') + ' ถูกเบิกหรือใช้ไปแล้วบางส่วน');
+    }
+    st.qty = round4_(num_(st.qty) - recvQty);
+  });
+  stock = stock.filter(function (s) { return num_(s.qty) > 0; });
+  moves = moves.filter(function (m) { return !(m.refId === rec.id && m.type === 'RECEIVE'); });
+  rLines = rLines.filter(function (l) { return l.receiptId !== rec.id; });
+
+  rec.number = String(p.number || '').trim();
+  rec.date = toIsoDate_(p.date);
+  rec.source = String(p.source || 'โรงพยาบาลคลองท่อม');
+  rec.kind = p.kind || 'ยา';
+  rec.notes = String(p.notes || '');
+  rec.totalValue = 0;
+
+  appendReceiptLines_(rec, lines, items, stock, rLines, moves);
+  rec.totalValue = round2_(rec.totalValue);
   writeObjects_('Items', items);
   writeObjects_('Stock', stock);
   writeObjects_('Receipts', receipts);
@@ -490,7 +569,7 @@ function apiGetReceipt_(p) {
   var items = indexById_(readObjects_('Items'));
   var lines = readObjects_('ReceiptLines').filter(function (l) { return l.receiptId === rec.id; }).map(function (l) {
     var it = items[l.itemId] || {};
-    return Object.assign({}, l, { name: it.name || '', packSize: it.packSize || '', category: it.category || '' });
+    return Object.assign({}, l, { name: it.name || '', code: it.code || '', packSize: it.packSize || '', category: it.category || '' });
   });
   return { receipt: rec, lines: lines };
 }

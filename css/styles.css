@@ -390,6 +390,18 @@ textarea { min-height: 70px; }
 .user-row span { font-weight: 600; }
 .wd-history-row { flex-wrap: wrap; gap: 8px; }
 .wd-history-time { color: var(--muted); font-weight: 500; }
+.wd-edit-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--sky-soft, #eef6ff);
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
 .btn.ghost.danger { color: var(--danger); }
 .btn.ghost.danger:hover { background: #fff0f0; }
 .card h3 {

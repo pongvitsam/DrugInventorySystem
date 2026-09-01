@@ -6,6 +6,7 @@ var STATE = {
   loc: 'MAIN',
   stockFilter: 'all',
   receive: { item: null, lines: [] },
+  editingReceiptId: null,
   ocrReview: [],
   pickStock: [],
   withdrawCart: [],
@@ -44,6 +45,7 @@ function showPage(id) {
   if (id === 'stock') showStock();
   if (id === 'receive') {
     loadReceipts();
+    updateReceiptEditUI();
     if (!STATE.items || !STATE.items.length) loadItems();
     else initItemOptionSelects(STATE.items);
   }
@@ -353,7 +355,8 @@ function renderItems() {
       '</td><td class="right"><b>' + qty + '</b>' +
       (i.stockValue && qty > 0 ? '<div class="muted">' + money(i.stockValue) + ' ฿</div>' : '') +
       '</td><td>' + lotHtml +
-      '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button></td></tr>';
+      '</td><td><button class="btn ghost" onclick="openItem(\'' + i.id + '\')">แก้</button> ' +
+      '<button class="btn ghost danger" onclick="deleteItem(\'' + i.id + '\')">ลบ</button></td></tr>';
   }).join('');
   document.getElementById('itemTable').innerHTML = html || '<tr><td>ยังไม่มีรายการ</td></tr>';
 }
@@ -377,6 +380,18 @@ function openItem(id) {
   document.getElementById('itemModal').style.display = 'flex';
 }
 function closeModal() { document.getElementById('itemModal').style.display = 'none'; }
+
+function deleteItem(id) {
+  var it = (STATE.items || []).filter(function (x) { return x.id === id; })[0];
+  if (!it) return;
+  if (!confirm('ลบ ' + it.name + ' ออกจากทะเบียนหรือไม่?')) return;
+  api('deleteItem', { id: id }).then(function () {
+    toast('ลบรายการแล้ว');
+    if (document.getElementById('itId').value === id) closeModal();
+    loadItems();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
 
 function renderItemStockLots(it) {
   var lots = (it && it.lots && it.lots.length) ? it.lots : [];
@@ -639,7 +654,8 @@ function searchPick(kind) {
       var box = document.getElementById(kind + 'Suggest');
       box.style.display = 'block';
       box.innerHTML = (r.items || []).map(function (i) {
-        return '<div onclick="chooseItem(\'' + kind + '\',\'' + i.id + '\')">' + esc(i.name) + ' <span class="muted">' + esc(i.packSize) + ' · ' + money(i.unitPrice) + '</span></div>';
+        var codePrefix = i.code ? esc(i.code) + ' · ' : '';
+        return '<div onclick="chooseItem(\'' + kind + '\',\'' + i.id + '\')">' + codePrefix + esc(i.name) + ' <span class="muted">' + esc(i.packSize) + ' · ' + money(i.unitPrice) + '</span></div>';
       }).join('') || '<div class="muted">ไม่พบ ใช้ชื่อนี้เป็นรายการใหม่ได้</div>';
       STATE._search = r.items || [];
     });
@@ -650,9 +666,20 @@ function chooseItem(kind, id) {
   if (!it) return;
   STATE.receive.item = it;
   document.getElementById(kind + 'Search').value = it.name;
-  document.getElementById('rcPrice').value = it.unitPrice || 0;
+  var amountEl = document.getElementById('rcAmount');
+  if (amountEl) amountEl.value = '';
   fillSelectWithCustom('rcPack', 'rcPackCustom', Options.mergePackFromItems(STATE.items), it.packSize || '');
   document.getElementById(kind + 'Suggest').style.display = 'none';
+}
+function syncReceiveLinePricing(line) {
+  if (!line) return;
+  var qty = Number(line.qty || 0);
+  var amount = Number(line.amount || 0);
+  if (qty > 0 && amount > 0) {
+    line.unitPrice = ocrRound2(amount / qty);
+  } else if (qty > 0 && Number(line.unitPrice || 0) > 0) {
+    line.amount = ocrRound2(line.unitPrice * qty);
+  }
 }
 function addReceiveLine() {
   var nameBox = document.getElementById('rcSearch').value.trim();
@@ -661,9 +688,11 @@ function addReceiveLine() {
   if (!qty || qty <= 0) return toast('ใส่จำนวนก่อน');
   if (!pack) return toast('เลือกหน่วยบรรจุ');
   var it = STATE.receive.item;
+  var amount = Number(document.getElementById('rcAmount').value || 0);
   var qtyText = qty + ' × ' + pack;
   var line = {
     itemId: it && it.id,
+    code: it ? (it.code || '') : '',
     name: it ? it.name : nameBox,
     packSize: pack,
     category: it ? it.category : (document.getElementById('rcKind').value === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
@@ -671,39 +700,127 @@ function addReceiveLine() {
     qty: qty,
     approvedQty: qty,
     requestedQty: qty,
-    unitPrice: Number(document.getElementById('rcPrice').value || 0),
-    expiry: document.getElementById('rcExpiry').value,
+    unitPrice: 0,
+    amount: amount,
+    expiry: ThDate.get('rcExpiry') || document.getElementById('rcExpiry').value,
     notes: ''
   };
-  line.amount = line.qty * line.unitPrice;
+  syncReceiveLinePricing(line);
   STATE.receive.lines.push(line);
   STATE.receive.item = null;
   document.getElementById('rcSearch').value = '';
   document.getElementById('rcQty').value = '';
+  document.getElementById('rcAmount').value = '';
+  renderReceive();
+}
+function updateReceiveLine(i, key, value) {
+  var line = STATE.receive.lines[i];
+  if (!line) return;
+  if (key === 'qty' || key === 'amount') line[key] = Number(value || 0);
+  else line[key] = value;
+  syncReceiveLinePricing(line);
   renderReceive();
 }
 function renderReceive() {
   var tot = 0;
-  var html = '<tr><th>รายการ</th><th>จำนวน</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">เป็นเงิน</th><th>หมดอายุ</th><th></th></tr>';
+  var html = '<tr><th>รหัสยา</th><th>รายการ</th><th>จำนวน</th><th>บรรจุ</th><th class="right">ราคารวม</th><th class="right">ราคา/หน่วย</th><th>หมดอายุ</th><th></th></tr>';
   html += STATE.receive.lines.map(function (l, i) {
+    syncReceiveLinePricing(l);
     tot += Number(l.amount || 0);
-    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.qty) + '</td><td>' + esc(l.packSize) + '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + money(l.amount) + '</td><td>' + (l.expiry ? ThDate.formatDateLong(l.expiry) : '-') + '</td><td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
+    return '<tr><td>' + (l.code ? esc(l.code) : '<span class="muted">—</span>') +
+      '</td><td>' + esc(l.name) +
+      '</td><td class="right"><input type="number" min="0" step="1" value="' + esc(l.qty) + '" style="width:72px" onchange="updateReceiveLine(' + i + ',\'qty\',this.value)"></td>' +
+      '<td>' + esc(l.packSize) + '</td>' +
+      '<td class="right"><input type="number" min="0" step="0.01" value="' + (l.amount != null && l.amount !== '' ? l.amount : '') + '" style="width:96px" onchange="updateReceiveLine(' + i + ',\'amount\',this.value)"></td>' +
+      '<td class="right">' + money(l.unitPrice) + '</td>' +
+      '<td>' + ThDate.fieldHtml('rcLineExp_' + i, l.expiry || '', 'updateReceiveLine(' + i + ',\'expiry\',this.value)', true) + '</td>' +
+      '<td><button class="btn ghost" onclick="STATE.receive.lines.splice(' + i + ',1);renderReceive()">ลบ</button></td></tr>';
   }).join('');
   document.getElementById('rcTable').innerHTML = html;
+  ThDate.initFieldsIn(document.getElementById('rcTable'));
   document.getElementById('rcCalc').textContent = 'ยอดรวม ' + money(tot) + ' บาท · ' + STATE.receive.lines.length + ' รายการ';
+}
+function updateReceiptEditUI() {
+  var banner = document.getElementById('rcEditBanner');
+  var btn = document.getElementById('rcSaveBtn');
+  if (!banner || !btn) return;
+  if (STATE.editingReceiptId) {
+    banner.style.display = 'flex';
+    document.getElementById('rcEditBannerText').textContent = 'กำลังแก้ไขใบรับ ' + STATE.editingReceiptId;
+    btn.textContent = 'บันทึกการแก้ไข';
+  } else {
+    banner.style.display = 'none';
+    btn.textContent = 'บันทึกรับเข้าคลังหลัก';
+  }
+}
+function cancelReceiptEdit() {
+  STATE.editingReceiptId = null;
+  STATE.receive.lines = [];
+  STATE.receive.item = null;
+  document.getElementById('rcNumber').value = '';
+  document.getElementById('rcSource').value = 'โรงพยาบาลคลองท่อม';
+  document.getElementById('rcKind').value = 'ยา';
+  document.getElementById('rcNotes').value = '';
+  document.getElementById('rcSearch').value = '';
+  document.getElementById('rcQty').value = '';
+  document.getElementById('rcAmount').value = '';
+  ThDate.set('rcDate', todayInput());
+  updateReceiptEditUI();
+  renderReceive();
+  toast('ยกเลิกการแก้ไข');
+}
+function editReceipt(id) {
+  api('getReceipt', { id: id }).then(function (data) {
+    var rec = data.receipt;
+    var itemMap = {};
+    (STATE.items || []).forEach(function (it) { itemMap[it.id] = it; });
+    STATE.editingReceiptId = id;
+    document.getElementById('rcNumber').value = rec.number || '';
+    ThDate.set('rcDate', rec.date);
+    document.getElementById('rcSource').value = rec.source || 'โรงพยาบาลคลองท่อม';
+    document.getElementById('rcKind').value = rec.kind || 'ยา';
+    document.getElementById('rcNotes').value = rec.notes || '';
+    STATE.receive.lines = (data.lines || []).map(function (l) {
+      var it = itemMap[l.itemId] || {};
+      return {
+        itemId: l.itemId,
+        code: l.code || it.code || '',
+        name: l.name || it.name || '',
+        packSize: l.packSize || it.packSize || '',
+        category: l.category || it.category || '',
+        qtyText: l.qtyText || String(l.qty),
+        qty: Number(l.qty || 0),
+        approvedQty: Number(l.approvedQty != null ? l.approvedQty : l.qty),
+        requestedQty: Number(l.requestedQty != null ? l.requestedQty : l.qty),
+        unitPrice: Number(l.unitPrice || 0),
+        amount: Number(l.amount || 0),
+        expiry: l.expiry || '',
+        notes: l.notes || ''
+      };
+    });
+    updateReceiptEditUI();
+    renderReceive();
+    showPage('receive');
+    toast('โหลดใบรับ ' + id + ' เพื่อแก้ไข');
+  }).catch(function (e) { toast(e.message || String(e)); });
 }
 function saveReceipt() {
   if (!STATE.receive.lines.length) return toast('ยังไม่มีรายการ');
-  api('saveReceipt', {
+  var payload = {
     number: document.getElementById('rcNumber').value,
     date: document.getElementById('rcDate').value,
     source: document.getElementById('rcSource').value,
     kind: document.getElementById('rcKind').value,
     notes: document.getElementById('rcNotes').value,
     lines: STATE.receive.lines
-  }).then(function (r) {
-    toast('บันทึกใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท');
+  };
+  if (STATE.editingReceiptId) payload.id = STATE.editingReceiptId;
+  api('saveReceipt', payload).then(function (r) {
+    var editing = !!STATE.editingReceiptId;
+    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท');
+    STATE.editingReceiptId = null;
     STATE.receive.lines = [];
+    updateReceiptEditUI();
     renderReceive();
     loadReceipts();
     refreshAfterMutation();
@@ -712,7 +829,9 @@ function saveReceipt() {
 function loadReceipts() {
   api('listReceipts').then(function (r) {
     document.getElementById('rcHistory').innerHTML = (r.receipts || []).slice(0, 10).map(function (x) {
-      return '<div>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</div>';
+      return '<div class="user-row wd-history-row">' +
+        '<span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</span>' +
+        '<button type="button" class="btn ghost" onclick="editReceipt(\'' + x.id + '\')">แก้ไข</button></div>';
     }).join('') || 'ยังไม่มี';
   });
 }
@@ -826,6 +945,7 @@ function pickOcrRegistryItem(i, itemId) {
   if (!it) return toast('ไม่พบรายการในทะเบียน');
   row.itemId = it.id;
   row.name = it.name;
+  row.code = it.code || '';
   row.packSize = it.packSize || row.packSize || '';
   row._packCustom = false;
   row.category = it.category || row.category || '';
@@ -938,8 +1058,10 @@ function confirmOcrReview() {
     var qty = Number(l.qty || 0);
     var price = Number(l.unitPrice || 0);
     var amount = Number(l.amount || 0) || ocrRound2(qty * price);
+    var it = l.itemId ? (STATE.items || []).filter(function (x) { return String(x.id) === String(l.itemId); })[0] : null;
     STATE.receive.lines.push({
       itemId: l.itemId || '',
+      code: (it && it.code) || l.code || '',
       name: String(l.name).trim(),
       packSize: pack,
       category: l.category || (kind === 'เวชภัณฑ์' ? 'เวชภัณฑ์ที่มิใช่ยา' : 'ยาเม็ด'),
