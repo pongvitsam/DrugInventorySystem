@@ -1559,6 +1559,25 @@ function runReport(kind) {
 function hdr(s, title, sub) {
   return '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div><h2 style="margin:8px 0 4px">' + title + '</h2><div class="muted">' + sub + '</div></div>';
 }
+function printReport() {
+  document.documentElement.classList.add('print-report');
+  var done = function () { document.documentElement.classList.remove('print-report'); };
+  window.addEventListener('afterprint', done, { once: true });
+  window.print();
+  setTimeout(done, 1000);
+}
+function rpTableHead() {
+  return '<thead><tr>' +
+    '<th class="col-item">รายการ</th>' +
+    '<th class="col-pack">บรรจุ</th>' +
+    '<th class="col-price right">ราคา</th>' +
+    '<th class="col-num right">ยอดคงเหลือเดิม</th>' +
+    '<th class="col-num right">รับ</th>' +
+    '<th class="col-num right">เบิก</th>' +
+    '<th class="col-num right">คงเหลือ</th>' +
+    '<th class="col-val right">มูลค่า</th>' +
+    '</tr></thead>';
+}
 function renderMonth(d) {
   var sm = d.summary || {};
   var period = d.label || '';
@@ -1570,11 +1589,11 @@ function renderMonth(d) {
     kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' หน่วย', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
-    html += '<h3>' + esc(g.category) + '</h3><table><tr><th>รายการ</th><th>บรรจุ</th><th class="right">ราคา</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับ</th><th class="right">เบิก</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th></tr>';
+    html += '<h3>' + esc(g.category) + '</h3><div class="rp-table-wrap"><table class="rp-table">' + rpTableHead() + '<tbody>';
     g.rows.forEach(function (r) {
-      html += '<tr><td>' + esc(r.item.name) + '</td><td>' + esc(r.item.packSize) + '</td><td class="right">' + money(r.item.unitPrice) + '</td><td class="right">' + r.opening + '</td><td class="right">' + r.received + '</td><td class="right">' + r.issued + '</td><td class="right"><b>' + r.remain + '</b></td><td class="right">' + money(r.remainValue) + '</td></tr>';
+      html += '<tr><td class="col-item">' + esc(r.item.name) + '</td><td class="col-pack">' + esc(r.item.packSize) + '</td><td class="col-price right">' + money(r.item.unitPrice) + '</td><td class="col-num right">' + r.opening + '</td><td class="col-num right">' + r.received + '</td><td class="col-num right">' + r.issued + '</td><td class="col-num right"><b>' + r.remain + '</b></td><td class="col-val right">' + money(r.remainValue) + '</td></tr>';
     });
-    html += '<tr><td colspan="7" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="right"><b>' + money(g.totalValue) + '</b></td></tr></table>';
+    html += '<tr class="rp-total-row"><td colspan="7" class="right"><b>รวม ' + esc(g.category) + '</b></td><td class="col-val right"><b>' + money(g.totalValue) + '</b></td></tr></tbody></table></div>';
   });
   html += '<p class="right"><b>รวมคงเหลือทั้งสิ้น ' + money(d.grandTotal) + ' บาท</b></p>';
   html += signBlock4(d.settings);
@@ -1589,11 +1608,11 @@ function renderMoney(d) {
     kpi('เบิกออก', money(t.used) + ' ฿', 'เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ', money(t.remain) + ' ฿', 'ณ สิ้นช่วง', 'teal') +
     '</div>';
-  html += '<table><tr><th>หมวด</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr>';
+  html += '<div class="rp-table-wrap"><table class="rp-table rp-table-money"><thead><tr><th>หมวด</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr></thead><tbody>';
   (d.rows || []).forEach(function (r) {
     html += '<tr><td>' + esc(r.category) + '</td><td class="right">' + money(r.opening) + '</td><td class="right">' + money(r.receive) + '</td><td class="right">' + money(r.used) + '</td><td class="right"><b>' + money(r.remain) + '</b></td></tr>';
   });
-  html += '</table>' + signBlock4(d.settings);
+  html += '</tbody></table></div>' + signBlock4(d.settings);
   document.getElementById('reportOut').innerHTML = html;
 }
 function signDateLineHtml(editable) {

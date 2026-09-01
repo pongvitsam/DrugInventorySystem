@@ -330,6 +330,15 @@ textarea { min-height: 70px; }
   .print-sheet h2 { font-size: 16px; }
   .print-sheet table { font-size: 11px; }
   .print-sheet th, .print-sheet td { padding: 4px 5px; }
+  html.print-report @page { size: A4 landscape; margin: 10mm 8mm; }
+  html.print-report .print-sheet { max-width: none; }
+  html.print-report .rp-summary-cards { display: none !important; }
+  .print-sheet .rp-table { font-size: 9px; }
+  .print-sheet .rp-table thead { display: table-header-group; }
+  .print-sheet .rp-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .print-sheet .rp-table td, .print-sheet .rp-table th { border: 1px solid #bbb; }
+  .print-sheet .rp-table-wrap { overflow: visible; page-break-inside: auto; }
+  .print-sheet h3 { page-break-after: avoid; margin-top: 10px; }
   .print-sheet::before {
     content: 'รพ.สต.ทรายขาว';
     position: fixed; top: 45%; left: 50%;
@@ -898,6 +907,26 @@ select option[value="__add__"] {
 .rp-range-mode { display: flex; gap: 6px; flex-wrap: wrap; }
 .rp-range-row { gap: 10px; margin: 0; flex: 1 1 320px; }
 .rp-summary-cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.rp-table-wrap { overflow-x: auto; margin-bottom: 12px; }
+.rp-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.rp-table th, .rp-table td {
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.rp-table thead th {
+  background: linear-gradient(180deg, #0b6b5b 0%, #095a4d 100%);
+  color: #fff;
+  font-weight: 700;
+}
+.rp-table .col-item { width: 28%; }
+.rp-table .col-pack { width: 10%; }
+.rp-table .col-price { width: 8%; }
+.rp-table .col-num { width: 8%; }
+.rp-table .col-val { width: 10%; }
+.rp-table .rp-total-row td { background: #f4faf8; font-weight: 700; }
 .stock-low-row td { background: #fff5f3; }
 .stock-low-row td:first-child { box-shadow: inset 4px 0 0 var(--danger); }
 .qty-low {
