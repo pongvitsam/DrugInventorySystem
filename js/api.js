@@ -1,6 +1,7 @@
 var DrugAPI = (function () {
 var LOC_MAIN = 'MAIN';
 var LOC_LABEL = { MAIN: 'คลังหลัก' };
+var HISTORY_FROM_DATE_ = '2026-09-01';
 
 var CATEGORIES = [
   'ยาเม็ด',
@@ -1315,7 +1316,7 @@ function ensureDb_() {
     loginUsers: '["Napatsorn"]',
     defaultLowStock: '10',
     expiryWarnMonths: '6',
-    historyFromDate: ''
+    historyFromDate: HISTORY_FROM_DATE_
   };
   var cur = readSettings_();
   var changed = false;
@@ -1329,8 +1330,8 @@ function ensureDb_() {
     cur.loginUsers = '["Napatsorn"]';
     changed = true;
   }
-  if (!toIsoDate_(cur.historyFromDate)) {
-    cur.historyFromDate = todayIsoDate_();
+  if (cur.historyFromDate !== HISTORY_FROM_DATE_) {
+    cur.historyFromDate = HISTORY_FROM_DATE_;
     changed = true;
   }
   if (changed) {
@@ -1478,7 +1479,7 @@ function todayIsoDate_() {
 
 function getHistoryFromDate_(settings) {
   settings = settings || readSettings_();
-  return toIsoDate_(settings.historyFromDate);
+  return toIsoDate_(settings.historyFromDate) || HISTORY_FROM_DATE_;
 }
 
 function docInHistory_(dateIso) {
