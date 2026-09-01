@@ -15,7 +15,9 @@ var STATE = {
   reportKind: 'month',
   lastWithdrawId: null,
   optionLists: { categories: [], packSizes: [], forms: [] },
-  lowStockItems: []
+  lowStockItems: [],
+  dashSnapshot: null,
+  refreshTimer: null
 };
 
 function api(name, payload) {
@@ -124,8 +126,11 @@ function refreshStockCache(cb) {
   });
 }
 function refreshAfterMutation() {
-  refreshStockCache();
-  api('bootstrap').then(function (b) { applyBoot(b); });
+  clearTimeout(STATE.refreshTimer);
+  STATE.refreshTimer = setTimeout(function () {
+    refreshStockCache();
+    api('bootstrap').then(function (b) { applyBoot(b); });
+  }, 280);
 }
 function loadBootstrap() {
   setStatus('กำลังโหลดข้อมูล...');
@@ -282,8 +287,20 @@ function ensureOptionOnSave(listKey, value) {
 
 function renderDash(b) {
   var d = b.dashboard;
+  var total = Number(d.totalValue || 0);
+  var prev = STATE.dashSnapshot;
+  var changed = !prev || prev.totalValue !== total;
+  STATE.dashSnapshot = {
+    totalValue: total,
+    receiptCount: d.receiptCount || 0,
+    transferCount: d.transferCount || 0,
+    itemCount: b.itemCount || 0,
+    updatedAt: new Date()
+  };
+  var hint = 'ยอดคงเหลือปัจจุบัน';
+  if (changed && prev) hint += ' · อัปเดตเมื่อ ' + formatDashTime(STATE.dashSnapshot.updatedAt);
   document.getElementById('kpis').innerHTML =
-    kpi('มูลค่าคลังหลัก', money(d.totalValue) + ' ฿', 'ยอดคงเหลือปัจจุบัน', 'teal') +
+    kpi('มูลค่าคลังหลัก', money(total) + ' ฿', hint, 'teal') +
     kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลคลองท่อม', 'sky') +
     kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก', 'sand') +
     kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์', 'leaf');
@@ -304,6 +321,10 @@ function renderDash(b) {
 function kpi(label, value, hint, tone) {
   tone = tone || 'teal';
   return '<div class="card kpi kpi-' + tone + '"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="hint">' + hint + '</div></div>';
+}
+function formatDashTime(d) {
+  d = d || new Date();
+  return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function loadItems() {

@@ -70,6 +70,7 @@ function enrichStockRow_(s, items) {
 }
 
 function migrateStockPackSizes_() {
+  if (String(readSettings_().stockPackMigrated) === '1') return;
   var items = indexById_(readObjects_('Items'));
   var stock = readObjects_('Stock');
   var changed = false;
@@ -79,10 +80,20 @@ function migrateStockPackSizes_() {
       if (s.packSize) changed = true;
     }
   });
-  if (changed) {
-    writeObjects_('Stock', stock);
-    invalidateStockCaches_();
-  }
+  if (changed) writeObjects_('Stock', stock);
+  setSetting_('stockPackMigrated', '1');
+  invalidateStockCaches_();
+}
+
+function calcMainStockValue_(stock) {
+  var total = 0;
+  (stock || []).forEach(function (s) {
+    if (s.location !== LOC_MAIN) return;
+    var q = num_(s.qty);
+    if (q <= 0) return;
+    total += round2_(q * num_(s.unitPrice));
+  });
+  return round2_(total);
 }
 
 function sortStockRows_(rows) {
@@ -176,8 +187,10 @@ function apiSaveOptionLists_(p) {
 
 function apiBootstrap_() {
   var settings = readSettings_();
-  var items = normalizeItemPacks_(readObjects_('Items'));
-  var stock = readObjects_('Stock').filter(function (s) { return s.location === LOC_MAIN; });
+  var items = normalizeItemPacks_(readObjects_('Items'), false);
+  var stock = readObjects_('Stock').filter(function (s) {
+    return s.location === LOC_MAIN && num_(s.qty) > 0;
+  });
   var receipts = readObjects_('Receipts');
   var transfers = readObjects_('Transfers');
   var dash = buildDashboard_(items, stock, receipts, transfers);
@@ -260,7 +273,7 @@ function apiRemoveUser_(p) {
 }
 
 function apiListItems_() {
-  var items = normalizeItemPacks_(readObjects_('Items'));
+  var items = normalizeItemPacks_(readObjects_('Items'), false);
   var itemMap = indexById_(items);
   var stock = readObjects_('Stock').filter(function (s) {
     return s.location === LOC_MAIN && num_(s.qty) > 0;
@@ -300,7 +313,7 @@ function apiListItems_() {
 
 function apiSearchItems_(p) {
   var q = String(p.q || '').toLowerCase().trim();
-  var items = normalizeItemPacks_(readObjects_('Items')).filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
   if (!q) return { items: items.slice(0, 40) };
   return {
     items: items.filter(function (i) {
@@ -834,7 +847,7 @@ function apiGetTransfer_(p) {
 function apiMonthReport_(p) {
   var monthKey = p.monthKey || currentMonthKey_();
   var range = monthRange_(monthKey);
-  var items = normalizeItemPacks_(readObjects_('Items')).filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
   var byItem = {};
@@ -935,7 +948,7 @@ function apiMonthReport_(p) {
 function apiMoneyReport_(p) {
   var monthKey = p.monthKey || currentMonthKey_();
   var range = monthRange_(monthKey);
-  var items = indexById_(normalizeItemPacks_(readObjects_('Items')));
+  var items = indexById_(normalizeItemPacks_(readObjects_('Items'), false));
   var stock = readObjects_('Stock');
   var moves = readObjects_('Movements');
   var map = {};
@@ -1063,7 +1076,7 @@ function apiImportSeed_(p) {
 
 function buildDashboard_(items, stock, receipts, transfers) {
   var itemMap = indexById_(items);
-  var mainVal = 0;
+  var mainVal = calcMainStockValue_(stock);
   var byCat = {};
   CATEGORIES.forEach(function (c) { byCat[c] = 0; });
   var expiry = [];
@@ -1071,11 +1084,10 @@ function buildDashboard_(items, stock, receipts, transfers) {
     if (s.location !== LOC_MAIN) return;
     var q = num_(s.qty);
     if (q <= 0) return;
-    var amt = q * num_(s.unitPrice);
-    mainVal += amt;
+    var amt = round2_(q * num_(s.unitPrice));
     var it = itemMap[s.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
-    byCat[cat] = (byCat[cat] || 0) + amt;
+    byCat[cat] = round2_((byCat[cat] || 0) + amt);
     if (isNearExpiry_(s.expiry)) {
       expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: 'คลังหลัก' });
     }
@@ -1156,7 +1168,8 @@ function packKey_(v) {
   return String(v || '').replace(/\s+/g, '').toLowerCase();
 }
 
-function normalizeItemPacks_(items) {
+function normalizeItemPacks_(items, persist) {
+  if (persist == null) persist = true;
   var bestByKey = {};
   items.forEach(function (it) {
     var p = String(it.packSize || '').trim();
@@ -1181,7 +1194,7 @@ function normalizeItemPacks_(items) {
       changed = true;
     }
   });
-  if (changed) writeObjects_('Items', items);
+  if (changed && persist) writeObjects_('Items', items);
   return items;
 }
 
