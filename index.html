@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=33">
+  <link rel="stylesheet" href="css/styles.css?v=34">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -329,12 +329,8 @@
             <label for="itCat">หมวด</label>
             <button type="button" class="opt-manage-link" onclick="toggleOptionManage('categories','itCat')">จัดการ</button>
           </div>
-          <select id="itCat"></select>
-          <div id="itCatAdd" class="opt-add-row" style="display:none">
-            <input id="itCatAddInput" placeholder="ชื่อหมวดใหม่">
-            <button type="button" class="btn secondary" onclick="confirmOptionAdd('categories','itCat')">เพิ่ม</button>
-            <button type="button" class="btn ghost" onclick="cancelOptionAdd('itCat')">ยกเลิก</button>
-          </div>
+          <input id="itCat" list="itCatList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
+          <datalist id="itCatList"></datalist>
           <div id="itCatManage" class="opt-manage-pop" style="display:none"></div>
         </div>
         <div class="field opt-field">
@@ -342,12 +338,8 @@
             <label for="itPack">ขนาดบรรจุ</label>
             <button type="button" class="opt-manage-link" onclick="toggleOptionManage('packSizes','itPack')">จัดการ</button>
           </div>
-          <select id="itPack"></select>
-          <div id="itPackAdd" class="opt-add-row" style="display:none">
-            <input id="itPackAddInput" placeholder="เช่น 500's">
-            <button type="button" class="btn secondary" onclick="confirmOptionAdd('packSizes','itPack')">เพิ่ม</button>
-            <button type="button" class="btn ghost" onclick="cancelOptionAdd('itPack')">ยกเลิก</button>
-          </div>
+          <input id="itPack" list="itPackList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
+          <datalist id="itPackList"></datalist>
           <div id="itPackManage" class="opt-manage-pop" style="display:none"></div>
         </div>
         <div class="field opt-field">
@@ -355,12 +347,8 @@
             <label for="itForm">รูปแบบ</label>
             <button type="button" class="opt-manage-link" onclick="toggleOptionManage('forms','itForm')">จัดการ</button>
           </div>
-          <select id="itForm"></select>
-          <div id="itFormAdd" class="opt-add-row" style="display:none">
-            <input id="itFormAddInput" placeholder="เช่น TAB">
-            <button type="button" class="btn secondary" onclick="confirmOptionAdd('forms','itForm')">เพิ่ม</button>
-            <button type="button" class="btn ghost" onclick="cancelOptionAdd('itForm')">ยกเลิก</button>
-          </div>
+          <input id="itForm" list="itFormList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
+          <datalist id="itFormList"></datalist>
           <div id="itFormManage" class="opt-manage-pop" style="display:none"></div>
         </div>
       </div>
@@ -382,13 +370,13 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=33"></script>
-  <script src="js/api.js?v=33"></script>
-  <script src="js/options.js?v=33"></script>
-  <script src="js/thdate.js?v=33"></script>
-  <script src="js/seed.js?v=33"></script>
-  <script src="js/ocr.js?v=33"></script>
-  <script src="js/app.js?v=33"></script>
-  <script src="js/auth.js?v=33"></script>
+  <script src="js/db.js?v=34"></script>
+  <script src="js/api.js?v=34"></script>
+  <script src="js/options.js?v=34"></script>
+  <script src="js/thdate.js?v=34"></script>
+  <script src="js/seed.js?v=34"></script>
+  <script src="js/ocr.js?v=34"></script>
+  <script src="js/app.js?v=34"></script>
+  <script src="js/auth.js?v=34"></script>
 </body>
 </html>

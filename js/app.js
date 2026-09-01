@@ -188,7 +188,7 @@ function refillItemModalSelects(opts) {
   fillOptionSelect('itCat', STATE.optionLists.categories, opts.category || 'ยาเม็ด', false);
   fillOptionSelect('itPack', STATE.optionLists.packSizes, opts.packSize || '', true);
   fillOptionSelect('itForm', STATE.optionLists.forms, opts.form || '', true);
-  ['itCat', 'itPack', 'itForm'].forEach(hideOptionAddRow);
+  ['itCat', 'itPack', 'itForm'].forEach(function () {});
   document.querySelectorAll('.opt-manage-pop').forEach(function (p) { p.style.display = 'none'; });
 }
 
@@ -225,9 +225,8 @@ function addOptionListItem(listKey, val, selectId) {
       form: listKey === 'forms' ? val : readOptionSelect('itForm')
     });
     if (selectId) {
-      var sel = document.getElementById(selectId);
-      if (sel) { sel.value = val; sel._optPrev = val; }
-      hideOptionAddRow(selectId);
+      var inp = document.getElementById(selectId);
+      if (inp) inp.value = val;
     }
     return toast('มีรายการนี้แล้ว');
   }
@@ -241,9 +240,8 @@ function addOptionListItem(listKey, val, selectId) {
       form: listKey === 'forms' ? val : readOptionSelect('itForm')
     });
     if (selectId) {
-      var sel = document.getElementById(selectId);
-      if (sel) { sel.value = val; sel._optPrev = val; }
-      hideOptionAddRow(selectId);
+      var inp = document.getElementById(selectId);
+      if (inp) inp.value = val;
     }
     toast('เพิ่มรายการแล้ว');
   }).catch(function (e) { toast(e.message || String(e)); });
@@ -461,7 +459,7 @@ function saveItem() {
     id: document.getElementById('itId').value,
     name: document.getElementById('itName').value,
     code: document.getElementById('itCode').value,
-    category: document.getElementById('itCat').value,
+    category: readOptionSelect('itCat'),
     packSize: readOptionSelect('itPack'),
     form: readOptionSelect('itForm'),
     unitPrice: document.getElementById('itPrice').value,

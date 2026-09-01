@@ -132,17 +132,21 @@ function readSelectWithCustom(selectId, customId) {
 
 var OPT_ADD = '__add__';
 
-function fillOptionSelect(selectId, values, selected, allowEmpty) {
-  var sel = document.getElementById(selectId);
-  if (!sel) return;
-  var keep = String(selected || '').trim();
-  sel.innerHTML = '';
-  if (allowEmpty) {
-    var o0 = document.createElement('option');
-    o0.value = '';
-    o0.textContent = '— เลือก —';
-    sel.appendChild(o0);
+function optionListEl(inputId) {
+  return document.getElementById(inputId + 'List');
+}
+
+function fillOptionSelect(inputId, values, selected, allowEmpty) {
+  var inp = document.getElementById(inputId);
+  var dl = optionListEl(inputId);
+  if (!inp) return;
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = inputId + 'List';
+    inp.setAttribute('list', dl.id);
+    inp.parentNode.appendChild(dl);
   }
+  dl.innerHTML = '';
   var seen = {};
   (values || []).forEach(function (v) {
     v = String(v || '').trim();
@@ -150,80 +154,33 @@ function fillOptionSelect(selectId, values, selected, allowEmpty) {
     seen[v.toLowerCase()] = true;
     var o = document.createElement('option');
     o.value = v;
-    o.textContent = v;
-    sel.appendChild(o);
+    dl.appendChild(o);
   });
-  if (keep && !seen[keep.toLowerCase()]) {
-    var ox = document.createElement('option');
-    ox.value = keep;
-    ox.textContent = keep;
-    sel.appendChild(ox);
-  }
-  var oAdd = document.createElement('option');
-  oAdd.value = OPT_ADD;
-  oAdd.textContent = '＋ เพิ่มรายการใหม่…';
-  sel.appendChild(oAdd);
+  var keep = String(selected || '').trim();
   if (keep) {
-    var matched = false;
-    Array.prototype.forEach.call(sel.options, function (o) {
-      if (o.value === keep) matched = true;
-    });
-    if (matched) sel.value = keep;
-    else if (allowEmpty) sel.value = '';
-    else sel.value = (values && values[0]) || keep;
-  } else if (allowEmpty) {
-    sel.value = '';
+    inp.value = keep;
+    if (!seen[keep.toLowerCase()]) {
+      var ox = document.createElement('option');
+      ox.value = keep;
+      dl.appendChild(ox);
+    }
+  } else if (!allowEmpty && values && values.length) {
+    inp.value = values[0];
   } else {
-    sel.value = (values && values[0]) || '';
+    inp.value = '';
   }
-  if (sel.value === OPT_ADD) {
-    sel.value = keep || (allowEmpty ? '' : ((values && values[0]) || ''));
-  }
-  sel._optPrev = sel.value;
+  if (!inp.placeholder) inp.placeholder = 'พิมพ์หรือเลือก';
 }
 
-function readOptionSelect(selectId) {
-  var sel = document.getElementById(selectId);
-  if (!sel || sel.value === OPT_ADD) return '';
-  return String(sel.value || '').trim();
+function readOptionSelect(inputId) {
+  var inp = document.getElementById(inputId);
+  if (!inp) return '';
+  return String(inp.value || '').trim();
 }
 
-function hideOptionAddRow(selectId) {
-  var wrap = document.getElementById(selectId + 'Add');
-  var inp = document.getElementById(selectId + 'AddInput');
-  if (wrap) wrap.style.display = 'none';
-  if (inp) inp.value = '';
-}
+function hideOptionAddRow() {}
 
 function bindItemModalOptionSelects() {
-  ['itCat', 'itPack', 'itForm'].forEach(function (id) {
-    var sel = document.getElementById(id);
-    if (!sel || sel._optBound) return;
-    sel._optBound = true;
-    sel.addEventListener('change', function () {
-      if (sel.value === OPT_ADD) {
-        sel.value = sel._optPrev || '';
-        var wrap = document.getElementById(id + 'Add');
-        var inp = document.getElementById(id + 'AddInput');
-        if (wrap) wrap.style.display = 'flex';
-        if (inp) { inp.value = ''; setTimeout(function () { inp.focus(); }, 0); }
-      } else {
-        sel._optPrev = sel.value;
-        hideOptionAddRow(id);
-      }
-    });
-    var inp = document.getElementById(id + 'AddInput');
-    if (inp && !inp._optEnter) {
-      inp._optEnter = true;
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          var map = { itCat: 'categories', itPack: 'packSizes', itForm: 'forms' };
-          confirmOptionAdd(map[id], id);
-        }
-      });
-    }
-  });
   if (!document._optManageClick) {
     document._optManageClick = true;
     document.addEventListener('click', function (e) {
