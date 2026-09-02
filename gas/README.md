@@ -20,11 +20,21 @@
 
 ### 3. Deploy Web App
 
-1. **Deploy → New deployment**
-2. ประเภท: **Web app**
-3. Execute as: **Me**
-4. Who has access: **Anyone** (สำคัญ — ให้เว็บ GitHub Pages เรียกได้)
-5. Deploy แล้วคัดลอก **Web app URL** (ลงท้ายด้วย `/exec`)
+**สำคัญ:** clasp อัปโหลดโค้ดได้ แต่ต้อง deploy Web App ในเบราว์เซอร์ครั้งแรก:
+
+1. เปิด Script Editor จาก `gas/DEPLOY.md` (Script ID ในไฟล์นั้น)
+2. **Deploy → New deployment → Web app**
+3. Execute as: **Me** · Who has access: **Anyone**
+4. คัดลอก URL `/exec`
+
+หรือใช้ clasp จากโฟลเดอร์ `gas/`:
+
+```powershell
+clasp push --force
+node deploy-webapp.mjs
+```
+
+แล้วทำขั้นตอน Deploy Web app ใน Editor ตาม `gas/DEPLOY.md`
 
 ### 4. ตั้งค่าในเว็บคลังยา
 

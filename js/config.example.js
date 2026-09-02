@@ -1,4 +1,4 @@
-/** ตัวอย่าง config — คัดลอกเป็น js/config.js แล้วใส่ URL (ไม่ commit config.js ถ้ามีข้อมูลส่วนตัว) */
+/** ตัวอย่าง config — คัดลอกเป็น js/config.js แล้วใส่ URL หลัง deploy Web App */
 window.PHARMA_CONFIG = {
-  gasUrl: ''
+  gasUrl: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec'
 };
