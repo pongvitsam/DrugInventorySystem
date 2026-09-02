@@ -205,7 +205,7 @@ function apiBootstrap_() {
     locations: LOC_LABEL,
     itemCount: items.filter(function (i) { return i.active !== '0'; }).length,
     imported: String(settings.imported) === '1',
-    storageMode: 'local',
+    storageMode: (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) ? 'gas' : 'local',
     dashboard: dash,
     recentReceipts: receipts.slice(-8).reverse(),
     recentTransfers: transfers.slice(-8).reverse()
@@ -1798,15 +1798,40 @@ function apiItemTrendReport_(p) {
   };
 }
 
+var MUTATION_APIS_ = {
+  saveSettings: 1,
+  saveOptionLists: 1,
+  saveItem: 1,
+  deleteItem: 1,
+  saveLowStockSettings: 1,
+  saveStockLots: 1,
+  saveReceipt: 1,
+  saveTransfer: 1,
+  deleteTransfer: 1,
+  importSeed: 1,
+  addUser: 1,
+  removeUser: 1
+};
+
 return {
   api: function (name, payload) {
-    return Promise.resolve().then(function () {
+    var run = function () {
       try {
         return callApi(name, payload || {});
       } catch (err) {
         throw new Error(err && err.message ? err.message : String(err));
       }
-    });
+    };
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
+      return RemoteDB.ensureLoaded().then(function () {
+        var result = run();
+        if (MUTATION_APIS_[name]) {
+          return RemoteDB.sync().then(function () { return result; });
+        }
+        return result;
+      });
+    }
+    return Promise.resolve().then(run);
   },
   exportData: function () {
     return DB.exportAll();

@@ -85,7 +85,8 @@ function setStatus(msg, isError) {
 function applyBoot(b) {
   STATE.boot = b;
   var s = b.settings || {};
-  document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '');
+  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets' : ' · เครื่องนี้';
+  document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '') + modeLabel;
   document.getElementById('dashSub').textContent = s.unitName || '';
   var link = document.getElementById('sheetLink');
   if (link) {
@@ -116,6 +117,9 @@ function applyBoot(b) {
       ? (typeof ThDate !== 'undefined' && ThDate.formatDateLong ? ThDate.formatDateLong(s.historyFromDate) : s.historyFromDate)
       : '-';
   }
+  var stGas = document.getElementById('stGasUrl');
+  if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl();
+  updateGasStatus(b.storageMode === 'gas' ? 'เชื่อมต่อ Google Sheets แล้ว' : '');
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
   ThDate.set('rcDate', todayInput());
@@ -151,7 +155,10 @@ function refreshAfterMutation() {
   }, 280);
 }
 function loadBootstrap() {
-  setStatus('กำลังโหลดข้อมูล...');
+  var loadingMsg = (typeof RemoteDB !== 'undefined' && RemoteDB.enabled())
+    ? 'กำลังโหลดจาก Google Sheets...'
+    : 'กำลังโหลดข้อมูล...';
+  setStatus(loadingMsg);
   api('bootstrap').then(function (b) {
     applyBoot(b);
     if (b.imported) {
@@ -2050,6 +2057,76 @@ function saveSettings() {
     issuerName: document.getElementById('stIss').value,
     issuerPosition: document.getElementById('stIssPos').value
   }).then(function () { toast('บันทึกตั้งค่าแล้ว'); loadBootstrap(); });
+}
+
+function updateGasStatus(msg, isError) {
+  var el = document.getElementById('gasStatus');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = isError ? 'var(--danger)' : '';
+}
+
+function saveGasUrl() {
+  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
+  var url = (document.getElementById('stGasUrl').value || '').trim();
+  RemoteDB.setUrl(url);
+  if (url) {
+    toast('บันทึก URL แล้ว');
+    updateGasStatus('บันทึก URL แล้ว — กดทดสอบการเชื่อมต่อ');
+  } else {
+    toast('ล้าง URL แล้ว — ใช้ข้อมูลในเครื่อง');
+    updateGasStatus('ใช้ข้อมูลในเบราว์เซอร์เครื่องนี้');
+    loadBootstrap();
+  }
+}
+
+function testGasConnection() {
+  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
+  saveGasUrl();
+  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
+  updateGasStatus('กำลังทดสอบ...');
+  RemoteDB.ping().then(function (r) {
+    if (r && r.ok) {
+      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS'));
+      toast('เชื่อมต่อ Google สำเร็จ');
+    } else {
+      updateGasStatus((r && r.error) || 'เชื่อมต่อไม่สำเร็จ', true);
+    }
+  }).catch(function (e) {
+    updateGasStatus(e.message || String(e), true);
+    toast(e.message || String(e));
+  });
+}
+
+function pushGasData() {
+  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
+  saveGasUrl();
+  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
+  if (!confirm('อัปโหลดข้อมูลทั้งหมดจากเครื่องนี้ไปทับบน Google Sheets หรือไม่?')) return;
+  updateGasStatus('กำลังอัปโหลด...');
+  RemoteDB.pushLocal().then(function () {
+    updateGasStatus('อัปโหลดขึ้น Google แล้ว');
+    toast('อัปโหลดสำเร็จ');
+  }).catch(function (e) {
+    updateGasStatus(e.message || String(e), true);
+    toast(e.message || String(e));
+  });
+}
+
+function pullGasData() {
+  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
+  saveGasUrl();
+  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
+  if (!confirm('ดึงข้อมูลจาก Google มาแทนข้อมูลในเครื่องนี้หรือไม่?')) return;
+  updateGasStatus('กำลังดึงข้อมูล...');
+  RemoteDB.pullRemote().then(function () {
+    updateGasStatus('ดึงข้อมูลจาก Google แล้ว');
+    toast('ดึงข้อมูลสำเร็จ');
+    loadBootstrap();
+  }).catch(function (e) {
+    updateGasStatus(e.message || String(e), true);
+    toast(e.message || String(e));
+  });
 }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {

@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=55">
+  <link rel="stylesheet" href="css/styles.css?v=56">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -310,6 +310,21 @@
           <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
         </div>
         <div class="card" style="margin-top:14px">
+          <h3>ฐานข้อมูล Google (GAS + Sheets)</h3>
+          <p class="muted">ใส่ URL Web App จาก Google Apps Script — ทุกเครื่องที่ใช้ URL เดียวกันจะเห็นข้อมูลเดียวกัน (แทนการเก็บในเบราว์เซอร์เครื่องเดียว)</p>
+          <div class="field" style="margin-top:8px">
+            <label>URL Web App (GAS)</label>
+            <input id="stGasUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+          </div>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+            <button type="button" class="btn secondary" onclick="saveGasUrl()">บันทึก URL</button>
+            <button type="button" class="btn secondary" onclick="testGasConnection()">ทดสอบการเชื่อมต่อ</button>
+            <button type="button" class="btn secondary" onclick="pushGasData()">อัปโหลดข้อมูลเครื่องนี้ขึ้น Google</button>
+            <button type="button" class="btn secondary" onclick="pullGasData()">ดึงข้อมูลจาก Google</button>
+          </div>
+          <p class="muted" id="gasStatus" style="margin-top:10px"></p>
+        </div>
+        <div class="card" style="margin-top:14px">
           <h3>ประวัติการเคลื่อนไหว</h3>
           <p class="muted">ยอดคงเหลือจากข้อมูลเดิมยังใช้ได้ — รับเข้า · เบิกออก · รายงาน · กราฟ นับตั้งแต่ 1 กันยายน 2569 เท่านั้น</p>
           <div class="field" style="margin-top:8px;max-width:320px">
@@ -339,7 +354,7 @@
         </div>
         <div class="card" style="margin-top:14px">
           <h3>นำเข้าข้อมูลเดิม</h3>
-          <p>ตอนเปิดครั้งแรก ระบบนำเข้าจากไฟล์ พ.ค.69 ให้อัตโนมัติ ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้</p>
+          <p>ตอนเปิดครั้งแรก ระบบนำเข้าจากไฟล์ พ.ค.69 ให้อัตโนมัติ — เก็บในเบราว์เซอร์ หรือตั้ง Google Sheets ด้านบนเพื่อใช้ร่วมหลายเครื่อง</p>
           <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
           <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
           <p class="muted" id="importMsg"></p>
@@ -408,13 +423,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=55"></script>
-  <script src="js/api.js?v=55"></script>
-  <script src="js/options.js?v=55"></script>
-  <script src="js/thdate.js?v=55"></script>
-  <script src="js/seed.js?v=55"></script>
-  <script src="js/ocr.js?v=55"></script>
-  <script src="js/app.js?v=55"></script>
-  <script src="js/auth.js?v=55"></script>
+  <script src="js/db.js?v=56"></script>
+  <script src="js/remote.js?v=56"></script>
+  <script src="js/api.js?v=56"></script>
+  <script src="js/options.js?v=56"></script>
+  <script src="js/thdate.js?v=56"></script>
+  <script src="js/seed.js?v=56"></script>
+  <script src="js/ocr.js?v=56"></script>
+  <script src="js/app.js?v=56"></script>
+  <script src="js/auth.js?v=56"></script>
 </body>
 </html>

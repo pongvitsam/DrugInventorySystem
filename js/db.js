@@ -56,13 +56,20 @@ var DB = {
     var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'];
     var out = {};
     keys.forEach(function (k) {
-      if (DB_MEM[k]) {
-        out[k] = DB_MEM[k];
-        return;
-      }
-      var raw = localStorage.getItem(DB_PREFIX + k);
-      if (raw) out[k] = JSON.parse(raw);
+      if (k === 'SettingsObj') out[k] = DB.readSettingsObj();
+      else if (k === 'SeqObj') out[k] = DB.readSeqObj();
+      else out[k] = DB.readObjects(k);
     });
     return out;
+  },
+  importAll: function (data) {
+    DB.clearCache();
+    var d = data || {};
+    DB.writeSettingsObj(d.SettingsObj || {});
+    DB.writeSeqObj(d.SeqObj || {});
+    ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
+      'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'].forEach(function (k) {
+      DB.writeObjects(k, d[k] || []);
+    });
   }
 };
