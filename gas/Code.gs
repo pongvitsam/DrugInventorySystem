@@ -27,7 +27,10 @@ function doGet(e) {
   try {
     var action = String((e && e.parameter && e.parameter.action) || 'ping').toLowerCase();
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 1 });
+      return json_({ ok: true, service: 'DrugInventoryGAS', version: 2 });
+    }
+    if (action === 'meta') {
+      return json_(getMeta_());
     }
     if (action === 'export') {
       return json_(exportAll_());
@@ -46,8 +49,8 @@ function doPost(e) {
     }
     var action = String(body.action || '').toLowerCase();
     if (action === 'import') {
-      importAll_(body.data || {});
-      return json_({ ok: true });
+      var meta = importAll_(body.data || {});
+      return json_({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt });
     }
     return json_({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -148,27 +151,50 @@ function writeSeqObj_(ss, obj) {
   writeSheetObjects_(getSheet_(ss, 'Seq'), SHEET_DEFS.Seq, rows);
 }
 
+function getMeta_() {
+  var ss = getSpreadsheet_();
+  var settings = readSettingsObj_(ss);
+  return {
+    ok: true,
+    revision: Number(settings.syncRevision) || 0,
+    updatedAt: settings.syncUpdatedAt || ''
+  };
+}
+
 function exportAll_() {
   var ss = getSpreadsheet_();
+  var settings = readSettingsObj_(ss);
   var data = {
-    SettingsObj: readSettingsObj_(ss),
+    SettingsObj: settings,
     SeqObj: readSeqObj_(ss)
   };
   DATA_KEYS_.forEach(function (name) {
     data[name] = readSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name]);
   });
-  return { ok: true, data: data };
+  return {
+    ok: true,
+    revision: Number(settings.syncRevision) || 0,
+    updatedAt: settings.syncUpdatedAt || '',
+    data: data
+  };
 }
 
 function importAll_(data) {
   var ss = getSpreadsheet_();
-  if (data.SettingsObj) writeSettingsObj_(ss, data.SettingsObj);
+  var current = readSettingsObj_(ss);
+  var settings = data.SettingsObj || {};
+  var rev = Number(current.syncRevision) || 0;
+  settings.syncRevision = String(rev + 1);
+  settings.syncUpdatedAt = new Date().toISOString();
+  data.SettingsObj = settings;
+  writeSettingsObj_(ss, settings);
   if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
   DATA_KEYS_.forEach(function (name) {
     if (data[name]) {
       writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
     }
   });
+  return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
 }
 
 /** Run once from Apps Script editor to create spreadsheet */

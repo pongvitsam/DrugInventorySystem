@@ -54,6 +54,7 @@ var Auth = (function () {
   }
 
   function logout() {
+    if (typeof RemoteDB !== 'undefined') RemoteDB.stopPolling();
     clearSession();
     showLoginScreen();
     var inp = document.getElementById('loginUser');

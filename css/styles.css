@@ -124,6 +124,15 @@ h1, h2, h3, .brand h1, .login-card h1, .top h2 {
   border-radius: 10px;
 }
 .sheet-link:hover { background: rgba(255,255,255,.08); opacity: 1; }
+.sync-status {
+  font-size: 11px; padding: 8px 12px; margin: 0 10px 8px; border-radius: 10px;
+  background: rgba(255,255,255,.08); line-height: 1.4; color: #d7eee7;
+}
+.sync-status::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #4ade80; margin-right: 6px; vertical-align: middle;
+}
+.sync-status.syncing::before { background: #fbbf24; }
 .main { flex: 1; padding: 24px 28px 32px; max-width: none; min-width: 0; width: 100%; position: relative; }
 .watermark {
   position: fixed; top: 54%;

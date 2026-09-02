@@ -43,6 +43,13 @@ function invalidateStockCaches_() {
   STOCK_VIEW_CACHE_ = {};
 }
 
+function resetCaches_() {
+  SEQ_CACHE_ = null;
+  SETTINGS_CACHE_ = null;
+  SETTINGS_DIRTY_ = false;
+  invalidateStockCaches_();
+}
+
 function getItemsIndex_() {
   if (!ITEMS_INDEX_CACHE_) ITEMS_INDEX_CACHE_ = indexById_(readObjects_('Items'));
   return ITEMS_INDEX_CACHE_;
@@ -218,7 +225,8 @@ function apiSaveSettings_(p) {
     'approverName', 'approverPosition',
     'requesterName', 'requesterPosition',
     'receiverName', 'receiverPosition',
-    'issuerName', 'issuerPosition'
+    'issuerName', 'issuerPosition',
+    'gasWebAppUrl'
   ];
   keys.forEach(function (k) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
@@ -1824,6 +1832,8 @@ return {
     };
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       return RemoteDB.ensureLoaded().then(function () {
+        return RemoteDB.refreshIfNewer();
+      }).then(function () {
         var result = run();
         if (MUTATION_APIS_[name]) {
           return RemoteDB.sync().then(function () { return result; });
@@ -1835,6 +1845,7 @@ return {
   },
   exportData: function () {
     return DB.exportAll();
-  }
+  },
+  resetCaches: resetCaches_
 };
 })();

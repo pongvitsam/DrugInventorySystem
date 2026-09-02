@@ -85,7 +85,8 @@ function setStatus(msg, isError) {
 function applyBoot(b) {
   STATE.boot = b;
   var s = b.settings || {};
-  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets' : ' · เครื่องนี้';
+  if (typeof RemoteDB !== 'undefined') RemoteDB.applyUrlFromSettings(s);
+  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets (หลายเครื่อง)' : ' · เครื่องนี้';
   document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '') + modeLabel;
   document.getElementById('dashSub').textContent = s.unitName || '';
   var link = document.getElementById('sheetLink');
@@ -118,8 +119,9 @@ function applyBoot(b) {
       : '-';
   }
   var stGas = document.getElementById('stGasUrl');
-  if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl();
-  updateGasStatus(b.storageMode === 'gas' ? 'เชื่อมต่อ Google Sheets แล้ว' : '');
+  if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
+  updateGasStatus(b.storageMode === 'gas' ? 'เชื่อมต่อหลายเครื่องผ่าน Google Sheets แล้ว' : '');
+  updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
   ThDate.set('rcDate', todayInput());
@@ -155,12 +157,20 @@ function refreshAfterMutation() {
   }, 280);
 }
 function loadBootstrap() {
+  if (typeof RemoteDB !== 'undefined') {
+    RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
+  }
   var loadingMsg = (typeof RemoteDB !== 'undefined' && RemoteDB.enabled())
     ? 'กำลังโหลดจาก Google Sheets...'
     : 'กำลังโหลดข้อมูล...';
   setStatus(loadingMsg);
   api('bootstrap').then(function (b) {
     applyBoot(b);
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
+      RemoteDB.startPolling(onRemoteDataChanged);
+    } else if (typeof RemoteDB !== 'undefined') {
+      RemoteDB.stopPolling();
+    }
     if (b.imported) {
       setStatus('');
       loadItems();
@@ -2066,16 +2076,93 @@ function updateGasStatus(msg, isError) {
   el.style.color = isError ? 'var(--danger)' : '';
 }
 
+function updateSyncIndicator(state) {
+  var el = document.getElementById('syncStatus');
+  var btn = document.getElementById('syncRefreshBtn');
+  var gasOn = typeof RemoteDB !== 'undefined' && RemoteDB.enabled();
+  if (el) {
+    if (!gasOn) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = 'block';
+      el.className = 'sync-status' + (state === 'syncing' ? ' syncing' : '');
+      if (state === 'syncing') el.textContent = 'กำลัง sync...';
+      else if (state === 'updated') el.textContent = 'อัปเดตจากเครื่องอื่นแล้ว';
+      else el.textContent = 'หลายเครื่อง · อัปเดตอัตโนมัติ';
+    }
+  }
+  if (btn) btn.style.display = gasOn ? 'block' : 'none';
+}
+
+function refreshActivePageViews_() {
+  var active = document.querySelector('.page.active');
+  if (!active) return;
+  if (active.id === 'page-items') loadItems();
+  if (active.id === 'page-stock') showStock();
+  if (active.id === 'page-receive') loadReceipts();
+  if (active.id === 'page-withdraw') {
+    loadWithdrawPick();
+    loadWithdrawHistory();
+  }
+  if (active.id === 'page-import') {
+    loadLoginUsers();
+    loadLowStockSettings();
+  }
+}
+
+function reloadFromRemote(silent) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return Promise.resolve(false);
+  updateSyncIndicator('syncing');
+  return RemoteDB.refreshIfNewer().then(function (r) {
+    if (!r.changed) {
+      updateSyncIndicator('online');
+      return false;
+    }
+    if (!silent) toast('มีข้อมูลใหม่จากเครื่องอื่น — อัปเดตแล้ว');
+    return api('bootstrap').then(function (b) {
+      applyBoot(b);
+      loadItems();
+      return refreshStockCache().then(function () {
+        refreshActivePageViews_();
+        updateSyncIndicator('updated');
+        setTimeout(function () { updateSyncIndicator('online'); }, 4000);
+        return true;
+      });
+    });
+  }).catch(function (e) {
+    updateSyncIndicator('online');
+    if (!silent) toast(e.message || String(e));
+    return false;
+  });
+}
+
+function onRemoteDataChanged() {
+  reloadFromRemote(true);
+}
+
+function refreshCloudData() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) {
+    return toast('ยังไม่ได้ตั้ง URL Google');
+  }
+  reloadFromRemote(false);
+}
+
 function saveGasUrl() {
   if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
   var url = (document.getElementById('stGasUrl').value || '').trim();
   RemoteDB.setUrl(url);
   if (url) {
+    api('saveSettings', { gasWebAppUrl: url }).catch(function () {});
     toast('บันทึก URL แล้ว');
     updateGasStatus('บันทึก URL แล้ว — กดทดสอบการเชื่อมต่อ');
+    updateSyncIndicator('online');
+    loadBootstrap();
   } else {
+    api('saveSettings', { gasWebAppUrl: '' }).catch(function () {});
     toast('ล้าง URL แล้ว — ใช้ข้อมูลในเครื่อง');
     updateGasStatus('ใช้ข้อมูลในเบราว์เซอร์เครื่องนี้');
+    RemoteDB.stopPolling();
+    updateSyncIndicator('');
     loadBootstrap();
   }
 }
