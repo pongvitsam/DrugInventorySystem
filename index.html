@@ -1,62 +1,33 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>คลังยา รพ.สต.บ้านทรายขาว</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=57">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
 </head>
 <body>
-  <div id="loginScreen" class="login-screen">
-    <div class="login-card">
-      <div class="login-mark" aria-hidden="true"></div>
-      <p class="login-eyebrow">ระบบคลังยา</p>
-      <h1>รพ.สต.บ้านทรายขาว</h1>
-      <p class="login-sub">เข้าใช้งานด้วย Username · ไม่มีรหัสผ่าน<br>เริ่มต้น: <b>Napatsorn</b></p>
-      <div class="field">
-        <label>Username</label>
-        <input id="loginUser" type="text" placeholder="Napatsorn" autocomplete="username">
-      </div>
-      <label class="remember-row">
-        <input type="checkbox" id="loginRemember"> จดจำเครื่องนี้ (ไม่ต้องล็อกอินอีก)
-      </label>
-      <button type="button" class="btn login-btn" onclick="doLogin()">เข้าสู่ระบบ</button>
-      <p id="loginErr" class="login-err"></p>
-    </div>
-  </div>
-
-  <div class="app" id="appRoot" style="display:none">
+  <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true"></div>
-        <div>
-          <h1>คลังยา รพ.สต.</h1>
-          <p id="brandSub">บ้านทรายขาว</p>
-        </div>
+        <h1>คลังยา รพ.สต.</h1>
+        <p id="brandSub">บ้านทรายขาว</p>
       </div>
-      <button class="nav-btn active" data-page="dash"><span class="nav-ico" data-ico="dash"></span>แดชบอร์ด</button>
-      <button class="nav-btn" data-page="items"><span class="nav-ico" data-ico="items"></span>ทะเบียนรายการ</button>
-      <button class="nav-btn" data-page="stock"><span class="nav-ico" data-ico="stock"></span>ยอดคงเหลือ</button>
-      <button class="nav-btn" data-page="receive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังหลัก</button>
-      <button class="nav-btn" data-page="withdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังหลัก</button>
-      <button class="nav-btn" data-page="reports"><span class="nav-ico" data-ico="reports"></span>สรุปรายเดือน</button>
-      <button class="nav-btn" data-page="import"><span class="nav-ico" data-ico="import"></span>ตั้งค่า / นำเข้า</button>
+      <button class="nav-btn active" data-page="dash">แดชบอร์ด</button>
+      <button class="nav-btn" data-page="items">ทะเบียนรายการ</button>
+      <button class="nav-btn" data-page="stock">คงเหลือ 2 ที่เก็บ</button>
+      <button class="nav-btn" data-page="receive">รับเข้าจากใบเสร็จ</button>
+      <button class="nav-btn" data-page="transfer">เบิกไปตู้ข้างนอก</button>
+      <button class="nav-btn" data-page="adjust">ตัดจ่าย / ตรวจนับ</button>
+      <button class="nav-btn" data-page="reports">รายงาน / พิมพ์</button>
+      <button class="nav-btn" data-page="import">นำเข้าข้อมูลเดิม</button>
       <div class="grow"></div>
-      <div id="syncStatus" class="sync-status" style="display:none"></div>
-      <button type="button" class="sheet-link" id="syncRefreshBtn" style="display:none" onclick="refreshCloudData()">ดึงข้อมูลล่าสุดจาก Google</button>
-      <div class="user-box">
-        <div class="who">รพ.สต.ทรายขาว</div>
-        <button type="button" class="btn secondary" style="width:100%" onclick="doLogout()">ออกจากระบบ</button>
-      </div>
-      <button type="button" class="sheet-link" id="sheetLink">ส่งออกข้อมูลสำรอง (JSON)</button>
+      <a class="sheet-link" id="sheetLink" href="#" target="_blank">เปิด Google Sheet ข้อมูล</a>
     </aside>
     <main class="main">
-      <div class="watermark" aria-hidden="true">รพ.สต.ทรายขาว</div>
-
       <section class="page active" id="page-dash">
         <div class="top">
           <div>
@@ -65,12 +36,12 @@
           </div>
           <button class="btn secondary" onclick="loadBootstrap()">รีเฟรช</button>
         </div>
-        <div id="bootStatus" class="card" style="margin-bottom:14px">กำลังโหลดข้อมูล...</div>
+        <div id="bootStatus" class="card" style="margin-bottom:14px">กำลังเชื่อมต่อฐานข้อมูล...</div>
         <div class="cards" id="kpis"></div>
         <div class="card" id="valueCats" style="margin-bottom:14px"></div>
         <div class="grid-2">
           <div class="card">
-            <h3 id="dashExpiryTitle">ใกล้หมดอายุ (6 เดือน)</h3>
+            <h3>ใกล้หมดอายุ (6 เดือน)</h3>
             <div id="dashExpiry" class="muted">ไม่มีรายการ</div>
           </div>
           <div class="card">
@@ -84,7 +55,7 @@
         <div class="top">
           <div>
             <h2>ทะเบียนยาและเวชภัณฑ์</h2>
-            <div class="sub">ชื่อ หมวด บรรจุ · แก้ไขคงเหลือและวันหมดอายุได้จากปุ่มแก้ไข</div>
+            <div class="sub">เพิ่ม แก้ไข ค้นหารายการหลัก</div>
           </div>
           <button class="btn" onclick="openItem()">+ รายการใหม่</button>
         </div>
@@ -92,93 +63,57 @@
           <div class="field"><label>ค้นหา</label><input id="itemQ" oninput="renderItems()" placeholder="ชื่อยา / ขนาดบรรจุ"></div>
           <div class="field"><label>หมวด</label><select id="itemCatFilter" onchange="renderItems()"><option value="">ทั้งหมด</option></select></div>
         </div>
-        <div class="card table-wrap table-wrap-full"><table id="itemTable"></table></div>
+        <div class="card table-wrap"><table id="itemTable"></table></div>
       </section>
 
       <section class="page" id="page-stock">
         <div class="top">
           <div>
-            <h2>ยอดคงเหลือคลังหลัก</h2>
-            <div class="sub">ดูจำนวน มูลค่า วันหมดอายุ · เตือนเมื่อคงเหลือต่ำกว่าเกณฑ์ที่ตั้งไว้</div>
+            <h2>ยอดคงเหลือ</h2>
+            <div class="sub">คลังหลัก และตู้ข้างนอก</div>
           </div>
         </div>
-        <div id="stockAlert" class="stock-alert" style="display:none"></div>
         <div class="toolbar">
+          <button class="btn" data-loc="MAIN" onclick="showStock('MAIN')">คลังหลัก</button>
+          <button class="btn secondary" data-loc="CABINET" onclick="showStock('CABINET')">ตู้ข้างนอก</button>
           <div class="field"><label>ค้นหา</label><input id="stockQ" oninput="renderStock()" placeholder="ชื่อรายการ"></div>
-          <div class="stock-filters" id="stockFilters">
-            <button type="button" class="chip active" data-sf="all" onclick="setStockFilter('all')">ทั้งหมด</button>
-            <button type="button" class="chip" data-sf="low" onclick="setStockFilter('low')">ใกล้หมด</button>
-            <button type="button" class="chip" data-sf="expiry" onclick="setStockFilter('expiry')">ใกล้หมดอายุ</button>
-          </div>
         </div>
-        <div class="card table-wrap table-wrap-full"><table id="stockTable"></table></div>
+        <div class="card table-wrap"><table id="stockTable"></table></div>
       </section>
 
       <section class="page" id="page-receive">
         <div class="top">
           <div>
-            <h2>รับเข้าจากโรงพยาบาลคลองท่อม</h2>
-            <div class="sub">อัปโหลดรูปบิลให้ OCR แยกรายการ · ตรวจแก้ก่อนบันทึก หรือกรอกมือได้</div>
+            <h2>รับเข้าจากใบเสร็จ / ใบอนุมัติเบิก</h2>
+            <div class="sub">ใส่จำนวนแบบ 70x1's หรือ 6x100's ระบบคำนวณยอดเงินให้</div>
           </div>
         </div>
         <div class="card">
-          <div id="rcEditBanner" class="wd-edit-banner" style="display:none">
-            <span id="rcEditBannerText">กำลังแก้ไขใบรับ</span>
-            <button type="button" class="btn ghost" onclick="cancelReceiptEdit()">ยกเลิกการแก้ไข</button>
-          </div>
           <div class="row">
             <div class="field"><label>เลขที่ใบ</label><input id="rcNumber" placeholder="S6900459"></div>
-            <div class="field th-date-field"><label>วันที่รับ</label><input id="rcDate" type="hidden"><button type="button" class="th-date-btn" data-for="rcDate">เลือกวันที่</button></div>
+            <div class="field"><label>วันที่รับ</label><input id="rcDate" type="date"></div>
             <div class="field"><label>แหล่ง</label><input id="rcSource" value="โรงพยาบาลคลองท่อม"></div>
             <div class="field"><label>ประเภท</label>
               <select id="rcKind"><option>ยา</option><option>เวชภัณฑ์</option></select>
             </div>
           </div>
           <div class="field" style="margin-top:10px"><label>หมายเหตุ</label><input id="rcNotes"></div>
-
-          <h3 style="margin-top:16px">อัปโหลดรูปบิล (OCR ฟรี)</h3>
-          <p class="muted">รองรับไฟล์รูปพิมพ์ชัด (JPG/PNG) · อ่านภาษาไทย+อังกฤษในเครื่อง · ต้องตรวจแก้ก่อนยืนยัน</p>
-          <div class="row" style="align-items:flex-end">
-            <div class="field" style="flex:2">
-              <label>ไฟล์รูปบิล</label>
-              <input id="ocrFile" type="file" accept="image/*">
-            </div>
-            <div class="field" style="flex:0">
-              <label>&nbsp;</label>
-              <button type="button" class="btn" id="btnOcrScan" onclick="runBillOcr()">อ่านบิลแยกรายการ</button>
-            </div>
-          </div>
-          <div id="ocrStatus" class="muted" style="display:none;margin-top:8px"></div>
-          <img id="ocrPreview" alt="ตัวอย่างบิล" style="display:none;max-width:100%;max-height:220px;margin-top:10px;border-radius:12px;border:1px solid var(--line)">
-          <div id="ocrReviewCard" style="display:none;margin-top:14px">
-            <h3>ตรวจแก้รายการจาก OCR</h3>
-            <div class="table-wrap"><table id="ocrReviewTable"></table></div>
-            <div class="row" style="justify-content:space-between;margin-top:12px">
-              <div class="muted" id="ocrReviewCalc">0 รายการ</div>
-              <div class="row" style="gap:8px;margin:0">
-                <button type="button" class="btn secondary" onclick="clearOcrReview()">ล้างผล OCR</button>
-                <button type="button" class="btn" onclick="confirmOcrReview()">ยืนยันใส่รายการรับเข้า</button>
-              </div>
-            </div>
-          </div>
-
-          <h3 style="margin-top:18px">รายการรับเข้า</h3>
+          <h3>รายการ</h3>
           <div class="row">
             <div class="field suggest" style="flex:2">
-              <label>ค้นหารายการ (กรอกมือ)</label>
+              <label>ค้นหารายการ</label>
               <input id="rcSearch" placeholder="พิมพ์ชื่อยา แล้วเลือก" oninput="searchPick('rc')">
               <div class="suggest-list" id="rcSuggest"></div>
             </div>
-            <div class="field"><label>จำนวน</label><input id="rcQty" type="number" min="0" step="1" placeholder="เช่น 2"></div>
-            <div class="field"><label>หน่วยบรรจุ</label><select id="rcPack"></select><input id="rcPackCustom" placeholder="ระบุหน่วย" style="display:none;margin-top:6px"></div>
-            <div class="field"><label>ราคารวม</label><input id="rcAmount" type="number" step="0.01" placeholder="กรอกยอดรวม"></div>
-            <div class="field th-date-field"><label>วันหมดอายุ</label><input id="rcExpiry" type="hidden"><button type="button" class="th-date-btn" data-for="rcExpiry">เลือกวันที่</button></div>
+            <div class="field"><label>จำนวน (เช่น 2x1000's)</label><input id="rcQty" placeholder="2x100's"></div>
+            <div class="field"><label>ราคา/หน่วย</label><input id="rcPrice" type="number" step="0.01"></div>
+            <div class="field"><label>วันหมดอายุ</label><input id="rcExpiry" type="date"></div>
             <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addReceiveLine()">เพิ่ม</button></div>
           </div>
           <div class="table-wrap" style="margin-top:12px"><table id="rcTable"></table></div>
           <div class="row" style="justify-content:space-between;margin-top:12px">
             <div class="muted" id="rcCalc">ยอดรวม 0 บาท</div>
-            <button class="btn" id="rcSaveBtn" onclick="saveReceipt()">บันทึกรับเข้าคลังหลัก</button>
+            <button class="btn" onclick="saveReceipt()">บันทึกรับเข้าคลังหลัก</button>
           </div>
         </div>
         <div class="card" style="margin-top:14px">
@@ -187,179 +122,106 @@
         </div>
       </section>
 
-      <section class="page" id="page-withdraw">
+      <section class="page" id="page-transfer">
         <div class="top">
           <div>
-            <h2>เบิกจากคลังหลัก</h2>
-            <div class="sub">ค้นหาแล้วเลือกยา · ระบบแนะนำล็อตหมดอายุก่อน · สรุปด้านล่างก่อนบันทึก</div>
+            <h2>เบิกจากคลังหลักไปตู้ข้างนอก</h2>
+            <div class="sub">บันทึกเป็นรายครั้ง ตัดคลังหลัก และเพิ่มของในตู้</div>
           </div>
         </div>
         <div class="card">
-          <div id="wdEditBanner" class="wd-edit-banner" style="display:none">
-            <span id="wdEditBannerText">กำลังแก้ไขใบเบิก</span>
-            <button type="button" class="btn ghost" onclick="cancelWithdrawEdit()">ยกเลิกการแก้ไข</button>
-          </div>
           <div class="row">
-            <div class="field th-date-field"><label>วันที่เบิก</label><input id="wdDate" type="hidden"><button type="button" class="th-date-btn" data-for="wdDate">เลือกวันที่</button></div>
-            <div class="field"><label>หมายเหตุ</label><input id="wdNotes" placeholder="เบิกใช้ประจำ"></div>
+            <div class="field"><label>วันที่เบิก</label><input id="trDate" type="date"></div>
+            <div class="field"><label>หมายเหตุ</label><input id="trNotes" placeholder="เบิกประจำสัปดาห์"></div>
           </div>
-          <div class="row" style="margin-top:10px;align-items:flex-end">
-            <div class="field" style="flex:2"><label>ค้นหา / กรองยา</label><input id="wdSearch" placeholder="พิมพ์ชื่อยา หมวด หรือบรรจุ" oninput="filterWithdrawStock()"></div>
-            <div class="field"><label>หมวด</label><select id="wdCatFilter" onchange="filterWithdrawStock()"><option value="">ทั้งหมด</option></select></div>
-          </div>
-          <p class="muted" style="margin:10px 0 6px">คลิกเพิ่มรายการ · แถวสีเหลือง = แนะนำใช้ก่อน</p>
-          <div class="table-wrap wd-pick-wrap"><table id="wdPickTable"></table></div>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>สรุปรายการที่เบิก</h3>
-          <div class="table-wrap"><table id="wdSummaryTable"></table></div>
+          <div class="table-wrap" style="margin-top:12px"><table id="trPickTable"></table></div>
           <div class="row" style="justify-content:space-between;margin-top:12px">
-            <div class="muted" id="wdCalc">ยังไม่ได้เลือก</div>
-            <div class="row" style="gap:8px;margin:0">
-              <button type="button" class="btn secondary" onclick="clearWithdrawCart()">ล้างรายการ</button>
-              <button class="btn" id="wdSaveBtn" onclick="saveWithdraw()">บันทึกใบเบิก</button>
+            <div class="muted" id="trCalc">ยังไม่ได้เลือก</div>
+            <button class="btn" onclick="saveTransfer()">บันทึกเบิกไปตู้ข้างนอก</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-adjust">
+        <div class="top">
+          <div>
+            <h2>ตัดจ่าย / ตรวจนับ</h2>
+            <div class="sub">ใช้ไปจากตู้ข้างนอก หรือนับสต็อกจริงสิ้นเดือน</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="field"><label>วันที่</label><input id="adjDate" type="date"></div>
+            <div class="field"><label>ประเภท</label>
+              <select id="adjType" onchange="loadAdjustStock()">
+                <option value="USAGE">ใช้ไป / ตัดจ่าย</option>
+                <option value="COUNT">ตรวจนับยอดจริง</option>
+              </select>
             </div>
+            <div class="field"><label>ที่เก็บ</label>
+              <select id="adjLoc" onchange="loadAdjustStock()">
+                <option value="CABINET">ตู้ข้างนอก</option>
+                <option value="MAIN">คลังหลัก</option>
+              </select>
+            </div>
+            <div class="field"><label>หมายเหตุ</label><input id="adjNotes"></div>
           </div>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>ใบเบิกล่าสุด</h3>
-          <div id="wdHistory" class="muted">ยังไม่มี</div>
-        </div>
-        <div class="card" style="margin-top:14px;display:none" id="wdPrintCard">
-          <div class="row" style="justify-content:space-between;align-items:center">
-            <h3 style="margin:0">ใบเบิกสำหรับพิมพ์</h3>
-            <button type="button" class="btn" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+          <div class="table-wrap" style="margin-top:12px"><table id="adjTable"></table></div>
+          <div class="row" style="justify-content:flex-end;margin-top:12px">
+            <button class="btn" onclick="saveAdjustment()">บันทึก</button>
           </div>
-          <p class="muted" style="margin:8px 0 0">กรอกวันที่ลงนาม (วัน / เดือน / พ.ศ.) ในแต่ละช่องด้านล่างก่อนพิมพ์ — แก้ไขได้ตามจริง</p>
-          <div id="wdPrintOut" class="print-sheet" style="margin-top:12px"></div>
         </div>
       </section>
 
       <section class="page" id="page-reports">
         <div class="top">
           <div>
-            <h2>สรุปรายเดือน</h2>
-            <div class="sub">ยอดคงเหลือ · รับเข้า · เบิกออก · วิเคราะห์รายยาและกราฟ</div>
+            <h2>รายงาน</h2>
+            <div class="sub">พิมพ์แบบฟอร์มให้ใกล้ของเดิม แล้วเซ็นมือได้</div>
           </div>
         </div>
         <div class="card">
-          <div class="toolbar rp-toolbar">
-            <div class="rp-range-mode" id="rpRangeMode">
-              <button type="button" class="chip active" data-rm="month" onclick="setReportRangeMode('month')">รายเดือน</button>
-              <button type="button" class="chip" data-rm="range" onclick="setReportRangeMode('range')">ช่วงวันที่</button>
-            </div>
-            <div id="rpMonthWrap" class="field th-date-field"><label>เดือน</label><input id="rpMonth" type="hidden"><button type="button" class="th-date-btn" data-for="rpMonth">เลือกเดือน</button></div>
-            <div id="rpRangeWrap" class="row rp-range-row" style="display:none">
-              <div class="field th-date-field"><label>ตั้งแต่</label><input id="rpFrom" type="hidden"><button type="button" class="th-date-btn" data-for="rpFrom">เลือกวันที่</button></div>
-              <div class="field th-date-field"><label>ถึง</label><input id="rpTo" type="hidden"><button type="button" class="th-date-btn" data-for="rpTo">เลือกวันที่</button></div>
-            </div>
-            <div class="rp-tabs">
-              <button type="button" class="btn rp-tab active" data-rp="month" onclick="runReport('month')">สรุปคลังหลัก</button>
-              <button type="button" class="btn secondary rp-tab" data-rp="money" onclick="runReport('money')">สรุปมูลค่ารายหมวด</button>
-              <button type="button" class="btn secondary rp-tab" data-rp="drug" onclick="setReportTab('drug')">วิเคราะห์รายยา</button>
-            </div>
-            <div id="rpDrugWrap" class="rp-drug-wrap" style="display:none">
-              <div class="field rp-drug-search">
-                <label>เลือกรายการยา</label>
-                <input id="rpDrugSearch" placeholder="พิมพ์ชื่อยา แล้วเลือก" oninput="searchPick('rpDrug')" autocomplete="off">
-                <div class="suggest-list" id="rpDrugSuggest"></div>
-              </div>
-              <div class="rp-lookback" id="rpLookback">
-                <label class="rp-lookback-label">ช่วงวิเคราะห์</label>
-                <button type="button" class="chip" data-lb="6" onclick="setReportLookback(6)">6 เดือน</button>
-                <button type="button" class="chip active" data-lb="12" onclick="setReportLookback(12)">12 เดือน</button>
-                <button type="button" class="chip" data-lb="24" onclick="setReportLookback(24)">24 เดือน</button>
-                <button type="button" class="chip" data-lb="0" onclick="setReportLookback(0)">ตามช่วงด้านบน</button>
-              </div>
-              <button type="button" class="btn" onclick="runReport('drug')">ดูการวิเคราะห์</button>
-            </div>
-            <button type="button" class="btn ghost" onclick="printReport()">พิมพ์</button>
+          <div class="toolbar">
+            <div class="field"><label>เดือน</label><input id="rpMonth" type="month"></div>
+            <button class="btn" onclick="runReport('month')">แบบฟอร์มเบิกยารายเดือน</button>
+            <button class="btn secondary" onclick="runReport('money')">รายงานยอดเงินคงเหลือ</button>
+            <button class="btn secondary" onclick="runReport('quarter')">ใบเบิกเวชภัณฑ์ไตรมาส</button>
+            <button class="btn ghost" onclick="window.print()">พิมพ์</button>
           </div>
-          <div id="reportOut" class="print-sheet">เลือกเดือนแล้วกดประเภทรายงาน</div>
+          <div id="reportOut" class="print-sheet">เลือกประเภทรายงาน</div>
         </div>
       </section>
 
       <section class="page" id="page-import">
         <div class="top">
           <div>
-            <h2>ตั้งค่า / นำเข้า</h2>
-            <div class="sub">ชื่อผู้เซ็นใบเบิก · ผู้ใช้ · นำเข้าข้อมูลเดิม</div>
+            <h2>นำเข้าข้อมูลเดิม</h2>
+            <div class="sub">ดึงรายการยาจากไฟล์ พ.ค.69 และเวชภัณฑ์ไตรมาส มาเป็นยอดยกมา</div>
           </div>
         </div>
         <div class="card">
+          <p>ตอนเปิดครั้งแรก ระบบนำเข้าข้อมูลจากไฟล์เดิมให้อัตโนมัติแล้ว หากต้องการดึงใหม่ให้กดปุ่มด้านล่าง</p>
+          <ul>
+            <li>ยาและเวชภัณฑ์ จากชีต พ.ค.69</li>
+            <li>รายการเวชภัณฑ์มิใช่ยา + วงเงินทั้งปี จากใบเบิกไตรมาส</li>
+            <li>ยอดเงินอ้างอิงสิ้น ก.ค.69: ยา 134,299.02 บาท, เวชภัณฑ์ 20,924.37 บาท</li>
+          </ul>
+          <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
+          <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
+          <p class="muted" id="importMsg"></p>
+        </div>
+        <div class="card" style="margin-top:14px">
           <h3>ตั้งค่าหน่วยงาน</h3>
           <div class="row">
             <div class="field"><label>ชื่อหน่วย</label><input id="stUnit"></div>
             <div class="field"><label>ที่อยู่สั้น</label><input id="stSub"></div>
           </div>
-          <h3 style="margin-top:16px">ชื่อ–ตำแหน่ง บนใบเบิก (กรอกเองได้)</h3>
-          <div class="row" style="margin-top:8px">
-            <div class="field"><label>ผู้อนุมัติ</label><input id="stApp"></div>
-            <div class="field"><label>ตำแหน่งผู้อนุมัติ</label><input id="stAppPos"></div>
-          </div>
           <div class="row" style="margin-top:8px">
             <div class="field"><label>ผู้เบิก</label><input id="stReq"></div>
-            <div class="field"><label>ตำแหน่งผู้เบิก</label><input id="stPos"></div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <div class="field"><label>ผู้รับ</label><input id="stRecv"></div>
-            <div class="field"><label>ตำแหน่งผู้รับ</label><input id="stRecvPos"></div>
-          </div>
-          <div class="row" style="margin-top:8px">
+            <div class="field"><label>ตำแหน่ง</label><input id="stPos"></div>
             <div class="field"><label>ผู้จ่าย</label><input id="stIss"></div>
-            <div class="field"><label>ตำแหน่งผู้จ่าย</label><input id="stIssPos"></div>
           </div>
           <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>ฐานข้อมูล Google (GAS + Sheets)</h3>
-          <p class="muted">ใส่ URL Web App จาก Google Apps Script — ทุกเครื่องที่ใช้ URL เดียวกันจะเห็นข้อมูลเดียวกัน · ระบบดึงข้อมูลใหม่ทุก ~30 วินาทีและเมื่อสลับกลับมาเปิดแท็บ</p>
-          <div class="field" style="margin-top:8px">
-            <label>URL Web App (GAS)</label>
-            <input id="stGasUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
-          </div>
-          <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
-            <button type="button" class="btn secondary" onclick="saveGasUrl()">บันทึก URL</button>
-            <button type="button" class="btn secondary" onclick="testGasConnection()">ทดสอบการเชื่อมต่อ</button>
-            <button type="button" class="btn secondary" onclick="pushGasData()">อัปโหลดข้อมูลเครื่องนี้ขึ้น Google</button>
-            <button type="button" class="btn secondary" onclick="pullGasData()">ดึงข้อมูลจาก Google</button>
-          </div>
-          <p class="muted" id="gasStatus" style="margin-top:10px"></p>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>ประวัติการเคลื่อนไหว</h3>
-          <p class="muted">ยอดคงเหลือจากข้อมูลเดิมยังใช้ได้ — รับเข้า · เบิกออก · รายงาน · กราฟ นับตั้งแต่ 1 กันยายน 2569 เท่านั้น</p>
-          <div class="field" style="margin-top:8px;max-width:320px">
-            <label>นับประวัติตั้งแต่</label>
-            <input id="stHistoryFrom" type="text" readonly class="readonly-field">
-          </div>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>เตือนใกล้หมด / ใกล้หมดอายุ</h3>
-          <p class="muted">กำหนดเกณฑ์เตือนในคลังหลัก — ใกล้หมด = คงเหลือต่ำกว่าขั้นต่ำ · ใกล้หมดอายุ = หมดอายุภายในเดือนที่กำหนด</p>
-          <div class="row" style="align-items:flex-end;margin-top:8px">
-            <div class="field"><label>เตือนใกล้หมด — ค่าเริ่มต้น (รายการที่ไม่ได้กำหนด)</label><input id="stDefaultLowStock" type="number" min="1" step="1" value="10"></div>
-            <div class="field"><label>เตือนใกล้หมดอายุ — ล่วงหน้า (เดือน)</label><input id="stExpiryWarnMonths" type="number" min="1" max="60" step="1" value="6"></div>
-            <div class="field" style="flex:2"><label>ค้นหารายการ</label><input id="lowStockQ" placeholder="ชื่อ / รหัส / หมวด" oninput="renderLowStockSettings()"></div>
-          </div>
-          <div class="table-wrap low-stock-settings-wrap" style="margin-top:10px"><table id="lowStockTable"></table></div>
-          <button type="button" class="btn secondary" style="margin-top:10px" onclick="saveLowStockSettings()">บันทึกการตั้งค่าเตือน</button>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>ผู้ใช้ที่ Login ได้</h3>
-          <p class="muted">Username เดียวก็ได้ (ไม่มีรหัสผ่าน)</p>
-          <div class="row" style="align-items:flex-end">
-            <div class="field"><label>Username ใหม่</label><input id="newUserName" placeholder="ชื่อผู้ใช้"></div>
-            <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addLoginUser()">เพิ่มผู้ใช้</button></div>
-          </div>
-          <div id="userList" style="margin-top:12px"></div>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <h3>นำเข้าข้อมูลเดิม</h3>
-          <p>ตอนเปิดครั้งแรก ระบบนำเข้าจากไฟล์ พ.ค.69 ให้อัตโนมัติ — เก็บในเบราว์เซอร์ หรือตั้ง Google Sheets ด้านบนเพื่อใช้ร่วมหลายเครื่อง</p>
-          <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
-          <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
-          <p class="muted" id="importMsg"></p>
         </div>
       </section>
     </main>
@@ -370,52 +232,21 @@
       <h3 id="itemModalTitle">รายการยา</h3>
       <input type="hidden" id="itId">
       <div class="row">
-        <div class="field suggest" style="flex:2">
-          <label>ชื่อ</label>
-          <input id="itName" autocomplete="off" oninput="searchItemNameSuggest()" onfocus="searchItemNameSuggest()">
-          <div class="suggest-list" id="itNameSuggest"></div>
-        </div>
+        <div class="field" style="flex:2"><label>ชื่อ</label><input id="itName"></div>
         <div class="field"><label>รหัสยา</label><input id="itCode"></div>
       </div>
       <div class="row" style="margin-top:8px">
-        <div class="field opt-field">
-          <div class="opt-label-row">
-            <label for="itCat">หมวด</label>
-            <button type="button" class="opt-manage-link" onclick="toggleOptionManage('categories','itCat')">จัดการ</button>
-          </div>
-          <input id="itCat" list="itCatList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
-          <datalist id="itCatList"></datalist>
-          <div id="itCatManage" class="opt-manage-pop" style="display:none"></div>
-        </div>
-        <div class="field opt-field">
-          <div class="opt-label-row">
-            <label for="itPack">ขนาดบรรจุ</label>
-            <button type="button" class="opt-manage-link" onclick="toggleOptionManage('packSizes','itPack')">จัดการ</button>
-          </div>
-          <input id="itPack" list="itPackList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
-          <datalist id="itPackList"></datalist>
-          <div id="itPackManage" class="opt-manage-pop" style="display:none"></div>
-        </div>
-        <div class="field opt-field">
-          <div class="opt-label-row">
-            <label for="itForm">รูปแบบ</label>
-            <button type="button" class="opt-manage-link" onclick="toggleOptionManage('forms','itForm')">จัดการ</button>
-          </div>
-          <input id="itForm" list="itFormList" placeholder="พิมพ์หรือเลือก" autocomplete="off">
-          <datalist id="itFormList"></datalist>
-          <div id="itFormManage" class="opt-manage-pop" style="display:none"></div>
-        </div>
+        <div class="field"><label>หมวด</label><select id="itCat"></select></div>
+        <div class="field"><label>หมวดมูลค่า</label><select id="itValCat"></select></div>
+        <div class="field"><label>ขนาดบรรจุ</label><input id="itPack" placeholder="100's / 60ml"></div>
       </div>
       <div class="row" style="margin-top:8px">
+        <div class="field"><label>รูปแบบ</label><input id="itForm" placeholder="TAB / CAP / SYR"></div>
         <div class="field"><label>ราคาต่อหน่วย</label><input id="itPrice" type="number" step="0.01"></div>
+        <div class="field"><label>วงเงิน/โควตาปี</label><input id="itQuota" type="number"></div>
+        <div class="field"><label>จุดสั่งซื้อ</label><input id="itLow" type="number"></div>
       </div>
       <div class="field" style="margin-top:8px"><label>หมายเหตุ</label><input id="itNotes"></div>
-      <div id="itStockSection" style="margin-top:14px">
-        <h4 style="margin:0 0 8px">สต็อกคลังหลัก</h4>
-        <p class="muted" style="margin:0 0 8px">ระบุจำนวนคงเหลือและวันหมดอายu — รายการใหม่ใส่ล็อตแรกพร้อมวันหมดอายuได้เลย</p>
-        <div id="itStockLots"></div>
-        <button type="button" class="btn secondary" style="margin-top:8px" onclick="addItemStockLotRow()">+ เพิ่มล็อต</button>
-      </div>
       <div class="row" style="justify-content:flex-end;margin-top:14px">
         <button class="btn secondary" onclick="closeModal()">ยกเลิก</button>
         <button class="btn" onclick="saveItem()">บันทึก</button>
@@ -423,16 +254,6 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=57"></script>
-  <script src="js/remote.js?v=57"></script>
-  <script src="js/api.js?v=57"></script>
-  <script src="js/options.js?v=57"></script>
-  <script src="js/thdate.js?v=57"></script>
-  <script src="js/seed.js?v=57"></script>
-  <script src="js/ocr.js?v=57"></script>
-  <script src="js/app.js?v=57"></script>
-  <script src="js/auth.js?v=57"></script>
+  <?!= include('App'); ?>
 </body>
 </html>
