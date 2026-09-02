@@ -11,6 +11,22 @@ var RemoteDB = (function () {
   var pollTimer = null;
   var pollCallback = null;
   var visibilityBound = false;
+  var lastSyncAction = null;
+
+  function consumeSyncAction() {
+    var action = lastSyncAction;
+    lastSyncAction = null;
+    return action;
+  }
+
+  function hasLocalData_() {
+    var settings = DB.readSettingsObj();
+    if (String(settings.imported) === '1') return true;
+    var items = DB.readObjects('Items');
+    if (items && items.length > 0) return true;
+    var stock = DB.readObjects('Stock');
+    return !!(stock && stock.some(function (s) { return Number(s.qty) > 0; }));
+  }
 
   function getUrl() {
     if (window.PHARMA_CONFIG && window.PHARMA_CONFIG.gasUrl) {
@@ -77,9 +93,16 @@ var RemoteDB = (function () {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
-      applyRemotePayload_(res, false);
+      var remoteEmpty = isEmptyRemote_(res.data);
+      if (remoteEmpty && hasLocalData_()) {
+        applyRevision_(res.revision);
+        loaded = true;
+        lastSyncAction = 'uploaded';
+        return sync();
+      }
+      if (applyRemotePayload_(res, false)) lastSyncAction = 'pulled';
       loaded = true;
-      return true;
+      return Promise.resolve();
     });
   }
 
@@ -199,6 +222,7 @@ var RemoteDB = (function () {
     stopPolling: stopPolling,
     getRevision: getRevision,
     applyUrlFromSettings: applyUrlFromSettings_,
+    consumeSyncAction: consumeSyncAction,
     resetSession: function () {
       loaded = false;
       localRevision = 0;

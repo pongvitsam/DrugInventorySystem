@@ -165,6 +165,13 @@ function loadBootstrap() {
     : 'กำลังโหลดข้อมูล...';
   setStatus(loadingMsg);
   api('bootstrap').then(function (b) {
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.consumeSyncAction) {
+      var syncAction = RemoteDB.consumeSyncAction();
+      if (syncAction === 'uploaded') {
+        toast('อัปโหลดข้อมูลเครื่องนี้ขึ้น Google อัตโนมัติแล้ว');
+        updateGasStatus('อัปโหลดขึ้น Google แล้ว — พร้อมใช้หลายเครื่อง');
+      }
+    }
     applyBoot(b);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
@@ -2153,9 +2160,9 @@ function saveGasUrl() {
   RemoteDB.setUrl(url);
   if (url) {
     api('saveSettings', { gasWebAppUrl: url }).catch(function () {});
-    toast('บันทึก URL แล้ว');
-    updateGasStatus('บันทึก URL แล้ว — กดทดสอบการเชื่อมต่อ');
-    updateSyncIndicator('online');
+    toast('บันทึก URL แล้ว — กำลังเชื่อมต่อ...');
+    updateGasStatus('กำลังเชื่อมต่อ Google — ถ้า Sheet ว่างจะอัปโหลดข้อมูลเครื่องนี้อัตโนมัติ');
+    updateSyncIndicator('syncing');
     loadBootstrap();
   } else {
     api('saveSettings', { gasWebAppUrl: '' }).catch(function () {});
