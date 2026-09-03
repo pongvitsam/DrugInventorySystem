@@ -805,14 +805,29 @@ textarea { min-height: 70px; }
   left: 0;
   right: 0;
   top: calc(100% + 4px);
-  max-height: 180px;
-  overflow: auto;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.08);
   padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
+.opt-manage-pop .opt-manage-scroll {
+  max-height: 160px;
+  overflow-y: auto;
+}
+.opt-add-inp {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+}
+.opt-add-inp:focus { border-color: var(--primary); }
 .opt-manage-item {
   display: flex;
   align-items: center;

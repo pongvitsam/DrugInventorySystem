@@ -194,13 +194,31 @@ function paintOptionManage(listKey, manageId) {
   var pop = document.getElementById(manageId);
   if (!pop) return;
   var list = (STATE.optionLists && STATE.optionLists[listKey]) || [];
-  pop.innerHTML = list.map(function (v, idx) {
+  var addInputId = manageId + '_addInp';
+  var innerItems = list.map(function (v, idx) {
     return '<div class="opt-manage-item"><span>' + esc(v) + '</span>' +
       (list.length > 1
         ? '<button type="button" class="opt-manage-del" title="ลบ" onclick="removeOptionListItem(\'' + listKey + '\',' + idx + ')">×</button>'
         : '') +
       '</div>';
-  }).join('') || '<div class="muted" style="padding:6px">ไม่มีรายการ</div>';
+  }).join('') || '<div class="muted" style="padding:6px 8px">ยังไม่มีรายการ</div>';
+  var items = '<div class="opt-manage-scroll">' + innerItems + '</div>';
+  var selectId = manageId.replace(/Manage$/, '');
+  pop.innerHTML = items +
+    '<div class="opt-add-row" style="display:flex;padding:4px 2px 2px">' +
+      '<input id="' + addInputId + '" type="text" class="opt-add-inp" placeholder="พิมพ์รายการใหม่..." autocomplete="off">' +
+      '<button type="button" class="btn" style="padding:7px 12px;font-size:13px" ' +
+        'onclick="confirmOptionAddInline(\'' + listKey + '\',\'' + selectId + '\',\'' + addInputId + '\')">+ เพิ่ม</button>' +
+    '</div>';
+  var inp = document.getElementById(addInputId);
+  if (inp) {
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmOptionAddInline(listKey, selectId, addInputId);
+      }
+    });
+  }
 }
 
 function toggleOptionManage(listKey, selectId) {
@@ -226,6 +244,16 @@ function confirmOptionAdd(listKey, selectId) {
   if (typeof addOptionListItem === 'function') {
     addOptionListItem(listKey, val, selectId);
   }
+}
+
+function confirmOptionAddInline(listKey, selectId, addInputId) {
+  var inp = document.getElementById(addInputId);
+  var val = inp ? String(inp.value || '').trim() : '';
+  if (!val) { if (inp) inp.focus(); return; }
+  if (typeof addOptionListItem === 'function') {
+    addOptionListItem(listKey, val, selectId);
+  }
+  if (inp) inp.value = '';
 }
 
 function initItemOptionSelects(items) {
