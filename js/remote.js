@@ -16,6 +16,7 @@ var RemoteDB = (function () {
   var visibilityBound = false;
   var lastSyncAction = null;
   var loadPromise = null;
+  var pollInFlight = false;
 
   function consumeSyncAction() {
     var action = lastSyncAction;
@@ -245,9 +246,7 @@ var RemoteDB = (function () {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q).catch(function () {
-        return iframeGet_(q);
-      });
+      return jsonpGet_(q);
     }
     return postViaIframe_(options.body);
   }
@@ -259,15 +258,17 @@ var RemoteDB = (function () {
       var settled = false;
       var script = document.createElement('script');
       script.referrerPolicy = 'no-referrer';
+      var ms = /action=export/.test(query) ? 60000 : 25000;
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
-        cleanup();
+        window[cbName] = function () {};
+        if (script.parentNode) script.parentNode.removeChild(script);
         reject(new Error('หมดเวลารอ Google'));
-      }, 8000);
+      }, ms);
       function cleanup() {
         clearTimeout(timer);
-        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        window[cbName] = function () {};
         if (script.parentNode) script.parentNode.removeChild(script);
       }
       window[cbName] = function (data) {
@@ -288,41 +289,9 @@ var RemoteDB = (function () {
     });
   }
 
-  /** GET สำรองผ่าน iframe + postMessage */
-  function iframeGet_(query) {
-    return new Promise(function (resolve, reject) {
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'display:none;width:0;height:0;border:0';
-      iframe.referrerPolicy = 'no-referrer';
-      var settled = false;
-      var timer = setTimeout(function () {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('โหลดจาก Google ไม่สำเร็จ — กด Ctrl+F5 แล้วลองใหม่'));
-      }, 15000);
-      function onMsg(ev) {
-        var d = ev && ev.data;
-        if (!d || d.source !== 'DrugInventoryGAS') return;
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(d.payload);
-      }
-      function cleanup() {
-        clearTimeout(timer);
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }
-      window.addEventListener('message', onMsg);
-      iframe.src = baseUrl() + '?' + query +
-        (query ? '&' : '') + 'mode=iframe&t=' + Date.now();
-      document.body.appendChild(iframe);
-    });
-  }
-
   function postViaIframe_(bodyText) {
     return new Promise(function (resolve, reject) {
+      var beforeRev = localRevision;
       var name = 'gasFrame' + Date.now();
       var iframe = document.createElement('iframe');
       iframe.name = name;
@@ -334,41 +303,52 @@ var RemoteDB = (function () {
       form.action = baseUrl();
       form.target = name;
       form.style.display = 'none';
-      function addHidden(n, v) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = n;
-        input.value = v;
-        form.appendChild(input);
-      }
-      addHidden('payload', bodyText);
-      addHidden('mode', 'iframe');
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = bodyText;
+      form.appendChild(input);
       document.body.appendChild(form);
       var settled = false;
-      var timer = setTimeout(function () {
+      var tries = 0;
+      function tick() {
         if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
-      }, 45000);
-      function onMsg(ev) {
-        var d = ev && ev.data;
-        if (!d || d.source !== 'DrugInventoryGAS') return;
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(d.payload);
+        tries++;
+        jsonpGet_('action=meta').then(function (meta) {
+          if (settled) return;
+          if (meta && meta.ok && Number(meta.revision) > beforeRev) {
+            settled = true;
+            cleanup();
+            resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
+            return;
+          }
+          if (tries >= 20) {
+            settled = true;
+            cleanup();
+            if (meta && meta.ok) resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
+            else reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
+            return;
+          }
+          setTimeout(tick, 1500);
+        }).catch(function () {
+          if (settled) return;
+          if (tries >= 20) {
+            settled = true;
+            cleanup();
+            reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
+            return;
+          }
+          setTimeout(tick, 1500);
+        });
       }
       function cleanup() {
-        clearTimeout(timer);
-        window.removeEventListener('message', onMsg);
         try { document.body.removeChild(form); } catch (e) {}
         setTimeout(function () {
           try { document.body.removeChild(iframe); } catch (e2) {}
-        }, 500);
+        }, 800);
       }
-      window.addEventListener('message', onMsg);
       form.submit();
+      setTimeout(tick, 1500);
     });
   }
 
@@ -553,10 +533,13 @@ var RemoteDB = (function () {
     pollCallback = onChange || null;
     bindVisibility_();
     pollTimer = setInterval(function () {
-      if (document.hidden) return;
+      if (document.hidden || pollInFlight) return;
+      pollInFlight = true;
       refreshIfNewer().then(function (r) {
         if (r.changed && pollCallback) pollCallback(r);
-      }).catch(function () {});
+      }).catch(function () {}).then(function () {
+        pollInFlight = false;
+      });
     }, POLL_MS);
   }
 
@@ -669,7 +652,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 65,
+    build: 66,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

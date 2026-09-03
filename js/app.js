@@ -123,7 +123,7 @@ function applyBoot(b) {
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
   updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 65) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 66) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -167,9 +167,7 @@ function loadBootstrap() {
   setStatus('กำลังโหลดข้อมูล...');
   api('bootstrap').then(function (b) {
     applyBoot(b);
-    if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
-      RemoteDB.startPolling(onRemoteDataChanged);
-    } else if (typeof RemoteDB !== 'undefined') {
+    if (typeof RemoteDB !== 'undefined' && !RemoteDB.enabled()) {
       RemoteDB.stopPolling();
     }
     if (b.imported) {
@@ -227,10 +225,14 @@ function syncGoogleInBackground_() {
       refreshActivePageViews_();
       refreshStockCache();
       updateSyncIndicator('');
+      if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
     });
   }).catch(function () {
     updateSyncIndicator('');
     updateGasStatus('ซิงก์ Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่องนี้ไปก่อน', true);
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
+      RemoteDB.startPolling(onRemoteDataChanged);
+    }
   });
 }
 
@@ -2413,7 +2415,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 65) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 66) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่โหลดเร็วขึ้น');
   }
