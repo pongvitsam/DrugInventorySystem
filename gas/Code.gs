@@ -25,19 +25,24 @@ var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'Tr
 
 function doGet(e) {
   try {
-    var action = String((e && e.parameter && e.parameter.action) || 'ping').toLowerCase();
+    var p = (e && e.parameter) || {};
+    var action = String(p.action || 'ping').toLowerCase();
+    var out;
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 3 });
+      out = { ok: true, service: 'DrugInventoryGAS', version: 4 };
+    } else if (action === 'meta') {
+      out = getMeta_();
+    } else if (action === 'export') {
+      out = exportAll_();
+    } else if (action === 'import') {
+      // รองรับ import ผ่าน GET+JSONP (payload ขนาดจำกัด) หรือยืนยันสถานะ
+      out = { ok: false, error: 'ใช้ POST สำหรับ import' };
+    } else {
+      out = { ok: false, error: 'Unknown action: ' + action };
     }
-    if (action === 'meta') {
-      return json_(getMeta_());
-    }
-    if (action === 'export') {
-      return json_(exportAll_());
-    }
-    return json_({ ok: false, error: 'Unknown action: ' + action });
+    return jsonpOrJson_(out, p.callback);
   } catch (err) {
-    return json_({ ok: false, error: String(err.message || err) });
+    return jsonpOrJson_({ ok: false, error: String(err.message || err) }, e && e.parameter && e.parameter.callback);
   }
 }
 
@@ -45,7 +50,19 @@ function doPost(e) {
   try {
     var body = {};
     if (e && e.postData && e.postData.contents) {
-      body = JSON.parse(e.postData.contents);
+      var raw = e.postData.contents;
+      try {
+        body = JSON.parse(raw);
+      } catch (parseErr) {
+        // form-urlencoded: payload=...
+        if (e.parameter && e.parameter.payload) {
+          body = JSON.parse(e.parameter.payload);
+        } else {
+          throw parseErr;
+        }
+      }
+    } else if (e && e.parameter && e.parameter.payload) {
+      body = JSON.parse(e.parameter.payload);
     }
     var action = String(body.action || '').toLowerCase();
     if (action === 'import') {
@@ -68,6 +85,17 @@ function doPost(e) {
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** JSONP สำหรับเรียกจาก GitHub Pages (ข้าม CORS) */
+function jsonpOrJson_(obj, callback) {
+  var text = JSON.stringify(obj);
+  if (callback && /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(callback))) {
+    return ContentService.createTextOutput(String(callback) + '(' + text + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(text)
     .setMimeType(ContentService.MimeType.JSON);
 }
 

@@ -179,16 +179,55 @@ var RemoteDB = (function () {
 
   function getUrl() {
     if (window.PHARMA_CONFIG && window.PHARMA_CONFIG.gasUrl) {
-      return String(window.PHARMA_CONFIG.gasUrl).trim();
+      return normalizeGasUrl_(window.PHARMA_CONFIG.gasUrl);
     }
-    return String(localStorage.getItem(GAS_URL_KEY) || '').trim();
+    return normalizeGasUrl_(localStorage.getItem(GAS_URL_KEY) || '');
+  }
+
+  function normalizeGasUrl_(url) {
+    url = String(url || '').trim();
+    if (!url) return '';
+    // ตัด query/hash ที่ไม่จำเป็น
+    url = url.split('#')[0];
+    // ปฏิเสธ URL หน้า Editor — ใช้ไม่ได้กับ fetch
+    if (/script\.google\.com\/.+\/(edit|home\/projects)/i.test(url) ||
+        /\/projects\/[^/]+\/edit/i.test(url)) {
+      return '';
+    }
+    // ต้องเป็น Web App /exec
+    var m = url.match(/https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/i);
+    if (m) return m[0];
+    if (/\/exec\/?$/i.test(url) && /script\.google\.com/i.test(url)) {
+      return url.replace(/\/$/, '');
+    }
+    return '';
+  }
+
+  function validateUrlMessage_(raw) {
+    raw = String(raw || '').trim();
+    if (!raw) return 'กรุณาใส่ URL Web App';
+    if (/\/edit|\/home\/projects/i.test(raw)) {
+      return 'นี่คือ URL หน้าแก้ไขโค้ด ไม่ใช่ Web App — ไป Deploy → Manage deployments แล้วคัดลอก URL ที่ลงท้าย /exec';
+    }
+    if (!normalizeGasUrl_(raw)) {
+      return 'URL ไม่ถูกต้อง ต้องเป็น https://script.google.com/macros/s/.../exec';
+    }
+    return '';
   }
 
   function setUrl(url) {
-    url = String(url || '').trim();
-    if (url) localStorage.setItem(GAS_URL_KEY, url);
+    var raw = String(url || '').trim();
+    var normalized = normalizeGasUrl_(raw);
+    if (raw && !normalized) {
+      // เก็บ raw ไว้ไม่ได้ — ล้างเพื่อไม่ให้เรียกผิด
+      localStorage.removeItem(GAS_URL_KEY);
+      loaded = false;
+      return { ok: false, error: validateUrlMessage_(raw) };
+    }
+    if (normalized) localStorage.setItem(GAS_URL_KEY, normalized);
     else localStorage.removeItem(GAS_URL_KEY);
     loaded = false;
+    return { ok: true, url: normalized };
   }
 
   function enabled() {
@@ -199,10 +238,113 @@ var RemoteDB = (function () {
     return getUrl().replace(/\/$/, '');
   }
 
+  /** GET ผ่าน JSONP — ข้าม CORS จาก GitHub Pages → GAS */
+  function jsonpGet_(query) {
+    return new Promise(function (resolve, reject) {
+      var cbName = '_gasCb' + String(Date.now()) + Math.floor(Math.random() * 10000);
+      var settled = false;
+      var script = document.createElement('script');
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('หมดเวลารอ Google — ตรวจว่า Deploy เป็น Anyone และ URL ลงท้าย /exec'));
+      }, 45000);
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cbName] = function (data) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(data);
+      };
+      var url = baseUrl() + '?' + query +
+        (query ? '&' : '') + 'callback=' + encodeURIComponent(cbName) + '&t=' + Date.now();
+      script.src = url;
+      script.onerror = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('เรียก Google ไม่สำเร็จ — ตรวจ URL /exec และสิทธิ์ Anyone'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
   function fetchJson(url, options) {
-    return fetch(url, options || {}).then(function (r) {
+    options = options || {};
+    // GET ใช้ JSONP เสมอ
+    if (!options.method || String(options.method).toUpperCase() === 'GET') {
+      var q = '';
+      var qi = url.indexOf('?');
+      if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
+      return jsonpGet_(q);
+    }
+    // POST: ลอง fetch ก่อน ถ้า CORS ล้มเหลวใช้ form+iframe
+    return fetch(url, options).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
+    }).catch(function (err) {
+      var msg = String(err && err.message || err || '');
+      if (/Failed to fetch|NetworkError|CORS|TypeError/i.test(msg) || err.name === 'TypeError') {
+        return postViaIframe_(options.body);
+      }
+      throw err;
+    });
+  }
+
+  function postViaIframe_(bodyText) {
+    return new Promise(function (resolve, reject) {
+      var beforeRev = localRevision;
+      var name = 'gasFrame' + Date.now();
+      var iframe = document.createElement('iframe');
+      iframe.name = name;
+      iframe.style.cssText = 'display:none;width:0;height:0;border:0';
+      document.body.appendChild(iframe);
+      var form = document.createElement('form');
+      form.method = 'POST';
+      form.action = baseUrl();
+      form.target = name;
+      form.style.display = 'none';
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = bodyText;
+      form.appendChild(input);
+      document.body.appendChild(form);
+      var tries = 0;
+      var timer = setInterval(function () {
+        tries++;
+        jsonpGet_('action=meta').then(function (meta) {
+          if (meta && meta.ok && Number(meta.revision) > beforeRev) {
+            clearInterval(timer);
+            cleanup();
+            resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
+          } else if (tries >= 20) {
+            clearInterval(timer);
+            cleanup();
+            // อาจ revision ไม่เพิ่มถ้าข้อมูลเหมือนเดิม — ถือว่าสำเร็จถ้า meta ตอบได้
+            if (meta && meta.ok) resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
+            else reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ (CORS) — Deploy Web App เป็น Anyone แล้วลองใหม่'));
+          }
+        }).catch(function () {
+          if (tries >= 20) {
+            clearInterval(timer);
+            cleanup();
+            reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
+          }
+        });
+      }, 1500);
+      function cleanup() {
+        try { document.body.removeChild(form); } catch (e) {}
+        setTimeout(function () {
+          try { document.body.removeChild(iframe); } catch (e2) {}
+        }, 2000);
+      }
+      form.submit();
     });
   }
 
@@ -404,7 +546,7 @@ var RemoteDB = (function () {
 
   function applyUrlFromSettings_(settings) {
     if (!settings || !settings.gasWebAppUrl) return;
-    var url = String(settings.gasWebAppUrl).trim();
+    var url = normalizeGasUrl_(settings.gasWebAppUrl);
     if (!url || getUrl()) return;
     setUrl(url);
     loaded = false;
@@ -497,6 +639,8 @@ var RemoteDB = (function () {
     enabled: enabled,
     getUrl: getUrl,
     setUrl: setUrl,
+    validateUrl: validateUrlMessage_,
+    normalizeUrl: normalizeGasUrl_,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

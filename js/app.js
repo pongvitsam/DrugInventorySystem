@@ -2164,11 +2164,19 @@ function refreshCloudData() {
 function saveGasUrl() {
   if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
   var url = (document.getElementById('stGasUrl').value || '').trim();
-  RemoteDB.setUrl(url);
-  if (url) {
-    api('saveSettings', { gasWebAppUrl: url }).catch(function () {});
+  var result = RemoteDB.setUrl(url);
+  if (result && result.ok === false) {
+    updateGasStatus(result.error || 'URL ไม่ถูกต้อง', true);
+    toast(result.error || 'URL ไม่ถูกต้อง');
+    return;
+  }
+  if (result && result.url) {
+    document.getElementById('stGasUrl').value = result.url;
+  }
+  if (url && RemoteDB.enabled()) {
+    api('saveSettings', { gasWebAppUrl: RemoteDB.getUrl() }).catch(function () {});
     toast('บันทึก URL แล้ว — กำลังเชื่อมต่อ...');
-    updateGasStatus('กำลังเชื่อมต่อ Google — จะไม่ทับข้อมูลใหม่ด้วยข้อมูลเก่า');
+    updateGasStatus('กำลังเชื่อมต่อ Google (ข้าม CORS) — URL ต้องลงท้าย /exec และสิทธิ์ Anyone');
     updateSyncIndicator('syncing');
     loadBootstrap();
   } else {
@@ -2183,12 +2191,18 @@ function saveGasUrl() {
 
 function testGasConnection() {
   if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
-  saveGasUrl();
-  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
+  var url = (document.getElementById('stGasUrl').value || '').trim();
+  var result = RemoteDB.setUrl(url);
+  if (result && result.ok === false) {
+    updateGasStatus(result.error || 'URL ไม่ถูกต้อง', true);
+    return toast(result.error || 'URL ไม่ถูกต้อง');
+  }
+  if (result && result.url) document.getElementById('stGasUrl').value = result.url;
+  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App ที่ลงท้าย /exec');
   updateGasStatus('กำลังทดสอบ...');
   RemoteDB.ping().then(function (r) {
     if (r && r.ok) {
-      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS'));
+      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS') + ' v' + (r.version || ''));
       toast('เชื่อมต่อ Google สำเร็จ');
     } else {
       updateGasStatus((r && r.error) || 'เชื่อมต่อไม่สำเร็จ', true);
