@@ -87,7 +87,11 @@ function applyBoot(b) {
   STATE.boot = b;
   var s = b.settings || {};
   if (typeof RemoteDB !== 'undefined') RemoteDB.applyUrlFromSettings(s);
-  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets (หลายเครื่อง)' : ' · เครื่องนี้';
+  var roleLabel = '';
+  if (b.storageMode === 'gas' && typeof RemoteDB !== 'undefined' && RemoteDB.getDeviceRole) {
+    roleLabel = RemoteDB.getDeviceRole() === 'master' ? ' · Master' : ' · Reader';
+  }
+  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets (หลายเครื่อง)' + roleLabel : ' · เครื่องนี้';
   document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '') + modeLabel;
   document.getElementById('dashSub').textContent = s.unitName || '';
   var link = document.getElementById('sheetLink');
@@ -121,9 +125,19 @@ function applyBoot(b) {
   }
   var stGas = document.getElementById('stGasUrl');
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
-  updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
+  var gasMsg = '';
+  if (b.storageMode === 'gas') {
+    gasMsg = 'เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.getDeviceRole) {
+      gasMsg += RemoteDB.getDeviceRole() === 'master'
+        ? ' · เครื่องนี้อัปโหลดขึ้น Sheet ได้'
+        : ' · เครื่องนี้อ่านจาก Sheet อย่างเดียว';
+    }
+  }
+  updateGasStatus(gasMsg);
+  refreshDeviceRoleUi();
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 68) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 69) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -165,8 +179,7 @@ function loadBootstrap() {
     RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
   }
   var gasOn = typeof RemoteDB !== 'undefined' && RemoteDB.enabled();
-  var localItems = (typeof DB !== 'undefined' && DB.readObjects) ? DB.readObjects('Items') : [];
-  var hasLocal = !!(localItems && localItems.length);
+  var readerOnly = gasOn && typeof RemoteDB !== 'undefined' && RemoteDB.isReaderOnly && RemoteDB.isReaderOnly();
 
   function paint(b) {
     applyBoot(b);
@@ -175,6 +188,12 @@ function loadBootstrap() {
     }
     if (b.imported) {
       setStatus('');
+      loadItems();
+      refreshStockCache();
+      return Promise.resolve();
+    }
+    if (gasOn) {
+      setStatus('ยังไม่มีข้อมูลบน Google Sheets');
       loadItems();
       refreshStockCache();
       return Promise.resolve();
@@ -191,8 +210,8 @@ function loadBootstrap() {
     });
   }
 
-  if (gasOn && !hasLocal) {
-    setStatus('กำลังโหลดจาก Google Sheets...');
+  if (gasOn) {
+    setStatus(readerOnly ? 'กำลังโหลดจาก Google Sheets (Reader)...' : 'กำลังโหลดจาก Google Sheets...');
     updateSyncIndicator('syncing');
     return RemoteDB.ensureLoaded().then(function () {
       applyRemoteSyncToasts_();
@@ -204,6 +223,11 @@ function loadBootstrap() {
       });
     }).catch(function (e) {
       updateSyncIndicator('');
+      if (readerOnly) {
+        setStatus('โหลดจาก Google ไม่สำเร็จ — เครื่องนี้ไม่ใช้ข้อมูลในเครื่อง', true);
+        updateGasStatus((e && e.message) || 'โหลดจาก Google ไม่สำเร็จ', true);
+        return;
+      }
       setStatus('โหลดจาก Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่อง', true);
       updateGasStatus((e && e.message) || 'โหลดจาก Google ไม่สำเร็จ', true);
       return api('bootstrap').then(paint).then(function () {
@@ -256,6 +280,10 @@ function syncGoogleInBackground_() {
     });
   }).catch(function () {
     updateSyncIndicator('');
+    if (RemoteDB.isReaderOnly && RemoteDB.isReaderOnly()) {
+      updateGasStatus('ซิงก์ Google ไม่สำเร็จ — เครื่องนี้ไม่อ่านข้อมูลในเครื่อง', true);
+      return;
+    }
     updateGasStatus('ซิงก์ Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่องนี้ไปก่อน', true);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
@@ -2162,6 +2190,30 @@ function updateSyncIndicator(state) {
   if (btn) btn.style.display = gasOn ? 'block' : 'none';
 }
 
+function refreshDeviceRoleUi() {
+  if (typeof RemoteDB === 'undefined') return;
+  var sel = document.getElementById('stDeviceRole');
+  if (sel && RemoteDB.getDeviceRole) sel.value = RemoteDB.getDeviceRole();
+  var note = document.getElementById('deviceRoleNote');
+  if (!note) return;
+  if (!RemoteDB.enabled()) {
+    note.textContent = 'ยังไม่ได้เปิดใช้ Google Sheets';
+    return;
+  }
+  note.textContent = RemoteDB.isMaster && RemoteDB.isMaster()
+    ? 'Master: เครื่องนี้แก้ไขข้อมูลและอัปโหลดขึ้น Google Sheets ได้'
+    : 'Reader: เครื่องนี้ดึงข้อมูลจาก Google Sheets เท่านั้น และจะไม่ใช้ข้อมูลในเครื่องมาแสดง';
+}
+
+function saveDeviceRole() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.setDeviceRole) return toast('โมดูล remote ไม่พร้อม');
+  var role = document.getElementById('stDeviceRole').value || 'reader';
+  RemoteDB.setDeviceRole(role);
+  refreshDeviceRoleUi();
+  toast(role === 'master' ? 'ตั้งเครื่องนี้เป็น Master แล้ว' : 'ตั้งเครื่องนี้เป็น Reader แล้ว');
+  if (RemoteDB.enabled()) loadBootstrap();
+}
+
 function refreshActivePageViews_() {
   var active = document.querySelector('.page.active');
   if (!active) return;
@@ -2228,13 +2280,16 @@ function saveGasUrl() {
     document.getElementById('stGasUrl').value = result.url;
   }
   if (url && RemoteDB.enabled()) {
-    api('saveSettings', { gasWebAppUrl: RemoteDB.getUrl() }).catch(function () {});
+    if (RemoteDB.isMaster && RemoteDB.isMaster()) {
+      api('saveSettings', { gasWebAppUrl: RemoteDB.getUrl() }).catch(function () {});
+    }
     toast('บันทึก URL แล้ว — กำลังเชื่อมต่อ...');
     updateGasStatus('กำลังเชื่อมต่อ Google (ข้าม CORS) — URL ต้องลงท้าย /exec และสิทธิ์ Anyone');
     updateSyncIndicator('syncing');
+    refreshDeviceRoleUi();
     loadBootstrap();
   } else {
-    api('saveSettings', { gasWebAppUrl: '' }).catch(function () {});
+    refreshDeviceRoleUi();
     toast('ล้าง URL แล้ว — ใช้ข้อมูลในเครื่อง');
     updateGasStatus('ใช้ข้อมูลในเบราว์เซอร์เครื่องนี้');
     RemoteDB.stopPolling();
@@ -2271,7 +2326,9 @@ function testGasConnection() {
 function refreshDataCompare() {
   var el = document.getElementById('dataCompareOut');
   if (!el || typeof RemoteDB === 'undefined' || !RemoteDB.describeSources) return;
-  el.textContent = 'กำลังเทียบชุดข้อมูล...';
+  el.textContent = RemoteDB.isReaderOnly && RemoteDB.isReaderOnly()
+    ? 'กำลังอ่านข้อมูลจาก Google Sheets...'
+    : 'กำลังเทียบชุดข้อมูล...';
   RemoteDB.describeSources().then(function (info) {
     var lines = (info.sources || []).map(function (s) {
       var mark = (info.richest && info.richest.name === s.name) ? ' ← มากที่สุด' : '';
@@ -2364,6 +2421,7 @@ function pushGasData() {
   if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
   saveGasUrl();
   if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
+  if (RemoteDB.isReaderOnly && RemoteDB.isReaderOnly()) return toast('เครื่องนี้เป็น Reader — อัปโหลดไม่ได้');
   if (!confirm('อัปโหลดข้อมูลทั้งหมดจากเครื่องนี้ไปทับบน Google Sheets หรือไม่?')) return;
   updateGasStatus('กำลังอัปโหลด...');
   RemoteDB.pushLocal().then(function () {
@@ -2443,7 +2501,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 68) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 69) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }

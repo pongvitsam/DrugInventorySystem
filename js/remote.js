@@ -4,6 +4,7 @@
  */
 var RemoteDB = (function () {
   var GAS_URL_KEY = 'pharma:gasUrl';
+  var DEVICE_ROLE_KEY = 'pharma:deviceRole';
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var HISTORY_CUTOFF_ = '2026-09-01';
@@ -24,6 +25,25 @@ var RemoteDB = (function () {
     var action = lastSyncAction;
     lastSyncAction = null;
     return action;
+  }
+
+  function getDeviceRole() {
+    return localStorage.getItem(DEVICE_ROLE_KEY) === 'master' ? 'master' : 'reader';
+  }
+
+  function setDeviceRole(role) {
+    var next = String(role || '').toLowerCase() === 'master' ? 'master' : 'reader';
+    try { localStorage.setItem(DEVICE_ROLE_KEY, next); } catch (e) { /* ignore */ }
+    loaded = false;
+    return next;
+  }
+
+  function isMasterDevice() {
+    return getDeviceRole() === 'master';
+  }
+
+  function isReaderOnly_() {
+    return enabled() && !isMasterDevice();
   }
 
   function hasLocalData_() {
@@ -455,6 +475,7 @@ var RemoteDB = (function () {
   function sync(opts) {
     opts = opts || {};
     if (!enabled()) return Promise.resolve();
+    if (isReaderOnly_()) return Promise.reject(new Error('เครื่องนี้ตั้งเป็น Reader — อ่านจาก Google Sheets เท่านั้น'));
     if (syncing) return Promise.resolve();
     syncing = true;
     return postImport_(!!opts.force).then(handleImportResult_).finally(function () {
@@ -470,6 +491,12 @@ var RemoteDB = (function () {
     loadPromise = fetchJson(url).then(function (res) {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
+      }
+      if (isReaderOnly_()) {
+        applyRemotePayload_(res, true);
+        lastSyncAction = 'pulled';
+        loaded = true;
+        return Promise.resolve();
       }
       var remoteFp = fingerprint_(res.data);
       restoreBackupIfRicher_(remoteFp);
@@ -512,6 +539,11 @@ var RemoteDB = (function () {
       if (remoteRev <= localRevision) return { changed: false, revision: localRevision };
       return fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (res) {
         if (!res || !res.ok) return { changed: false };
+        if (isReaderOnly_()) {
+          var pulled = applyRemotePayload_(res, true);
+          loaded = true;
+          return { changed: pulled, revision: localRevision };
+        }
         var remoteFp = fingerprint_(res.data);
         var localFp = localFingerprint_();
         if (compareFreshness_(localFp, remoteFp) === 'a' && hasRealActivity_(localFp)) {
@@ -534,6 +566,7 @@ var RemoteDB = (function () {
 
   function pushLocal() {
     if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
+    if (isReaderOnly_()) return Promise.reject(new Error('เครื่องนี้ตั้งเป็น Reader — อัปโหลดขึ้น Google ไม่ได้'));
     return sync({ force: true });
   }
 
@@ -598,19 +631,22 @@ var RemoteDB = (function () {
   }
 
   function describeSources() {
-    var local = { name: 'local', label: 'เครื่องนี้', fingerprint: localFingerprint_(), data: null };
-    var backup = readBackup_();
-    var sources = [local];
-    if (backup && backup.data) {
-      sources.push({
-        name: 'backup',
-        label: 'สำเนากู้ในเครื่องนี้',
-        fingerprint: backup.fingerprint || fingerprint_(backup.data),
-        data: backup.data,
-        slim: !!backup.slim
-      });
-    }
+    var sources = [];
     var chain = Promise.resolve(sources);
+    if (!isReaderOnly_()) {
+      var local = { name: 'local', label: 'เครื่องนี้', fingerprint: localFingerprint_(), data: null };
+      var backup = readBackup_();
+      sources.push(local);
+      if (backup && backup.data) {
+        sources.push({
+          name: 'backup',
+          label: 'สำเนากู้ในเครื่องนี้',
+          fingerprint: backup.fingerprint || fingerprint_(backup.data),
+          data: backup.data,
+          slim: !!backup.slim
+        });
+      }
+    }
     if (enabled()) {
       chain = fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (res) {
         if (res && res.ok && res.data) {
@@ -636,6 +672,9 @@ var RemoteDB = (function () {
   }
 
   function restoreRichest() {
+    if (isReaderOnly_()) {
+      return Promise.reject(new Error('เครื่องนี้ตั้งเป็น Reader — ใช้ข้อมูลจาก Google Sheets เท่านั้น'));
+    }
     return describeSources().then(function (info) {
       var best = info.richest;
       if (!best || !hasRealActivity_(best.fingerprint)) {
@@ -661,6 +700,7 @@ var RemoteDB = (function () {
 
   function importDump(data, opts) {
     opts = opts || {};
+    if (isReaderOnly_()) throw new Error('เครื่องนี้ตั้งเป็น Reader — นำเข้าทับข้อมูลไม่ได้');
     if (!data || typeof data !== 'object') throw new Error('ไฟล์สำรองไม่ถูกต้อง');
     if (!data.Items && !data.Receipts && !data.Stock && !data.Transfers) {
       throw new Error('ไฟล์นี้ไม่ใช่ข้อมูลคลังยา');
@@ -686,7 +726,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 68,
+    build: 69,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,
@@ -701,6 +741,10 @@ var RemoteDB = (function () {
     describeSources: describeSources,
     restoreRichest: restoreRichest,
     importDump: importDump,
+    getDeviceRole: getDeviceRole,
+    setDeviceRole: setDeviceRole,
+    isMaster: isMasterDevice,
+    isReaderOnly: isReaderOnly_,
     localFingerprint: localFingerprint_,
     fpLabel: fpLabel_,
     resetSession: function () {

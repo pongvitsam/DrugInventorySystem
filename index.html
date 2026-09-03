@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=68">
+  <link rel="stylesheet" href="css/styles.css?v=69">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -315,6 +315,19 @@
         <div class="card" style="margin-top:14px">
           <h3>ฐานข้อมูล Google (GAS + Sheets)</h3>
           <p class="muted">ใส่ URL จาก Deploy → Manage deployments ที่ลงท้าย <b>/exec</b> เท่านั้น (ห้ามใช้ลิงก์หน้าแก้ไขโค้ด /edit) · สิทธิ์ต้องเป็น Anyone</p>
+          <div class="row" style="margin-top:8px">
+            <div class="field" style="max-width:260px">
+              <label>บทบาทเครื่องนี้</label>
+              <select id="stDeviceRole" onchange="saveDeviceRole()">
+                <option value="master">Master</option>
+                <option value="reader">Reader</option>
+              </select>
+            </div>
+            <div class="field" style="flex:2">
+              <label>คำอธิบาย</label>
+              <input id="deviceRoleNote" type="text" class="readonly-field" readonly>
+            </div>
+          </div>
           <div class="field" style="margin-top:8px">
             <label>URL Web App (GAS)</label>
             <input id="stGasUrl" placeholder="https://script.google.com/macros/s/...../exec" autocomplete="off">
@@ -440,14 +453,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=68"></script>
-  <script src="js/remote.js?v=68"></script>
-  <script src="js/api.js?v=68"></script>
-  <script src="js/options.js?v=68"></script>
-  <script src="js/thdate.js?v=68"></script>
-  <script src="js/seed.js?v=68"></script>
-  <script src="js/ocr.js?v=68"></script>
-  <script src="js/app.js?v=68"></script>
-  <script src="js/auth.js?v=68"></script>
+  <script src="js/db.js?v=69"></script>
+  <script src="js/remote.js?v=69"></script>
+  <script src="js/api.js?v=69"></script>
+  <script src="js/options.js?v=69"></script>
+  <script src="js/thdate.js?v=69"></script>
+  <script src="js/seed.js?v=69"></script>
+  <script src="js/ocr.js?v=69"></script>
+  <script src="js/app.js?v=69"></script>
+  <script src="js/auth.js?v=69"></script>
 </body>
 </html>

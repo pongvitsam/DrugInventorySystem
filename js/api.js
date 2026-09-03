@@ -1832,6 +1832,9 @@ return {
     };
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       if (MUTATION_APIS_[name]) {
+        if (RemoteDB.isReaderOnly && RemoteDB.isReaderOnly()) {
+          return Promise.reject(new Error('เครื่องนี้เป็น Reader — อ่านข้อมูลจาก Google Sheets ได้อย่างเดียว'));
+        }
         return RemoteDB.ensureLoaded().catch(function () { return false; }).then(function () {
           return RemoteDB.refreshIfNewer().catch(function () { return null; });
         }).then(function () {
