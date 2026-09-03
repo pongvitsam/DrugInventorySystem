@@ -25,31 +25,19 @@ var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'Tr
 
 function doGet(e) {
   try {
-    var p = (e && e.parameter) || {};
-    var action = String(p.action || 'ping').toLowerCase();
-    var out;
+    var action = String((e && e.parameter && e.parameter.action) || 'ping').toLowerCase();
     if (action === 'ping') {
-      out = { ok: true, service: 'DrugInventoryGAS', version: 5 };
-    } else if (action === 'meta') {
-      out = getMeta_();
-    } else if (action === 'export') {
-      out = exportAll_();
-    } else if (action === 'import') {
-      out = { ok: false, error: 'ใช้ POST สำหรับ import' };
-    } else {
-      out = { ok: false, error: 'Unknown action: ' + action };
+      return json_({ ok: true, service: 'DrugInventoryGAS', version: 2 });
     }
-    // iframe + postMessage (ข้าม CORS)
-    if (String(p.mode || '') === 'iframe') {
-      var html = '<!DOCTYPE html><html><body><script>' +
-        'parent.postMessage({source:"DrugInventoryGAS",payload:' + JSON.stringify(out) + '},"*");' +
-        '</script></body></html>';
-      return HtmlService.createHtmlOutput(html)
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    if (action === 'meta') {
+      return json_(getMeta_());
     }
-    return jsonpOrJson_(out, p.callback);
+    if (action === 'export') {
+      return json_(exportAll_());
+    }
+    return json_({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
-    return jsonpOrJson_({ ok: false, error: String(err.message || err) }, e && e.parameter && e.parameter.callback);
+    return json_({ ok: false, error: String(err.message || err) });
   }
 }
 
@@ -57,32 +45,12 @@ function doPost(e) {
   try {
     var body = {};
     if (e && e.postData && e.postData.contents) {
-      var raw = e.postData.contents;
-      try {
-        body = JSON.parse(raw);
-      } catch (parseErr) {
-        // form-urlencoded: payload=...
-        if (e.parameter && e.parameter.payload) {
-          body = JSON.parse(e.parameter.payload);
-        } else {
-          throw parseErr;
-        }
-      }
-    } else if (e && e.parameter && e.parameter.payload) {
-      body = JSON.parse(e.parameter.payload);
+      body = JSON.parse(e.postData.contents);
     }
     var action = String(body.action || '').toLowerCase();
     if (action === 'import') {
-      var result = importAll_(body.data || {}, body.expectedRevision, body.force);
-      if (result.conflict) {
-        return json_({
-          ok: false,
-          conflict: true,
-          revision: result.revision,
-          updatedAt: result.updatedAt || ''
-        });
-      }
-      return json_({ ok: true, revision: result.revision, updatedAt: result.updatedAt });
+      var meta = importAll_(body.data || {});
+      return json_({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt });
     }
     return json_({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -92,17 +60,6 @@ function doPost(e) {
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-/** JSONP สำหรับเรียกจาก GitHub Pages (ข้าม CORS) */
-function jsonpOrJson_(obj, callback) {
-  var text = JSON.stringify(obj);
-  if (callback && /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(callback))) {
-    return ContentService.createTextOutput(String(callback) + '(' + text + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-  return ContentService.createTextOutput(text)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -160,6 +117,8 @@ function writeSheetObjects_(sheet, columns, objects) {
   sheet.getRange(2, 1, rows.length, columns.length).setValues(rows);
 }
 
+var LOGO_PROP_KEY_ = 'LOGO_DATA_URL';
+
 function readSettingsObj_(ss) {
   var sheet = getSheet_(ss, 'Settings');
   var rows = readSheetObjects_(sheet, SHEET_DEFS.Settings);
@@ -167,13 +126,26 @@ function readSettingsObj_(ss) {
   rows.forEach(function (r) {
     if (r.key) o[String(r.key)] = r.value;
   });
+  // Logo is stored in ScriptProperties (no cell-size limit) — merge it back
+  try {
+    var logo = PropertiesService.getScriptProperties().getProperty(LOGO_PROP_KEY_);
+    if (logo) o.logoDataUrl = logo;
+  } catch (e) { /* ignore */ }
   return o;
 }
 
 function writeSettingsObj_(ss, obj) {
-  var rows = Object.keys(obj || {}).map(function (k) {
-    return { key: k, value: obj[k] };
-  });
+  // Separate logoDataUrl → ScriptProperties (avoids Sheets 50k-char cell limit)
+  var logo = obj.logoDataUrl || '';
+  if (logo) {
+    try {
+      PropertiesService.getScriptProperties().setProperty(LOGO_PROP_KEY_, logo);
+    } catch (e) { /* ignore quota issues */ }
+  }
+  // Write the rest to the sheet (skip logoDataUrl to keep cells small)
+  var rows = Object.keys(obj || {})
+    .filter(function (k) { return k !== 'logoDataUrl'; })
+    .map(function (k) { return { key: k, value: obj[k] }; });
   writeSheetObjects_(getSheet_(ss, 'Settings'), SHEET_DEFS.Settings, rows);
 }
 
@@ -222,50 +194,22 @@ function exportAll_() {
   };
 }
 
-function importAll_(data, expectedRevision, force) {
+function importAll_(data) {
   var ss = getSpreadsheet_();
   var current = readSettingsObj_(ss);
   var settings = data.SettingsObj || {};
   var rev = Number(current.syncRevision) || 0;
-  if (!force && expectedRevision != null && expectedRevision !== '') {
-    var expected = Number(expectedRevision);
-    if (!isNaN(expected) && expected !== rev) {
-      return { conflict: true, revision: rev, updatedAt: current.syncUpdatedAt || '' };
-    }
-  }
   settings.syncRevision = String(rev + 1);
   settings.syncUpdatedAt = new Date().toISOString();
   data.SettingsObj = settings;
   writeSettingsObj_(ss, settings);
-  writeSeqObj_(ss, data.SeqObj || {});
-  // ทับทั้งชีตทุกตาราง — อัปโหลดซ้ำไม่ซ้อน/คูณสอง
+  if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
   DATA_KEYS_.forEach(function (name) {
-    writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], dedupeRows_(name, data[name] || []));
+    if (data[name]) {
+      writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
+    }
   });
   return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
-}
-
-function dedupeRows_(name, objects) {
-  objects = objects || [];
-  if (!objects.length) return [];
-  var seen = {};
-  var out = [];
-  for (var i = objects.length - 1; i >= 0; i--) {
-    var obj = objects[i] || {};
-    var key;
-    if (name === 'MonthlyRequests') {
-      key = String(obj.monthKey || '') + '|' + String(obj.itemId || '');
-    } else if (obj.id != null && obj.id !== '') {
-      key = String(obj.id);
-    } else {
-      out.unshift(obj);
-      continue;
-    }
-    if (seen[key]) continue;
-    seen[key] = true;
-    out.unshift(obj);
-  }
-  return out;
 }
 
 /** Run once from Apps Script editor to create spreadsheet */
