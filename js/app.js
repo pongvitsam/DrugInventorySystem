@@ -209,8 +209,10 @@ function onLogoFileSelected(input) {
     var img = new Image();
     img.onload = function () {
       try {
-        // ครอปเป็นสี่เหลี่ยม (ตัดกึ่งกลาง) แล้วย่อเพื่อให้สตริงไม่ใหญ่เกิน
-        var side = 256;
+        // ครอปกึ่งกลางเป็นสี่เหลี่ยมจตุรัส แล้วย่อให้ base64 ไม่เกิน ~40KB
+        // (Google Sheets cell limit ~50,000 chars; ScriptProperty limit ~500KB)
+        var MAX_B64 = 40000;
+        var side = 128;
         var minDim = Math.min(img.width, img.height);
         var sx = (img.width - minDim) / 2;
         var sy = (img.height - minDim) / 2;
@@ -219,7 +221,13 @@ function onLogoFileSelected(input) {
         canvas.height = side;
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, side, side);
-        var dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        var quality = 0.72;
+        var dataUrl = canvas.toDataURL('image/jpeg', quality);
+        // ถ้ายังใหญ่เกิน ลด quality ซ้ำจนพอ
+        while (dataUrl.length > MAX_B64 && quality > 0.3) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
         setLogoDataUrl_(dataUrl);
       } catch (e) {
         toast(e.message || String(e));
