@@ -123,7 +123,7 @@ function applyBoot(b) {
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
   updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 62) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 65) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -164,24 +164,8 @@ function loadBootstrap() {
   if (typeof RemoteDB !== 'undefined') {
     RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
   }
-  var loadingMsg = (typeof RemoteDB !== 'undefined' && RemoteDB.enabled())
-    ? 'กำลังโหลดจาก Google Sheets...'
-    : 'กำลังโหลดข้อมูล...';
-  setStatus(loadingMsg);
+  setStatus('กำลังโหลดข้อมูล...');
   api('bootstrap').then(function (b) {
-    if (typeof RemoteDB !== 'undefined' && RemoteDB.consumeSyncAction) {
-      var syncAction = RemoteDB.consumeSyncAction();
-      if (syncAction === 'uploaded') {
-        toast('อัปโหลดข้อมูลเครื่องนี้ขึ้น Google อัตโนมัติแล้ว');
-        updateGasStatus('อัปโหลดขึ้น Google แล้ว — พร้อมใช้หลายเครื่อง');
-      } else if (syncAction === 'kept-local') {
-        toast('เก็บข้อมูลใหม่ในเครื่องนี้ไว้ และอัปโหลดทับข้อมูลเก่าบน Google');
-        updateGasStatus('ข้อมูลใหม่ในเครื่องนี้ใหม่กว่า — อัปโหลดขึ้น Google แล้ว');
-      } else if (syncAction === 'imported-file') {
-        toast('นำเข้าจากไฟล์สำรองแล้ว');
-        updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
-      }
-    }
     applyBoot(b);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
@@ -192,23 +176,61 @@ function loadBootstrap() {
       setStatus('');
       loadItems();
       refreshStockCache();
-      return;
-    }
-    setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
-    return api('importSeed', { force: false }).then(function (r) {
-      toast(r.message || 'นำเข้าแล้ว');
-      setStatus(r.message || 'นำเข้าแล้ว');
-      return api('bootstrap').then(function (b2) {
-        applyBoot(b2);
-        setStatus('');
-        loadItems();
-        refreshStockCache();
+    } else {
+      setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
+      return api('importSeed', { force: false }).then(function (r) {
+        toast(r.message || 'นำเข้าแล้ว');
+        setStatus(r.message || 'นำเข้าแล้ว');
+        return api('bootstrap').then(function (b2) {
+          applyBoot(b2);
+          setStatus('');
+          loadItems();
+          refreshStockCache();
+        });
+      }).then(function () {
+        return syncGoogleInBackground_();
       });
-    });
+    }
+    return syncGoogleInBackground_();
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
     toast(msg);
+  });
+}
+
+function applyRemoteSyncToasts_() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.consumeSyncAction) return;
+  var syncAction = RemoteDB.consumeSyncAction();
+  if (syncAction === 'uploaded') {
+    toast('อัปโหลดข้อมูลเครื่องนี้ขึ้น Google อัตโนมัติแล้ว');
+    updateGasStatus('อัปโหลดขึ้น Google แล้ว — พร้อมใช้หลายเครื่อง');
+  } else if (syncAction === 'kept-local') {
+    toast('เก็บข้อมูลใหม่ในเครื่องนี้ไว้ และอัปโหลดทับข้อมูลเก่าบน Google');
+    updateGasStatus('ข้อมูลใหม่ในเครื่องนี้ใหม่กว่า — อัปโหลดขึ้น Google แล้ว');
+  } else if (syncAction === 'imported-file') {
+    toast('นำเข้าจากไฟล์สำรองแล้ว');
+    updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
+  } else if (syncAction === 'pulled') {
+    toast('อัปเดตข้อมูลจาก Google แล้ว');
+    updateGasStatus('ดึงจาก Google แล้ว — พร้อมใช้หลายเครื่อง');
+  }
+}
+
+function syncGoogleInBackground_() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return Promise.resolve();
+  updateSyncIndicator('syncing');
+  return RemoteDB.ensureLoaded().then(function () {
+    applyRemoteSyncToasts_();
+    return api('bootstrap').then(function (b2) {
+      applyBoot(b2);
+      refreshActivePageViews_();
+      refreshStockCache();
+      updateSyncIndicator('');
+    });
+  }).catch(function () {
+    updateSyncIndicator('');
+    updateGasStatus('ซิงก์ Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่องนี้ไปก่อน', true);
   });
 }
 
@@ -2391,9 +2413,9 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 62) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 65) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
-    toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่แก้ CORS');
+    toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่โหลดเร็วขึ้น');
   }
   ThDate.initAll();
   loadBootstrap();

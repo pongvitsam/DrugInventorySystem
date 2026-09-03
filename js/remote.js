@@ -15,6 +15,7 @@ var RemoteDB = (function () {
   var pollCallback = null;
   var visibilityBound = false;
   var lastSyncAction = null;
+  var loadPromise = null;
 
   function consumeSyncAction() {
     var action = lastSyncAction;
@@ -240,28 +241,66 @@ var RemoteDB = (function () {
 
   function fetchJson(url, options) {
     options = options || {};
-    // ห้าม JSONP/ContentService — Google เด้งไป macros/echo แล้ว 403 จาก GitHub Pages
     if (!options.method || String(options.method).toUpperCase() === 'GET') {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return iframeGet_(q);
+      return jsonpGet_(q).catch(function () {
+        return iframeGet_(q);
+      });
     }
     return postViaIframe_(options.body);
   }
 
-  /** GET ผ่าน iframe + postMessage (ข้าม CORS โดยไม่ผ่าน macros/echo) */
+  /** JSONP — no-referrer เพื่อไม่ให้ GitHub Pages โดน macros/echo 403 */
+  function jsonpGet_(query) {
+    return new Promise(function (resolve, reject) {
+      var cbName = '_gasCb' + String(Date.now()) + Math.floor(Math.random() * 10000);
+      var settled = false;
+      var script = document.createElement('script');
+      script.referrerPolicy = 'no-referrer';
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('หมดเวลารอ Google'));
+      }, 8000);
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cbName] = function (data) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(data);
+      };
+      script.onerror = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('เรียก Google ไม่สำเร็จ'));
+      };
+      script.src = baseUrl() + '?' + query +
+        (query ? '&' : '') + 'callback=' + encodeURIComponent(cbName) + '&t=' + Date.now();
+      document.head.appendChild(script);
+    });
+  }
+
+  /** GET สำรองผ่าน iframe + postMessage */
   function iframeGet_(query) {
     return new Promise(function (resolve, reject) {
       var iframe = document.createElement('iframe');
       iframe.style.cssText = 'display:none;width:0;height:0;border:0';
+      iframe.referrerPolicy = 'no-referrer';
       var settled = false;
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
         cleanup();
         reject(new Error('โหลดจาก Google ไม่สำเร็จ — กด Ctrl+F5 แล้วลองใหม่'));
-      }, 30000);
+      }, 15000);
       function onMsg(ev) {
         var d = ev && ev.data;
         if (!d || d.source !== 'DrugInventoryGAS') return;
@@ -288,6 +327,7 @@ var RemoteDB = (function () {
       var iframe = document.createElement('iframe');
       iframe.name = name;
       iframe.style.cssText = 'display:none;width:0;height:0;border:0';
+      iframe.referrerPolicy = 'no-referrer';
       document.body.appendChild(iframe);
       var form = document.createElement('form');
       form.method = 'POST';
@@ -411,8 +451,9 @@ var RemoteDB = (function () {
   function ensureLoaded() {
     if (!enabled()) return Promise.resolve(false);
     if (loaded) return Promise.resolve(true);
+    if (loadPromise) return loadPromise;
     var url = baseUrl() + '?action=export&t=' + Date.now();
-    return fetchJson(url).then(function (res) {
+    loadPromise = fetchJson(url).then(function (res) {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
@@ -442,7 +483,10 @@ var RemoteDB = (function () {
       if (applyRemotePayload_(res, false)) lastSyncAction = 'pulled';
       loaded = true;
       return Promise.resolve();
+    }).finally(function () {
+      loadPromise = null;
     });
+    return loadPromise;
   }
 
   function refreshIfNewer() {
@@ -625,7 +669,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 62,
+    build: 65,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

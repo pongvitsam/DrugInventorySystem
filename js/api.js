@@ -1831,15 +1831,15 @@ return {
       }
     };
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
-      return RemoteDB.ensureLoaded().then(function () {
-        return RemoteDB.refreshIfNewer();
-      }).then(function () {
-        var result = run();
-        if (MUTATION_APIS_[name]) {
+      if (MUTATION_APIS_[name]) {
+        return RemoteDB.ensureLoaded().catch(function () { return false; }).then(function () {
+          return RemoteDB.refreshIfNewer().catch(function () { return null; });
+        }).then(function () {
+          var result = run();
           return RemoteDB.sync().then(function () { return result; });
-        }
-        return result;
-      });
+        });
+      }
+      return Promise.resolve().then(run);
     }
     return Promise.resolve().then(run);
   },
