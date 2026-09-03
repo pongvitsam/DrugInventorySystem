@@ -123,7 +123,7 @@ function applyBoot(b) {
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
   updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 67) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 68) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -2256,7 +2256,8 @@ function testGasConnection() {
   updateGasStatus('กำลังทดสอบ...');
   RemoteDB.ping().then(function (r) {
     if (r && r.ok) {
-      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS') + ' v' + (r.version || ''));
+      var extra = r.spreadsheetUrl ? ' — ชีต: ' + r.spreadsheetUrl : '';
+      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS') + ' v' + (r.version || '') + extra);
       toast('เชื่อมต่อ Google สำเร็จ');
     } else {
       updateGasStatus((r && r.error) || 'เชื่อมต่อไม่สำเร็จ', true);
@@ -2442,9 +2443,9 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 67) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 68) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
-    toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่โหลดเร็วขึ้น');
+    toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }
   ThDate.initAll();
   loadBootstrap();

@@ -6,8 +6,24 @@
 (function () {
   var payload = <?!= payloadJson ?>;
   var reqId = <?!= reqIdJson ?>;
-  var msg = { source: 'DrugInventoryGAS', reqId: reqId, payload: payload };
-  try { window.top.postMessage(msg, '*'); } catch (e) {}
+  var action = <?!= actionJson ?>;
+  function send(p) {
+    var msg = { source: 'DrugInventoryGAS', reqId: reqId, payload: p };
+    try { window.top.postMessage(msg, '*'); } catch (e) {}
+    try { window.parent.postMessage(msg, '*'); } catch (e2) {}
+  }
+  if (payload) {
+    send(payload);
+    return;
+  }
+  var runner = google.script.run
+    .withSuccessHandler(send)
+    .withFailureHandler(function (err) {
+      send({ ok: false, error: String(err && err.message ? err.message : err) });
+    });
+  if (action === 'export') runner.gasExport();
+  else if (action === 'meta') runner.gasMeta();
+  else runner.gasPing();
 })();
 </script>
 </body>

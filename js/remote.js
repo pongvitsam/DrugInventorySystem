@@ -8,6 +8,8 @@ var RemoteDB = (function () {
   var BACKUP_KEY = 'pharma:safetyBackup';
   var HISTORY_CUTOFF_ = '2026-09-01';
   var POLL_MS = 12000;
+  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
+  var CHUNK_CHARS_ = 8000;
   var loaded = false;
   var syncing = false;
   var localRevision = Number(localStorage.getItem(REV_KEY) || 0) || 0;
@@ -183,7 +185,10 @@ var RemoteDB = (function () {
     if (window.PHARMA_CONFIG && window.PHARMA_CONFIG.gasUrl) {
       return normalizeGasUrl_(window.PHARMA_CONFIG.gasUrl);
     }
-    return normalizeGasUrl_(localStorage.getItem(GAS_URL_KEY) || '');
+    if (localStorage.getItem(GAS_URL_KEY) !== null) {
+      return normalizeGasUrl_(localStorage.getItem(GAS_URL_KEY) || '');
+    }
+    return DEFAULT_GAS_URL;
   }
 
   function normalizeGasUrl_(url) {
@@ -227,7 +232,7 @@ var RemoteDB = (function () {
       return { ok: false, error: validateUrlMessage_(raw) };
     }
     if (normalized) localStorage.setItem(GAS_URL_KEY, normalized);
-    else localStorage.removeItem(GAS_URL_KEY);
+    else localStorage.setItem(GAS_URL_KEY, '');
     loaded = false;
     return { ok: true, url: normalized };
   }
@@ -248,7 +253,7 @@ var RemoteDB = (function () {
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
       return iframeGet_(q);
     }
-    return postViaIframe_(options.body);
+    return postJsonViaChunks_(options.body);
   }
 
   /** โหลดผ่าน HtmlService iframe แล้วรับข้อมูลด้วย top.postMessage — ไม่ใช้ JSONP/echo */
@@ -259,7 +264,7 @@ var RemoteDB = (function () {
       iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
       iframe.referrerPolicy = 'no-referrer';
       var settled = false;
-      var ms = /action=export/.test(query) ? 60000 : 25000;
+      var ms = /action=export/.test(query) ? 90000 : 45000;
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
@@ -287,11 +292,11 @@ var RemoteDB = (function () {
     });
   }
 
-  function postViaIframe_(bodyText) {
+  function formPost_(fields) {
     return new Promise(function (resolve, reject) {
-      var beforeRev = localRevision;
-      var name = 'gasFrame' + Date.now();
+      var reqId = 'gas' + String(Date.now()) + Math.floor(Math.random() * 10000);
       var iframe = document.createElement('iframe');
+      var name = 'gasPost' + reqId;
       iframe.name = name;
       iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
       iframe.referrerPolicy = 'no-referrer';
@@ -301,53 +306,84 @@ var RemoteDB = (function () {
       form.action = baseUrl();
       form.target = name;
       form.style.display = 'none';
-      var input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'payload';
-      input.value = bodyText;
-      form.appendChild(input);
+      function add(n, v) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = n;
+        input.value = v == null ? '' : String(v);
+        form.appendChild(input);
+      }
+      add('bridge', '1');
+      add('reqId', reqId);
+      Object.keys(fields || {}).forEach(function (k) { add(k, fields[k]); });
       document.body.appendChild(form);
       var settled = false;
-      var tries = 0;
-      function tick() {
+      var timer = setTimeout(function () {
         if (settled) return;
-        tries++;
-        iframeGet_('action=meta').then(function (meta) {
-          if (settled) return;
-          if (meta && meta.ok && Number(meta.revision) > beforeRev) {
-            settled = true;
-            cleanup();
-            resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
-            return;
-          }
-          if (tries >= 20) {
-            settled = true;
-            cleanup();
-            if (meta && meta.ok) resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
-            else reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
-            return;
-          }
-          setTimeout(tick, 1500);
-        }).catch(function () {
-          if (settled) return;
-          if (tries >= 20) {
-            settled = true;
-            cleanup();
-            reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
-            return;
-          }
-          setTimeout(tick, 1500);
-        });
+        settled = true;
+        cleanup();
+        reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ (หมดเวลา)'));
+      }, 60000);
+      function onMsg(ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== 'DrugInventoryGAS') return;
+        if (d.reqId && d.reqId !== reqId) return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(d.payload);
       }
       function cleanup() {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
         try { document.body.removeChild(form); } catch (e) {}
         setTimeout(function () {
           try { document.body.removeChild(iframe); } catch (e2) {}
         }, 800);
       }
+      window.addEventListener('message', onMsg);
       form.submit();
-      setTimeout(tick, 1500);
     });
+  }
+
+  function assertImportOk_(res) {
+    if (res && res.conflict) return res;
+    if (!res || !res.ok) {
+      throw new Error((res && res.error) || 'บันทึกขึ้น Google ไม่สำเร็จ');
+    }
+    if (!(Number(res.revision) > 0)) {
+      throw new Error('บันทึกขึ้น Google ไม่สำเร็จ (ชีตยังไม่ได้รับข้อมูล)');
+    }
+    return res;
+  }
+
+  function postJsonViaChunks_(bodyText) {
+    bodyText = String(bodyText || '');
+    if (bodyText.length <= CHUNK_CHARS_) {
+      return formPost_({ payload: bodyText }).then(assertImportOk_);
+    }
+    var id = 'up' + String(Date.now()) + Math.floor(Math.random() * 10000);
+    var total = Math.ceil(bodyText.length / CHUNK_CHARS_);
+    var index = 0;
+    function sendNext() {
+      if (index >= total) {
+        return formPost_({ action: 'import', chunkId: id }).then(assertImportOk_);
+      }
+      var text = bodyText.slice(index * CHUNK_CHARS_, (index + 1) * CHUNK_CHARS_);
+      var i = index;
+      index++;
+      return formPost_({
+        action: 'chunk',
+        id: id,
+        index: String(i),
+        total: String(total),
+        text: text
+      }).then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.error) || 'ส่งชิ้นข้อมูลไม่สำเร็จ');
+        return sendNext();
+      });
+    }
+    return sendNext();
   }
 
   function resetApiCaches_() {
@@ -650,7 +686,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 67,
+    build: 68,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,
