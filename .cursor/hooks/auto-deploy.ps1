@@ -8,6 +8,15 @@ Set-Location $root
 $porcelain = git status --porcelain 2>$null
 if (-not $porcelain) { exit 0 }
 
+# Never publish GAS App.html as GitHub Pages index.html
+$idx = Join-Path $root "index.html"
+if (Test-Path $idx) {
+  $head = Get-Content $idx -TotalCount 12 -ErrorAction SilentlyContinue | Out-String
+  if ($head -match '<\?!= include') {
+    git checkout HEAD -- index.html 2>$null
+  }
+}
+
 git add css index.html js .github .cursor/hooks.json .cursor/hooks .cursor/rules 2>$null
 git add -u css index.html js .github 2>$null
 
