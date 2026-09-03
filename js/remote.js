@@ -34,7 +34,9 @@ var RemoteDB = (function () {
   function fingerprint_(data) {
     data = data || {};
     var receipts = data.Receipts || [];
+    var receiptLines = data.ReceiptLines || [];
     var transfers = data.Transfers || [];
+    var transferLines = data.TransferLines || [];
     var moves = data.Movements || [];
     var histDocs = 0;
     var histMoves = 0;
@@ -45,47 +47,59 @@ var RemoteDB = (function () {
     }
     receipts.forEach(function (r) {
       var d = String(r.date || r.createdAt || '').slice(0, 10);
-      if (d >= HISTORY_CUTOFF_) {
-        histDocs++;
-        noteTime(r.createdAt || r.date || '');
-      }
+      noteTime(r.createdAt || r.date || '');
+      if (d >= HISTORY_CUTOFF_) histDocs++;
     });
     transfers.forEach(function (r) {
       var d = String(r.date || r.createdAt || '').slice(0, 10);
-      if (d >= HISTORY_CUTOFF_) {
-        histDocs++;
-        noteTime(r.createdAt || r.date || '');
-      }
+      noteTime(r.createdAt || r.date || '');
+      if (d >= HISTORY_CUTOFF_) histDocs++;
     });
     moves.forEach(function (m) {
-      var d = String(m.date || '').slice(0, 10);
-      if (d < HISTORY_CUTOFF_) return;
+      if (m.type === 'OPENING' || String(m.refId || '') === 'SEED') return;
       if (m.type === 'RECEIVE' || m.type === 'ISSUE' || m.type === 'COUNT' || m.type === 'RETURN') {
         histMoves++;
         noteTime(m.date || '');
+        var d = String(m.date || '').slice(0, 10);
+        if (d >= HISTORY_CUTOFF_) histDocs++;
       }
     });
     var settings = data.SettingsObj || {};
+    var score = receipts.length * 100 + transfers.length * 100 +
+      receiptLines.length + transferLines.length + histMoves;
     return {
+      score: score,
       histDocs: histDocs,
       histMoves: histMoves,
       latest: latest,
       receipts: receipts.length,
+      receiptLines: receiptLines.length,
       transfers: transfers.length,
+      transferLines: transferLines.length,
       items: (data.Items || []).length,
       revision: Number(settings.syncRevision) || 0,
       updatedAt: String(settings.syncUpdatedAt || '')
     };
   }
 
+  function fpLabel_(fp) {
+    if (!fp) return 'ไม่มีข้อมูล';
+    return (fp.receipts || 0) + ' ใบรับ · ' + (fp.transfers || 0) + ' ใบเบิก · ' +
+      (fp.histMoves || 0) + ' รายการเคลื่อนไหว';
+  }
+
   function hasRealActivity_(fp) {
-    return !!(fp && (fp.histDocs > 0 || fp.histMoves > 0));
+    return !!(fp && ((fp.score || 0) > 0 || fp.histDocs > 0 || fp.histMoves > 0 ||
+      fp.receipts > 0 || fp.transfers > 0));
   }
 
   function compareFreshness_(a, b) {
     if (!a && !b) return 'equal';
     if (!a) return 'b';
     if (!b) return 'a';
+    var as = Number(a.score || 0);
+    var bs = Number(b.score || 0);
+    if (as !== bs) return as > bs ? 'a' : 'b';
     if (a.histDocs !== b.histDocs) return a.histDocs > b.histDocs ? 'a' : 'b';
     if (a.histMoves !== b.histMoves) return a.histMoves > b.histMoves ? 'a' : 'b';
     if (a.latest !== b.latest) return a.latest > b.latest ? 'a' : 'b';
@@ -132,6 +146,19 @@ var RemoteDB = (function () {
     }
   }
 
+  function applyDump_(data, slim) {
+    if (!data) return false;
+    if (slim) {
+      var merged = DB.exportAll();
+      Object.keys(data).forEach(function (k) { merged[k] = data[k]; });
+      DB.importAll(merged);
+    } else {
+      DB.importAll(data);
+    }
+    resetApiCaches_();
+    return true;
+  }
+
   function restoreBackupIfRicher_(remoteFp) {
     var backup = readBackup_();
     if (!backup || !backup.data || !backup.fingerprint) return false;
@@ -145,14 +172,7 @@ var RemoteDB = (function () {
     if (remoteFp && compareFreshness_(remoteFp, best) === 'a') return false;
     if (source !== 'backup') return false;
     if (!hasRealActivity_(backup.fingerprint)) return false;
-    if (backup.slim) {
-      var merged = DB.exportAll();
-      Object.keys(backup.data).forEach(function (k) { merged[k] = backup.data[k]; });
-      DB.importAll(merged);
-    } else {
-      DB.importAll(backup.data);
-    }
-    resetApiCaches_();
+    applyDump_(backup.data, backup.slim);
     lastSyncAction = 'restored';
     return true;
   }
@@ -390,6 +410,84 @@ var RemoteDB = (function () {
     loaded = false;
   }
 
+  function describeSources() {
+    var local = { name: 'local', label: 'เครื่องนี้', fingerprint: localFingerprint_(), data: null };
+    var backup = readBackup_();
+    var sources = [local];
+    if (backup && backup.data) {
+      sources.push({
+        name: 'backup',
+        label: 'สำเนากู้ในเครื่องนี้',
+        fingerprint: backup.fingerprint || fingerprint_(backup.data),
+        data: backup.data,
+        slim: !!backup.slim
+      });
+    }
+    var chain = Promise.resolve(sources);
+    if (enabled()) {
+      chain = fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (res) {
+        if (res && res.ok && res.data) {
+          sources.push({
+            name: 'remote',
+            label: 'Google',
+            fingerprint: fingerprint_(res.data),
+            data: res.data,
+            revision: res.revision
+          });
+        }
+        return sources;
+      }).catch(function () { return sources; });
+    }
+    return chain.then(function (list) {
+      var best = null;
+      list.forEach(function (s) {
+        s.summary = fpLabel_(s.fingerprint);
+        if (!best || compareFreshness_(s.fingerprint, best.fingerprint) === 'a') best = s;
+      });
+      return { sources: list, richest: best };
+    });
+  }
+
+  function restoreRichest() {
+    return describeSources().then(function (info) {
+      var best = info.richest;
+      if (!best || !hasRealActivity_(best.fingerprint)) {
+        throw new Error('ยังไม่พบชุดข้อมูลรับเข้า/เบิกที่กู้ได้บนเครื่องนี้หรือ Google');
+      }
+      if (best.name === 'backup') {
+        applyDump_(best.data, best.slim);
+        lastSyncAction = 'restored';
+      } else if (best.name === 'remote') {
+        applyDump_(best.data, false);
+        applyRevision_(best.revision);
+        lastSyncAction = 'pulled';
+        loaded = true;
+        return info;
+      }
+      loaded = true;
+      if (enabled()) {
+        return sync({ force: true }).then(function () { return info; });
+      }
+      return info;
+    });
+  }
+
+  function importDump(data) {
+    if (!data || typeof data !== 'object') throw new Error('ไฟล์สำรองไม่ถูกต้อง');
+    if (!data.Items && !data.Receipts && !data.Stock) throw new Error('ไฟล์นี้ไม่ใช่ข้อมูลคลังยา');
+    var incoming = fingerprint_(data);
+    var localFp = localFingerprint_();
+    if (hasRealActivity_(localFp) && compareFreshness_(localFp, incoming) === 'a') {
+      throw new Error('ข้อมูลในเครื่องนี้มีมากกว่าไฟล์ที่เลือก — ไม่นำเข้าเพื่อกันทับของเดิม');
+    }
+    saveSafetyBackup_();
+    applyDump_(data, false);
+    loaded = true;
+    lastSyncAction = 'imported-file';
+    if (enabled()) return sync({ force: true });
+    return Promise.resolve();
+  }
+
   return {
     enabled: enabled,
     getUrl: getUrl,
@@ -405,6 +503,11 @@ var RemoteDB = (function () {
     getRevision: getRevision,
     applyUrlFromSettings: applyUrlFromSettings_,
     consumeSyncAction: consumeSyncAction,
+    describeSources: describeSources,
+    restoreRichest: restoreRichest,
+    importDump: importDump,
+    localFingerprint: localFingerprint_,
+    fpLabel: fpLabel_,
     resetSession: function () {
       loaded = false;
       stopPolling();

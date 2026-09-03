@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=58">
+  <link rel="stylesheet" href="css/styles.css?v=59">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -311,7 +311,7 @@
         </div>
         <div class="card" style="margin-top:14px">
           <h3>ฐานข้อมูล Google (GAS + Sheets)</h3>
-          <p class="muted">ใส่ URL เดียวกันทุกเครื่อง — ระบบจะเก็บข้อมูลที่ใหม่กว่า (รับเข้า/เบิกหลัง 1 ก.ย. 2569) ไม่ให้เครื่องเก่าทับ</p>
+          <p class="muted">ระบบเลือกชุดที่มีใบรับ/ใบเบิก/การเคลื่อนไหวมากที่สุด — เปิดที่เครื่องที่เคยกรอกข้อมูลครบ แล้วกดกู้</p>
           <div class="field" style="margin-top:8px">
             <label>URL Web App (GAS)</label>
             <input id="stGasUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
@@ -319,8 +319,14 @@
           <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
             <button type="button" class="btn secondary" onclick="saveGasUrl()">บันทึก URL</button>
             <button type="button" class="btn secondary" onclick="testGasConnection()">ทดสอบการเชื่อมต่อ</button>
-            <button type="button" class="btn secondary" onclick="pushGasData()">อัปโหลดข้อมูลเครื่องนี้ขึ้น Google</button>
-            <button type="button" class="btn secondary" onclick="pullGasData()">ดึงข้อมูลจาก Google</button>
+            <button type="button" class="btn" onclick="restoreRichestData()">กู้ข้อมูลชุดที่มากที่สุด</button>
+            <button type="button" class="btn secondary" onclick="pushGasData()">อัปโหลดเครื่องนี้ขึ้น Google</button>
+            <button type="button" class="btn secondary" onclick="pullGasData()">ดึงจาก Google</button>
+          </div>
+          <p class="muted" id="dataCompareOut" style="margin-top:10px">กำลังเทียบชุดข้อมูล...</p>
+          <div class="field" style="margin-top:10px;max-width:420px">
+            <label>หรือเลือกไฟล์สำรอง JSON ที่เคยดาวน์โหลด</label>
+            <input id="restoreJsonFile" type="file" accept="application/json,.json" onchange="restoreFromJsonFile(this)">
           </div>
           <p class="muted" id="gasStatus" style="margin-top:10px"></p>
         </div>
@@ -423,14 +429,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=58"></script>
-  <script src="js/remote.js?v=58"></script>
-  <script src="js/api.js?v=58"></script>
-  <script src="js/options.js?v=58"></script>
-  <script src="js/thdate.js?v=58"></script>
-  <script src="js/seed.js?v=58"></script>
-  <script src="js/ocr.js?v=58"></script>
-  <script src="js/app.js?v=58"></script>
-  <script src="js/auth.js?v=58"></script>
+  <script src="js/db.js?v=59"></script>
+  <script src="js/remote.js?v=59"></script>
+  <script src="js/api.js?v=59"></script>
+  <script src="js/options.js?v=59"></script>
+  <script src="js/thdate.js?v=59"></script>
+  <script src="js/seed.js?v=59"></script>
+  <script src="js/ocr.js?v=59"></script>
+  <script src="js/app.js?v=59"></script>
+  <script src="js/auth.js?v=59"></script>
 </body>
 </html>

@@ -61,6 +61,7 @@ function showPage(id) {
   if (id === 'import') {
     loadLoginUsers();
     loadLowStockSettings();
+    refreshDataCompare();
   }
   if (id === 'reports') {
     setReportTab(STATE.reportKind || 'month');
@@ -173,9 +174,9 @@ function loadBootstrap() {
       } else if (syncAction === 'kept-local') {
         toast('เก็บข้อมูลใหม่ในเครื่องนี้ไว้ และอัปโหลดทับข้อมูลเก่าบน Google');
         updateGasStatus('ข้อมูลใหม่ในเครื่องนี้ใหม่กว่า — อัปโหลดขึ้น Google แล้ว');
-      } else if (syncAction === 'restored') {
-        toast('กู้ข้อมูลใหม่จากสำเนาในเครื่องนี้แล้ว และอัปโหลดขึ้น Google');
-        updateGasStatus('กู้ข้อมูลใหม่จากสำเนาในเครื่อง — อัปโหลดขึ้น Google แล้ว');
+      } else if (syncAction === 'imported-file') {
+        toast('นำเข้าจากไฟล์สำรองแล้ว');
+        updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
       }
     }
     applyBoot(b);
@@ -2196,6 +2197,77 @@ function testGasConnection() {
     updateGasStatus(e.message || String(e), true);
     toast(e.message || String(e));
   });
+}
+
+function refreshDataCompare() {
+  var el = document.getElementById('dataCompareOut');
+  if (!el || typeof RemoteDB === 'undefined' || !RemoteDB.describeSources) return;
+  el.textContent = 'กำลังเทียบชุดข้อมูล...';
+  RemoteDB.describeSources().then(function (info) {
+    var lines = (info.sources || []).map(function (s) {
+      var mark = (info.richest && info.richest.name === s.name) ? ' ← มากที่สุด' : '';
+      return s.label + ': ' + s.summary + mark;
+    });
+    el.textContent = lines.join('\n') || 'ยังไม่มีข้อมูลให้เทียบ';
+    el.style.whiteSpace = 'pre-line';
+  }).catch(function (e) {
+    el.textContent = e.message || String(e);
+  });
+}
+
+function restoreRichestData() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.restoreRichest) {
+    return toast('โมดูล remote ไม่พร้อม');
+  }
+  if (!confirm('จะใช้ชุดข้อมูลที่มีใบรับ/ใบเบิกมากที่สุด (เครื่องนี้ · สำเนากู้ · Google) แล้วอัปโหลดเป็นชุดหลัก ดำเนินการต่อหรือไม่?')) return;
+  updateGasStatus('กำลังกู้ชุดข้อมูลที่มากที่สุด...');
+  updateSyncIndicator('syncing');
+  RemoteDB.restoreRichest().then(function (info) {
+    var name = info && info.richest ? info.richest.label : '';
+    var summary = info && info.richest ? info.richest.summary : '';
+    toast('กู้แล้วจาก: ' + name);
+    updateGasStatus('ใช้ชุดข้อมูลจาก ' + name + ' — ' + summary);
+    refreshDataCompare();
+    loadBootstrap();
+  }).catch(function (e) {
+    updateGasStatus(e.message || String(e), true);
+    toast(e.message || String(e));
+    updateSyncIndicator('online');
+  });
+}
+
+function restoreFromJsonFile(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.importDump) {
+    return toast('โมดูล remote ไม่พร้อม');
+  }
+  var reader = new FileReader();
+  reader.onload = function () {
+    try {
+      var data = JSON.parse(reader.result);
+      if (!confirm('นำเข้าไฟล์นี้แล้วใช้เป็นข้อมูลหลักหรือไม่?')) {
+        input.value = '';
+        return;
+      }
+      updateGasStatus('กำลังนำเข้าไฟล์สำรอง...');
+      RemoteDB.importDump(data).then(function () {
+        toast('นำเข้าไฟล์สำรองแล้ว');
+        updateGasStatus('นำเข้าไฟล์สำรองแล้ว');
+        input.value = '';
+        refreshDataCompare();
+        loadBootstrap();
+      }).catch(function (e) {
+        updateGasStatus(e.message || String(e), true);
+        toast(e.message || String(e));
+        input.value = '';
+      });
+    } catch (e) {
+      toast('อ่านไฟล์ไม่สำเร็จ');
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 
 function pushGasData() {
