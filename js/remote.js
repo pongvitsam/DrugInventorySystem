@@ -238,57 +238,19 @@ var RemoteDB = (function () {
     return getUrl().replace(/\/$/, '');
   }
 
-  /** GET ผ่าน JSONP — ข้าม CORS จาก GitHub Pages → GAS */
-  function jsonpGet_(query) {
-    return new Promise(function (resolve, reject) {
-      var cbName = '_gasCb' + String(Date.now()) + Math.floor(Math.random() * 10000);
-      var settled = false;
-      var script = document.createElement('script');
-      var timer = setTimeout(function () {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('หมดเวลารอ Google — ตรวจว่า Deploy เป็น Anyone และ URL ลงท้าย /exec'));
-      }, 45000);
-      function cleanup() {
-        clearTimeout(timer);
-        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-        if (script.parentNode) script.parentNode.removeChild(script);
-      }
-      window[cbName] = function (data) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(data);
-      };
-      var url = baseUrl() + '?' + query +
-        (query ? '&' : '') + 'callback=' + encodeURIComponent(cbName) + '&t=' + Date.now();
-      script.src = url;
-      script.onerror = function () {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('เรียก Google ไม่สำเร็จ — ตรวจ URL /exec และสิทธิ์ Anyone'));
-      };
-      document.head.appendChild(script);
-    });
-  }
-
   function fetchJson(url, options) {
     options = options || {};
-    // ห้ามใช้ fetch ไป GAS จาก GitHub Pages — โดน CORS/302 เสมอ
+    // ห้าม JSONP/ContentService — Google เด้งไป macros/echo แล้ว 403 จาก GitHub Pages
     if (!options.method || String(options.method).toUpperCase() === 'GET') {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q).catch(function (err) {
-        return iframeGet_(q).catch(function () { throw err; });
-      });
+      return iframeGet_(q);
     }
     return postViaIframe_(options.body);
   }
 
-  /** GET ผ่าน iframe + postMessage (สำรองเมื่อ JSONP ใช้ไม่ได้) */
+  /** GET ผ่าน iframe + postMessage (ข้าม CORS โดยไม่ผ่าน macros/echo) */
   function iframeGet_(query) {
     return new Promise(function (resolve, reject) {
       var iframe = document.createElement('iframe');
@@ -298,8 +260,8 @@ var RemoteDB = (function () {
         if (settled) return;
         settled = true;
         cleanup();
-        reject(new Error('โหลดจาก Google ไม่สำเร็จ — อัปเดต Code.gs แล้ว Deploy ใหม่ (Anyone)'));
-      }, 45000);
+        reject(new Error('โหลดจาก Google ไม่สำเร็จ — กด Ctrl+F5 แล้วลองใหม่'));
+      }, 30000);
       function onMsg(ev) {
         var d = ev && ev.data;
         if (!d || d.source !== 'DrugInventoryGAS') return;
@@ -322,7 +284,6 @@ var RemoteDB = (function () {
 
   function postViaIframe_(bodyText) {
     return new Promise(function (resolve, reject) {
-      var beforeRev = localRevision;
       var name = 'gasFrame' + Date.now();
       var iframe = document.createElement('iframe');
       iframe.name = name;
@@ -333,41 +294,40 @@ var RemoteDB = (function () {
       form.action = baseUrl();
       form.target = name;
       form.style.display = 'none';
-      var input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'payload';
-      input.value = bodyText;
-      form.appendChild(input);
+      function addHidden(n, v) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = n;
+        input.value = v;
+        form.appendChild(input);
+      }
+      addHidden('payload', bodyText);
+      addHidden('mode', 'iframe');
       document.body.appendChild(form);
-      var tries = 0;
-      var timer = setInterval(function () {
-        tries++;
-        jsonpGet_('action=meta').then(function (meta) {
-          if (meta && meta.ok && Number(meta.revision) > beforeRev) {
-            clearInterval(timer);
-            cleanup();
-            resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
-          } else if (tries >= 20) {
-            clearInterval(timer);
-            cleanup();
-            // อาจ revision ไม่เพิ่มถ้าข้อมูลเหมือนเดิม — ถือว่าสำเร็จถ้า meta ตอบได้
-            if (meta && meta.ok) resolve({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt || '' });
-            else reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ (CORS) — Deploy Web App เป็น Anyone แล้วลองใหม่'));
-          }
-        }).catch(function () {
-          if (tries >= 20) {
-            clearInterval(timer);
-            cleanup();
-            reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
-          }
-        });
-      }, 1500);
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ'));
+      }, 45000);
+      function onMsg(ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== 'DrugInventoryGAS') return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(d.payload);
+      }
       function cleanup() {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
         try { document.body.removeChild(form); } catch (e) {}
         setTimeout(function () {
           try { document.body.removeChild(iframe); } catch (e2) {}
-        }, 2000);
+        }, 500);
       }
+      window.addEventListener('message', onMsg);
       form.submit();
     });
   }
