@@ -121,8 +121,11 @@ function applyBoot(b) {
   }
   var stGas = document.getElementById('stGasUrl');
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
-  updateGasStatus(b.storageMode === 'gas' ? 'เชื่อมต่อหลายเครื่องผ่าน Google Sheets แล้ว' : '');
+  updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 62) {
+    toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
+  }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
   ThDate.set('rcDate', todayInput());
@@ -2384,9 +2387,13 @@ function removeLoginUser(name) {
 
 function startApp() {
   if (typeof DrugAPI === 'undefined') {
-    setStatus('โหลดระบบไม่สำเร็จ (api.js) — กด Ctrl+F5 หรือรีเฟรชหน้า', true);
+    setStatus('โหลดระบบไม่สำเร็จ (api.js) — กด Ctrl+Shift+R แล้วลองใหม่', true);
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
+  }
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 62) {
+    setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
+    toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่แก้ CORS');
   }
   ThDate.initAll();
   loadBootstrap();

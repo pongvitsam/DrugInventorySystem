@@ -29,16 +29,23 @@ function doGet(e) {
     var action = String(p.action || 'ping').toLowerCase();
     var out;
     if (action === 'ping') {
-      out = { ok: true, service: 'DrugInventoryGAS', version: 4 };
+      out = { ok: true, service: 'DrugInventoryGAS', version: 5 };
     } else if (action === 'meta') {
       out = getMeta_();
     } else if (action === 'export') {
       out = exportAll_();
     } else if (action === 'import') {
-      // รองรับ import ผ่าน GET+JSONP (payload ขนาดจำกัด) หรือยืนยันสถานะ
       out = { ok: false, error: 'ใช้ POST สำหรับ import' };
     } else {
       out = { ok: false, error: 'Unknown action: ' + action };
+    }
+    // iframe + postMessage (ข้าม CORS)
+    if (String(p.mode || '') === 'iframe') {
+      var html = '<!DOCTYPE html><html><body><script>' +
+        'parent.postMessage({source:"DrugInventoryGAS",payload:' + JSON.stringify(out) + '},"*");' +
+        '</script></body></html>';
+      return HtmlService.createHtmlOutput(html)
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
     return jsonpOrJson_(out, p.callback);
   } catch (err) {

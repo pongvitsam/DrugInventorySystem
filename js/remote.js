@@ -276,23 +276,47 @@ var RemoteDB = (function () {
 
   function fetchJson(url, options) {
     options = options || {};
-    // GET ใช้ JSONP เสมอ
+    // ห้ามใช้ fetch ไป GAS จาก GitHub Pages — โดน CORS/302 เสมอ
     if (!options.method || String(options.method).toUpperCase() === 'GET') {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q);
+      return jsonpGet_(q).catch(function (err) {
+        return iframeGet_(q).catch(function () { throw err; });
+      });
     }
-    // POST: ลอง fetch ก่อน ถ้า CORS ล้มเหลวใช้ form+iframe
-    return fetch(url, options).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).catch(function (err) {
-      var msg = String(err && err.message || err || '');
-      if (/Failed to fetch|NetworkError|CORS|TypeError/i.test(msg) || err.name === 'TypeError') {
-        return postViaIframe_(options.body);
+    return postViaIframe_(options.body);
+  }
+
+  /** GET ผ่าน iframe + postMessage (สำรองเมื่อ JSONP ใช้ไม่ได้) */
+  function iframeGet_(query) {
+    return new Promise(function (resolve, reject) {
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'display:none;width:0;height:0;border:0';
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('โหลดจาก Google ไม่สำเร็จ — อัปเดต Code.gs แล้ว Deploy ใหม่ (Anyone)'));
+      }, 45000);
+      function onMsg(ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== 'DrugInventoryGAS') return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(d.payload);
       }
-      throw err;
+      function cleanup() {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }
+      window.addEventListener('message', onMsg);
+      iframe.src = baseUrl() + '?' + query +
+        (query ? '&' : '') + 'mode=iframe&t=' + Date.now();
+      document.body.appendChild(iframe);
     });
   }
 
@@ -641,6 +665,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
+    build: 62,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,
