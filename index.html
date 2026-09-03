@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=71">
+  <link rel="stylesheet" href="css/styles.css?v=72">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -408,6 +408,25 @@
         </div>
       </section>
     </main>
+
+    <!-- Mobile bottom navigation — mirrors sidebar nav-btns -->
+    <nav class="mob-nav" aria-label="เมนูหลัก">
+      <button class="mob-nav-btn active" data-page="dash"><span class="mob-nav-ico" data-ico="dash"></span><span class="mob-nav-label">หน้าหลัก</span></button>
+      <button class="mob-nav-btn" data-page="stock"><span class="mob-nav-ico" data-ico="stock"></span><span class="mob-nav-label">คงเหลือ</span></button>
+      <button class="mob-nav-btn" data-page="receive"><span class="mob-nav-ico" data-ico="receive"></span><span class="mob-nav-label">รับเข้า</span></button>
+      <button class="mob-nav-btn" data-page="withdraw"><span class="mob-nav-ico" data-ico="withdraw"></span><span class="mob-nav-label">เบิก</span></button>
+      <button class="mob-nav-btn" data-page="more" id="mobMoreBtn"><span class="mob-nav-ico" data-ico="more"></span><span class="mob-nav-label">เพิ่มเติม</span></button>
+    </nav>
+
+    <!-- Mobile slide-up menu for extra pages -->
+    <div class="mob-more-bg" id="mobMoreBg" onclick="closeMobMore()"></div>
+    <div class="mob-more-sheet" id="mobMoreSheet">
+      <div class="mob-more-handle"></div>
+      <button class="mob-more-item" data-page="items" onclick="mobPickPage('items')"><span class="mob-nav-ico" data-ico="items" style="background:rgba(10,122,102,.12)"></span>ทะเบียนรายการ</button>
+      <button class="mob-more-item" data-page="reports" onclick="mobPickPage('reports')"><span class="mob-nav-ico" data-ico="reports" style="background:rgba(10,122,102,.12)"></span>สรุปรายเดือน</button>
+      <button class="mob-more-item" data-page="import" onclick="mobPickPage('import')"><span class="mob-nav-ico" data-ico="import" style="background:rgba(10,122,102,.12)"></span>ตั้งค่า / นำเข้า</button>
+      <button class="mob-more-item" onclick="closeMobMore(); doLogout()">ออกจากระบบ</button>
+    </div>
   </div>
 
   <div class="modal-bg" id="itemModal">
@@ -470,14 +489,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=70"></script>
-  <script src="js/remote.js?v=70"></script>
-  <script src="js/api.js?v=70"></script>
-  <script src="js/options.js?v=71"></script>
-  <script src="js/thdate.js?v=70"></script>
-  <script src="js/seed.js?v=70"></script>
-  <script src="js/ocr.js?v=70"></script>
-  <script src="js/app.js?v=70"></script>
-  <script src="js/auth.js?v=70"></script>
+  <script src="js/db.js?v=72"></script>
+  <script src="js/remote.js?v=72"></script>
+  <script src="js/api.js?v=72"></script>
+  <script src="js/options.js?v=72"></script>
+  <script src="js/thdate.js?v=72"></script>
+  <script src="js/seed.js?v=72"></script>
+  <script src="js/ocr.js?v=72"></script>
+  <script src="js/app.js?v=72"></script>
+  <script src="js/auth.js?v=72"></script>
 </body>
 </html>

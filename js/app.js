@@ -46,6 +46,11 @@ function todayInput() {
 function showPage(id) {
   document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
   document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === id); });
+  // Sync mobile bottom nav active state
+  var mobPages = ['dash','stock','receive','withdraw'];
+  document.querySelectorAll('.mob-nav-btn').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.page === id || (b.dataset.page === 'more' && !mobPages.includes(id)));
+  });
   document.getElementById('page-' + id).classList.add('active');
   if (id === 'items') loadItems();
   if (id === 'stock') showStock();
@@ -2594,6 +2599,31 @@ function removeLoginUser(name) {
     loadLoginUsers();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+
+/* ---- Mobile bottom nav helpers ---- */
+function closeMobMore() {
+  document.getElementById('mobMoreBg').classList.remove('open');
+  document.getElementById('mobMoreSheet').classList.remove('open');
+}
+function openMobMore() {
+  document.getElementById('mobMoreBg').classList.add('open');
+  document.getElementById('mobMoreSheet').classList.add('open');
+}
+function mobPickPage(id) {
+  closeMobMore();
+  showPage(id);
+}
+
+// Wire up mobile bottom-nav clicks
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.mob-nav-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var page = btn.dataset.page;
+      if (page === 'more') { openMobMore(); return; }
+      showPage(page);
+    });
+  });
+});
 
 function startApp() {
   if (typeof DrugAPI === 'undefined') {
