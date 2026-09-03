@@ -20,6 +20,7 @@ var STATE = {
   optionLists: { categories: [], packSizes: [], forms: [] },
   lowStockItems: [],
   dashSnapshot: null,
+  logoDataUrl: '',
   refreshTimer: null
 };
 
@@ -113,6 +114,8 @@ function applyBoot(b) {
   document.getElementById('stRecvPos').value = s.receiverPosition || '';
   document.getElementById('stIss').value = s.issuerName || '';
   document.getElementById('stIssPos').value = s.issuerPosition || '';
+  STATE.logoDataUrl = s.logoDataUrl || '';
+  updateLogoUi_();
   var stLow = document.getElementById('stDefaultLowStock');
   if (stLow) stLow.value = s.defaultLowStock || '10';
   var stExp = document.getElementById('stExpiryWarnMonths');
@@ -137,7 +140,7 @@ function applyBoot(b) {
   updateGasStatus(gasMsg);
   refreshDeviceRoleUi();
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 69) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 70) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -149,6 +152,81 @@ function applyBoot(b) {
   ThDate.set('rpFrom', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01');
   ThDate.set('rpTo', todayInput());
   initItemOptionSelects(STATE.items || []);
+}
+
+function updateLogoUi_() {
+  var brandLogo = document.getElementById('brandLogo');
+  if (brandLogo) {
+    if (STATE.logoDataUrl) {
+      brandLogo.src = STATE.logoDataUrl;
+      brandLogo.style.display = 'block';
+      var bm = brandLogo.closest('.brand-mark');
+      if (bm) bm.classList.add('logo-has-img');
+    } else {
+      brandLogo.src = '';
+      brandLogo.style.display = 'none';
+      var bm2 = brandLogo.closest('.brand-mark');
+      if (bm2) bm2.classList.remove('logo-has-img');
+    }
+  }
+  var previewImg = document.getElementById('logoPreview');
+  if (previewImg) {
+    if (STATE.logoDataUrl) {
+      previewImg.src = STATE.logoDataUrl;
+      previewImg.style.display = 'block';
+    } else {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+  }
+}
+
+function setLogoDataUrl_(dataUrl) {
+  STATE.logoDataUrl = dataUrl || '';
+  updateLogoUi_();
+}
+
+function clearLogo() {
+  if (!confirm('ลบโลโก้หรือไม่?')) return;
+  var fileInput = document.getElementById('stLogoFile');
+  if (fileInput) fileInput.value = '';
+  setLogoDataUrl_('');
+}
+
+function onLogoFileSelected(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) return toast('ไฟล์ไม่ใช่รูปภาพ');
+  updateGasStatus && updateGasStatus('กำลังครอปโลโก้...');
+  var reader = new FileReader();
+  reader.onload = function () {
+    var url = String(reader.result || '');
+    var img = new Image();
+    img.onload = function () {
+      try {
+        // ครอปเป็นสี่เหลี่ยม (ตัดกึ่งกลาง) แล้วย่อเพื่อให้สตริงไม่ใหญ่เกิน
+        var side = 256;
+        var minDim = Math.min(img.width, img.height);
+        var sx = (img.width - minDim) / 2;
+        var sy = (img.height - minDim) / 2;
+        var canvas = document.createElement('canvas');
+        canvas.width = side;
+        canvas.height = side;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, side, side);
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        setLogoDataUrl_(dataUrl);
+      } catch (e) {
+        toast(e.message || String(e));
+      }
+    };
+    img.onerror = function () {
+      toast('อ่านไฟล์รูปไม่สำเร็จ');
+    };
+    img.src = url;
+  };
+  reader.onerror = function () { toast('อ่านไฟล์ไม่สำเร็จ'); };
+  reader.readAsDataURL(file);
 }
 function refreshStockCache(cb) {
   return api('listStockAll').then(function (r) {
@@ -1592,6 +1670,22 @@ function loadWithdrawHistory() {
   });
 }
 function deleteWithdraw(id) {
+  var curUser = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
+  var typed = prompt('ใส่ Username เพื่อยืนยันการลบใบเบิก ' + id);
+  if (typed == null) return;
+  typed = String(typed).trim();
+  if (!curUser) {
+    toast('กรุณาเข้าสู่ระบบก่อน');
+    return;
+  }
+  if (!typed) {
+    toast('กรุณาใส่ Username');
+    return;
+  }
+  if (String(typed).toLowerCase() !== String(curUser).toLowerCase()) {
+    toast('Username ไม่ถูกต้อง');
+    return;
+  }
   if (!confirm('ลบใบเบิก ' + id + ' และคืนยาทั้งหมดเข้าคลัง?')) return;
   api('deleteTransfer', { id: id }).then(function (r) {
     var msg = 'ลบใบเบิก ' + id + ' แล้ว';
@@ -2151,6 +2245,11 @@ function saveLowStockSettings() {
 }
 
 function saveSettings() {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled && RemoteDB.enabled() &&
+    RemoteDB.isReaderOnly && RemoteDB.isReaderOnly()) {
+    toast('เครื่องนี้เป็น Reader — แก้ไขไม่ได้');
+    return;
+  }
   api('saveSettings', {
     unitName: document.getElementById('stUnit').value,
     unitSub: document.getElementById('stSub').value,
@@ -2161,7 +2260,8 @@ function saveSettings() {
     receiverName: document.getElementById('stRecv').value,
     receiverPosition: document.getElementById('stRecvPos').value,
     issuerName: document.getElementById('stIss').value,
-    issuerPosition: document.getElementById('stIssPos').value
+    issuerPosition: document.getElementById('stIssPos').value,
+    logoDataUrl: STATE.logoDataUrl || ''
   }).then(function () { toast('บันทึกตั้งค่าแล้ว'); loadBootstrap(); });
 }
 
@@ -2501,7 +2601,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 69) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 70) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }

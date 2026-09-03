@@ -226,7 +226,8 @@ function apiSaveSettings_(p) {
     'requesterName', 'requesterPosition',
     'receiverName', 'receiverPosition',
     'issuerName', 'issuerPosition',
-    'gasWebAppUrl'
+    'gasWebAppUrl',
+    'logoDataUrl'
   ];
   keys.forEach(function (k) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
@@ -1325,6 +1326,7 @@ function ensureDb_() {
     defaultLowStock: '10',
     expiryWarnMonths: '6',
     historyFromDate: HISTORY_FROM_DATE_
+    ,logoDataUrl: ''
   };
   var cur = readSettings_();
   var changed = false;

@@ -726,7 +726,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 69,
+    build: 70,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

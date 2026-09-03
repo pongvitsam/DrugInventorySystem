@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=69">
+  <link rel="stylesheet" href="css/styles.css?v=70">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -35,7 +35,9 @@
   <div class="app" id="appRoot" style="display:none">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-mark" aria-hidden="true">
+          <img id="brandLogo" alt="LOGO" style="display:none" />
+        </div>
         <div>
           <h1>คลังยา รพ.สต.</h1>
           <p id="brandSub">บ้านทรายขาว</p>
@@ -293,6 +295,21 @@
             <div class="field"><label>ชื่อหน่วย</label><input id="stUnit"></div>
             <div class="field"><label>ที่อยู่สั้น</label><input id="stSub"></div>
           </div>
+          <h3 style="margin-top:16px">ตรา LOGO (4เหลี่ยมจตุรัส)</h3>
+          <div class="row" style="margin-top:8px;align-items:flex-start">
+            <div class="field" style="flex:1;min-width:220px">
+              <label>อัปโหลดไฟล์รูป</label>
+              <input id="stLogoFile" type="file" accept="image/*" onchange="onLogoFileSelected(this)">
+              <p class="muted" style="margin:6px 0 0;font-size:12px">ระบบจะครอปและย่อเป็นสี่เหลี่ยมจตุรัส 256x256 อัตโนมัติ</p>
+              <button type="button" class="btn ghost danger" style="margin-top:10px" onclick="clearLogo()">ลบโลโก้</button>
+            </div>
+            <div class="field" style="flex:0">
+              <label>ตัวอย่าง</label>
+              <div id="logoPreviewBox" class="logo-preview-box">
+                <img id="logoPreview" alt="LOGO preview" style="display:none">
+              </div>
+            </div>
+          </div>
           <h3 style="margin-top:16px">ชื่อ–ตำแหน่ง บนใบเบิก (กรอกเองได้)</h3>
           <div class="row" style="margin-top:8px">
             <div class="field"><label>ผู้อนุมัติ</label><input id="stApp"></div>
@@ -453,14 +470,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=69"></script>
-  <script src="js/remote.js?v=69"></script>
-  <script src="js/api.js?v=69"></script>
-  <script src="js/options.js?v=69"></script>
-  <script src="js/thdate.js?v=69"></script>
-  <script src="js/seed.js?v=69"></script>
-  <script src="js/ocr.js?v=69"></script>
-  <script src="js/app.js?v=69"></script>
-  <script src="js/auth.js?v=69"></script>
+  <script src="js/db.js?v=70"></script>
+  <script src="js/remote.js?v=70"></script>
+  <script src="js/api.js?v=70"></script>
+  <script src="js/options.js?v=70"></script>
+  <script src="js/thdate.js?v=70"></script>
+  <script src="js/seed.js?v=70"></script>
+  <script src="js/ocr.js?v=70"></script>
+  <script src="js/app.js?v=70"></script>
+  <script src="js/auth.js?v=70"></script>
 </body>
 </html>
