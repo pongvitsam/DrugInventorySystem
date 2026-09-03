@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=59">
+  <link rel="stylesheet" href="css/styles.css?v=60">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -324,11 +324,19 @@
             <button type="button" class="btn secondary" onclick="pullGasData()">ดึงจาก Google</button>
           </div>
           <p class="muted" id="dataCompareOut" style="margin-top:10px">กำลังเทียบชุดข้อมูล...</p>
-          <div class="field" style="margin-top:10px;max-width:420px">
-            <label>หรือเลือกไฟล์สำรอง JSON ที่เคยดาวน์โหลด</label>
-            <input id="restoreJsonFile" type="file" accept="application/json,.json" onchange="restoreFromJsonFile(this)">
-          </div>
           <p class="muted" id="gasStatus" style="margin-top:10px"></p>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>สำรอง / กู้คืนข้อมูลทั้งหมด</h3>
+          <p class="muted">Export = ดาวน์โหลด JSON ทั้งระบบ · อัปโหลดกลับ = ทับข้อมูลเดิมทั้งชุด (อัปโหลดซ้ำไม่คูณสอง)</p>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <button type="button" class="btn" onclick="exportBackup()">Export ข้อมูลทั้งหมด</button>
+            <div class="field" style="margin:0;max-width:360px">
+              <label>อัปโหลดไฟล์สำรองกลับ</label>
+              <input id="restoreJsonFile" type="file" accept="application/json,.json" onchange="restoreFromJsonFile(this)">
+            </div>
+          </div>
+          <p class="muted" id="backupStatus" style="margin-top:10px"></p>
         </div>
         <div class="card" style="margin-top:14px">
           <h3>ประวัติการเคลื่อนไหว</h3>
@@ -429,14 +437,14 @@
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js/db.js?v=59"></script>
-  <script src="js/remote.js?v=59"></script>
-  <script src="js/api.js?v=59"></script>
-  <script src="js/options.js?v=59"></script>
-  <script src="js/thdate.js?v=59"></script>
-  <script src="js/seed.js?v=59"></script>
-  <script src="js/ocr.js?v=59"></script>
-  <script src="js/app.js?v=59"></script>
-  <script src="js/auth.js?v=59"></script>
+  <script src="js/db.js?v=60"></script>
+  <script src="js/remote.js?v=60"></script>
+  <script src="js/api.js?v=60"></script>
+  <script src="js/options.js?v=60"></script>
+  <script src="js/thdate.js?v=60"></script>
+  <script src="js/seed.js?v=60"></script>
+  <script src="js/ocr.js?v=60"></script>
+  <script src="js/app.js?v=60"></script>
+  <script src="js/auth.js?v=60"></script>
 </body>
 </html>

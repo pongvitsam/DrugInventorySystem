@@ -2236,6 +2236,13 @@ function restoreRichestData() {
   });
 }
 
+function updateBackupStatus(msg, isError) {
+  var el = document.getElementById('backupStatus');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = isError ? 'var(--danger)' : '';
+}
+
 function restoreFromJsonFile(input) {
   var file = input && input.files && input.files[0];
   if (!file) return;
@@ -2246,24 +2253,38 @@ function restoreFromJsonFile(input) {
   reader.onload = function () {
     try {
       var data = JSON.parse(reader.result);
-      if (!confirm('นำเข้าไฟล์นี้แล้วใช้เป็นข้อมูลหลักหรือไม่?')) {
+      if (!confirm('ทับข้อมูลทั้งหมดด้วยไฟล์นี้หรือไม่?\n(อัปโหลดซ้ำจะทับชุดเดิม ไม่คูณสอง)')) {
         input.value = '';
         return;
       }
-      updateGasStatus('กำลังนำเข้าไฟล์สำรอง...');
-      RemoteDB.importDump(data).then(function () {
-        toast('นำเข้าไฟล์สำรองแล้ว');
-        updateGasStatus('นำเข้าไฟล์สำรองแล้ว');
-        input.value = '';
-        refreshDataCompare();
-        loadBootstrap();
-      }).catch(function (e) {
-        updateGasStatus(e.message || String(e), true);
-        toast(e.message || String(e));
+      updateBackupStatus('กำลังอัปโหลดไฟล์สำรอง...');
+      var runImport = function (force) {
+        return RemoteDB.importDump(data, { force: !!force }).then(function () {
+          toast('อัปโหลดไฟล์สำรองแล้ว (ทับทั้งชุด)');
+          updateBackupStatus('อัปโหลดสำเร็จ — ข้อมูลถูกทับทั้งชุด ไม่ซ้อน');
+          if (typeof updateGasStatus === 'function') updateGasStatus('อัปโหลดไฟล์สำรองแล้ว');
+          input.value = '';
+          if (typeof refreshDataCompare === 'function') refreshDataCompare();
+          loadBootstrap();
+        });
+      };
+      runImport(false).catch(function (e) {
+        var msg = e.message || String(e);
+        if (msg.indexOf('มากกว่าไฟล์') >= 0) {
+          if (confirm(msg + '\n\nต้องการทับด้วยไฟล์นี้ทั้งหมดหรือไม่?')) {
+            return runImport(true);
+          }
+          updateBackupStatus('ยกเลิกการอัปโหลด');
+          input.value = '';
+          return;
+        }
+        updateBackupStatus(msg, true);
+        toast(msg);
         input.value = '';
       });
     } catch (e) {
       toast('อ่านไฟล์ไม่สำเร็จ');
+      updateBackupStatus('อ่านไฟล์ไม่สำเร็จ', true);
       input.value = '';
     }
   };
@@ -2314,7 +2335,8 @@ function exportBackup() {
   a.download = 'pharma-backup-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
   URL.revokeObjectURL(a.href);
-  toast('ดาวน์โหลดไฟล์สำรองแล้ว');
+  toast('Export ข้อมูลทั้งหมดแล้ว');
+  updateBackupStatus('ดาวน์โหลดไฟล์สำรองแล้ว — ใช้ปุ่มอัปโหลดด้านล่างเพื่อกู้คืน (ทับทั้งชุด)');
 }
 
 function loadLoginUsers() {

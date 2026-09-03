@@ -472,13 +472,18 @@ var RemoteDB = (function () {
     });
   }
 
-  function importDump(data) {
+  function importDump(data, opts) {
+    opts = opts || {};
     if (!data || typeof data !== 'object') throw new Error('ไฟล์สำรองไม่ถูกต้อง');
-    if (!data.Items && !data.Receipts && !data.Stock) throw new Error('ไฟล์นี้ไม่ใช่ข้อมูลคลังยา');
+    if (!data.Items && !data.Receipts && !data.Stock && !data.Transfers) {
+      throw new Error('ไฟล์นี้ไม่ใช่ข้อมูลคลังยา');
+    }
     var incoming = fingerprint_(data);
     var localFp = localFingerprint_();
-    if (hasRealActivity_(localFp) && compareFreshness_(localFp, incoming) === 'a') {
-      throw new Error('ข้อมูลในเครื่องนี้มีมากกว่าไฟล์ที่เลือก — ไม่นำเข้าเพื่อกันทับของเดิม');
+    // อนุญาตนำเข้าซ้ำ (idempotent) — ทับทั้งชุด ไม่ซ้อน
+    // ถ้าเครื่องมีข้อมูลมากกว่าไฟล์ ต้อง force ชัดเจน
+    if (!opts.force && hasRealActivity_(localFp) && compareFreshness_(localFp, incoming) === 'a') {
+      throw new Error('ข้อมูลในเครื่องนี้มีมากกว่าไฟล์ที่เลือก — ยืนยันทับทั้งหมดถ้าต้องการใช้ไฟล์นี้');
     }
     saveSafetyBackup_();
     applyDump_(data, false);

@@ -202,13 +202,35 @@ function importAll_(data, expectedRevision, force) {
   settings.syncUpdatedAt = new Date().toISOString();
   data.SettingsObj = settings;
   writeSettingsObj_(ss, settings);
-  if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
+  writeSeqObj_(ss, data.SeqObj || {});
+  // ทับทั้งชีตทุกตาราง — อัปโหลดซ้ำไม่ซ้อน/คูณสอง
   DATA_KEYS_.forEach(function (name) {
-    if (data[name]) {
-      writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
-    }
+    writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], dedupeRows_(name, data[name] || []));
   });
   return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
+}
+
+function dedupeRows_(name, objects) {
+  objects = objects || [];
+  if (!objects.length) return [];
+  var seen = {};
+  var out = [];
+  for (var i = objects.length - 1; i >= 0; i--) {
+    var obj = objects[i] || {};
+    var key;
+    if (name === 'MonthlyRequests') {
+      key = String(obj.monthKey || '') + '|' + String(obj.itemId || '');
+    } else if (obj.id != null && obj.id !== '') {
+      key = String(obj.id);
+    } else {
+      out.unshift(obj);
+      continue;
+    }
+    if (seen[key]) continue;
+    seen[key] = true;
+    out.unshift(obj);
+  }
+  return out;
 }
 
 /** Run once from Apps Script editor to create spreadsheet */

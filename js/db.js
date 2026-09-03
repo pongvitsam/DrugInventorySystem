@@ -62,6 +62,29 @@ var DB = {
     });
     return out;
   },
+  /** ทับทั้งชุด — ไม่ merge/append; รายการซ้ำ id เก็บตัวท้าย */
+  dedupeRows: function (name, rows) {
+    rows = rows || [];
+    if (!rows.length) return [];
+    var seen = {};
+    var out = [];
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var row = rows[i] || {};
+      var key;
+      if (name === 'MonthlyRequests') {
+        key = String(row.monthKey || '') + '|' + String(row.itemId || '');
+      } else if (row.id != null && row.id !== '') {
+        key = String(row.id);
+      } else {
+        out.unshift(row);
+        continue;
+      }
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.unshift(row);
+    }
+    return out;
+  },
   importAll: function (data) {
     DB.clearCache();
     var d = data || {};
@@ -69,7 +92,7 @@ var DB = {
     DB.writeSeqObj(d.SeqObj || {});
     ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
       'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'].forEach(function (k) {
-      DB.writeObjects(k, d[k] || []);
+      DB.writeObjects(k, DB.dedupeRows(k, d[k] || []));
     });
   }
 };
