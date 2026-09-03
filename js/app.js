@@ -170,6 +170,12 @@ function loadBootstrap() {
       if (syncAction === 'uploaded') {
         toast('อัปโหลดข้อมูลเครื่องนี้ขึ้น Google อัตโนมัติแล้ว');
         updateGasStatus('อัปโหลดขึ้น Google แล้ว — พร้อมใช้หลายเครื่อง');
+      } else if (syncAction === 'kept-local') {
+        toast('เก็บข้อมูลใหม่ในเครื่องนี้ไว้ และอัปโหลดทับข้อมูลเก่าบน Google');
+        updateGasStatus('ข้อมูลใหม่ในเครื่องนี้ใหม่กว่า — อัปโหลดขึ้น Google แล้ว');
+      } else if (syncAction === 'restored') {
+        toast('กู้ข้อมูลใหม่จากสำเนาในเครื่องนี้แล้ว และอัปโหลดขึ้น Google');
+        updateGasStatus('กู้ข้อมูลใหม่จากสำเนาในเครื่อง — อัปโหลดขึ้น Google แล้ว');
       }
     }
     applyBoot(b);
@@ -2161,7 +2167,7 @@ function saveGasUrl() {
   if (url) {
     api('saveSettings', { gasWebAppUrl: url }).catch(function () {});
     toast('บันทึก URL แล้ว — กำลังเชื่อมต่อ...');
-    updateGasStatus('กำลังเชื่อมต่อ Google — ถ้า Sheet ว่างจะอัปโหลดข้อมูลเครื่องนี้อัตโนมัติ');
+    updateGasStatus('กำลังเชื่อมต่อ Google — จะไม่ทับข้อมูลใหม่ด้วยข้อมูลเก่า');
     updateSyncIndicator('syncing');
     loadBootstrap();
   } else {

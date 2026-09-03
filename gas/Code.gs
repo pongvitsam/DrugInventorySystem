@@ -27,7 +27,7 @@ function doGet(e) {
   try {
     var action = String((e && e.parameter && e.parameter.action) || 'ping').toLowerCase();
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 2 });
+      return json_({ ok: true, service: 'DrugInventoryGAS', version: 3 });
     }
     if (action === 'meta') {
       return json_(getMeta_());
@@ -49,8 +49,16 @@ function doPost(e) {
     }
     var action = String(body.action || '').toLowerCase();
     if (action === 'import') {
-      var meta = importAll_(body.data || {});
-      return json_({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt });
+      var result = importAll_(body.data || {}, body.expectedRevision, body.force);
+      if (result.conflict) {
+        return json_({
+          ok: false,
+          conflict: true,
+          revision: result.revision,
+          updatedAt: result.updatedAt || ''
+        });
+      }
+      return json_({ ok: true, revision: result.revision, updatedAt: result.updatedAt });
     }
     return json_({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
@@ -179,11 +187,17 @@ function exportAll_() {
   };
 }
 
-function importAll_(data) {
+function importAll_(data, expectedRevision, force) {
   var ss = getSpreadsheet_();
   var current = readSettingsObj_(ss);
   var settings = data.SettingsObj || {};
   var rev = Number(current.syncRevision) || 0;
+  if (!force && expectedRevision != null && expectedRevision !== '') {
+    var expected = Number(expectedRevision);
+    if (!isNaN(expected) && expected !== rev) {
+      return { conflict: true, revision: rev, updatedAt: current.syncUpdatedAt || '' };
+    }
+  }
   settings.syncRevision = String(rev + 1);
   settings.syncUpdatedAt = new Date().toISOString();
   data.SettingsObj = settings;
