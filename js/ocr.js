@@ -1,9 +1,9 @@
 /**
  * Free browser OCR for printed pharmacy bills (Tesseract.js tha+eng).
- * Optimized for ใบอนุมัติเบิก รพ.คลองท่อม (qty NxM · มูลค่าเบิก · วันหมดอายu พ.ศ.)
+ * Optimized for ใบอนุมัติเบิก รพ.คลองท่อม (qty NxM · มูลค่าเบิก · วันหมดอายุ พ.ศ.)
  */
 var BillOcr = (function () {
-  var SKIP = /^(ลำดับ|รายการ|ปริมาณ|จำนวน|มูลค่า|หมายเหตุ|รวม|ยอด|วันที่|ใบเบิก|โรงพยาบาล|ลงชื่อ|ผู้อนุมัติ|ผู้เบิก|ผู้รับ|ผู้จ่าย|หน้า|page|total|no\.?|item|ใบอนุมัติ|หน่วยงาน|รหัสยา|ชื่อเวช|รูปแบบ|หน่วย|จำนวนเบิก|จำนวนอนุมัติ|มูลค่าเบิก|วันหมดอายu|เบิกปกติ|หน้าที่|เลขที่)/i;
+  var SKIP = /^(ลำดับ|รายการ|ปริมาณ|จำนวน|มูลค่า|หมายเหตุ|รวม|ยอด|วันที่|ใบเบิก|โรงพยาบาล|ลงชื่อ|ผู้อนุมัติ|ผู้เบิก|ผู้รับ|ผู้จ่าย|หน้า|page|total|no\.?|item|ใบอนุมัติ|หน่วยงาน|รหัสยา|ชื่อเวช|รูปแบบ|หน่วย|จำนวนเบิก|จำนวนอนุมัติ|มูลค่าเบิก|วันหมดอายุ|เบิกปกติ|หน้าที่|เลขที่)/i;
   var FORM_WORDS = /^(SOLUTION|TABLET|TABLETS|SYR|SUSP|SUSPENSION|CREAM|CAPSULE|CAP|TAB|OINT|GEL|PATCH|INJ|DROP|POWDER|POWD|SACHET|LOTION|SPRAY|SHAMPOO|SOAP)$/i;
   var UNIT_WORDS = /^(BOT|TAB|CAP|BOX|BAG|AMP|VIAL|ขวด|หลอด|ซอง|แผง|กล่อง|ลัง|SET|ROLL|TUBE|SYR|BOTTLE|BOTTL)$/i;
 
