@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body>
+<script>
+(function () {
+  var payload = <?!= payloadJson ?>;
+  var reqId = <?!= reqIdJson ?>;
+  var msg = { source: 'DrugInventoryGAS', reqId: reqId, payload: payload };
+  try { window.top.postMessage(msg, '*'); } catch (e) {}
+})();
+</script>
+</body>
+</html>

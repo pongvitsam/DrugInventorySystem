@@ -7,7 +7,7 @@ var RemoteDB = (function () {
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var HISTORY_CUTOFF_ = '2026-09-01';
-  var POLL_MS = 30000;
+  var POLL_MS = 12000;
   var loaded = false;
   var syncing = false;
   var localRevision = Number(localStorage.getItem(REV_KEY) || 0) || 0;
@@ -246,46 +246,44 @@ var RemoteDB = (function () {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q);
+      return iframeGet_(q);
     }
     return postViaIframe_(options.body);
   }
 
-  /** JSONP — no-referrer เพื่อไม่ให้ GitHub Pages โดน macros/echo 403 */
-  function jsonpGet_(query) {
+  /** โหลดผ่าน HtmlService iframe แล้วรับข้อมูลด้วย top.postMessage — ไม่ใช้ JSONP/echo */
+  function iframeGet_(query) {
     return new Promise(function (resolve, reject) {
-      var cbName = '_gasCb' + String(Date.now()) + Math.floor(Math.random() * 10000);
+      var reqId = 'gas' + String(Date.now()) + Math.floor(Math.random() * 10000);
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
+      iframe.referrerPolicy = 'no-referrer';
       var settled = false;
-      var script = document.createElement('script');
-      script.referrerPolicy = 'no-referrer';
       var ms = /action=export/.test(query) ? 60000 : 25000;
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
-        window[cbName] = function () {};
-        if (script.parentNode) script.parentNode.removeChild(script);
-        reject(new Error('หมดเวลารอ Google'));
+        cleanup();
+        reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ'));
       }, ms);
+      function onMsg(ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== 'DrugInventoryGAS') return;
+        if (d.reqId && d.reqId !== reqId) return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(d.payload);
+      }
       function cleanup() {
         clearTimeout(timer);
-        window[cbName] = function () {};
-        if (script.parentNode) script.parentNode.removeChild(script);
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }
-      window[cbName] = function (data) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(data);
-      };
-      script.onerror = function () {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('เรียก Google ไม่สำเร็จ'));
-      };
-      script.src = baseUrl() + '?' + query +
-        (query ? '&' : '') + 'callback=' + encodeURIComponent(cbName) + '&t=' + Date.now();
-      document.head.appendChild(script);
+      window.addEventListener('message', onMsg);
+      iframe.src = baseUrl() + '?' + query +
+        (query ? '&' : '') + 'bridge=1&reqId=' + encodeURIComponent(reqId) + '&t=' + Date.now();
+      document.body.appendChild(iframe);
     });
   }
 
@@ -295,7 +293,7 @@ var RemoteDB = (function () {
       var name = 'gasFrame' + Date.now();
       var iframe = document.createElement('iframe');
       iframe.name = name;
-      iframe.style.cssText = 'display:none;width:0;height:0;border:0';
+      iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
       iframe.referrerPolicy = 'no-referrer';
       document.body.appendChild(iframe);
       var form = document.createElement('form');
@@ -314,7 +312,7 @@ var RemoteDB = (function () {
       function tick() {
         if (settled) return;
         tries++;
-        jsonpGet_('action=meta').then(function (meta) {
+        iframeGet_('action=meta').then(function (meta) {
           if (settled) return;
           if (meta && meta.ok && Number(meta.revision) > beforeRev) {
             settled = true;
@@ -652,7 +650,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 66,
+    build: 67,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

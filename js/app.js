@@ -123,7 +123,7 @@ function applyBoot(b) {
   if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
   updateGasStatus(b.storageMode === 'gas' ? ('เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?')) : '');
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 66) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 67) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -164,8 +164,11 @@ function loadBootstrap() {
   if (typeof RemoteDB !== 'undefined') {
     RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
   }
-  setStatus('กำลังโหลดข้อมูล...');
-  api('bootstrap').then(function (b) {
+  var gasOn = typeof RemoteDB !== 'undefined' && RemoteDB.enabled();
+  var localItems = (typeof DB !== 'undefined' && DB.readObjects) ? DB.readObjects('Items') : [];
+  var hasLocal = !!(localItems && localItems.length);
+
+  function paint(b) {
     applyBoot(b);
     if (typeof RemoteDB !== 'undefined' && !RemoteDB.enabled()) {
       RemoteDB.stopPolling();
@@ -174,22 +177,46 @@ function loadBootstrap() {
       setStatus('');
       loadItems();
       refreshStockCache();
-    } else {
-      setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
-      return api('importSeed', { force: false }).then(function (r) {
-        toast(r.message || 'นำเข้าแล้ว');
-        setStatus(r.message || 'นำเข้าแล้ว');
-        return api('bootstrap').then(function (b2) {
-          applyBoot(b2);
-          setStatus('');
-          loadItems();
-          refreshStockCache();
-        });
-      }).then(function () {
-        return syncGoogleInBackground_();
-      });
+      return Promise.resolve();
     }
-    return syncGoogleInBackground_();
+    setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
+    return api('importSeed', { force: false }).then(function (r) {
+      toast(r.message || 'นำเข้าแล้ว');
+      return api('bootstrap').then(function (b2) {
+        applyBoot(b2);
+        setStatus('');
+        loadItems();
+        refreshStockCache();
+      });
+    });
+  }
+
+  if (gasOn && !hasLocal) {
+    setStatus('กำลังโหลดจาก Google Sheets...');
+    updateSyncIndicator('syncing');
+    return RemoteDB.ensureLoaded().then(function () {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b) {
+        return paint(b).then(function () {
+          updateSyncIndicator('');
+          RemoteDB.startPolling(onRemoteDataChanged);
+        });
+      });
+    }).catch(function (e) {
+      updateSyncIndicator('');
+      setStatus('โหลดจาก Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่อง', true);
+      updateGasStatus((e && e.message) || 'โหลดจาก Google ไม่สำเร็จ', true);
+      return api('bootstrap').then(paint).then(function () {
+        if (RemoteDB.enabled()) RemoteDB.startPolling(onRemoteDataChanged);
+      });
+    });
+  }
+
+  setStatus('กำลังโหลดข้อมูล...');
+  api('bootstrap').then(function (b) {
+    return paint(b).then(function () {
+      return syncGoogleInBackground_();
+    });
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
@@ -2415,7 +2442,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 66) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 67) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่โหลดเร็วขึ้น');
   }
