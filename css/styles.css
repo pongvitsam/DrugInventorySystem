@@ -1606,10 +1606,18 @@ select option[value="__add__"] {
   background: var(--primary-soft);
   border-color: var(--primary);
 }
-.btn-icon-view.disabled {
-  opacity: .35;
-  cursor: default;
-  pointer-events: none;
+.btn-icon-view.disabled,
+.btn-icon-view.is-empty {
+  opacity: .45;
+}
+.btn-icon-view.is-empty:hover {
+  opacity: .8;
+}
+#billImageModal {
+  z-index: 80;
+}
+#billImageModal.open {
+  display: flex !important;
 }
 .ico-search {
   width: 18px;

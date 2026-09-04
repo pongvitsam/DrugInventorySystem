@@ -1117,8 +1117,21 @@ function editReceipt(id) {
     toast('โหลดใบรับ ' + id + ' เพื่อแก้ไข');
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+function capturePendingBillImage_() {
+  if (STATE.pendingBillImage && String(STATE.pendingBillImage).indexOf('data:image') === 0) {
+    return STATE.pendingBillImage;
+  }
+  var preview = document.getElementById('ocrPreview');
+  if (preview && preview.src && preview.src.indexOf('data:image') === 0) {
+    STATE.pendingBillImage = preview.src;
+    return STATE.pendingBillImage;
+  }
+  return '';
+}
+
 function saveReceipt() {
   if (!STATE.receive.lines.length) return toast('ยังไม่มีรายการ');
+  var billImage = capturePendingBillImage_();
   var payload = {
     number: document.getElementById('rcNumber').value,
     date: document.getElementById('rcDate').value,
@@ -1127,11 +1140,12 @@ function saveReceipt() {
     notes: document.getElementById('rcNotes').value,
     lines: STATE.receive.lines
   };
-  if (STATE.pendingBillImage) payload.billImage = STATE.pendingBillImage;
+  if (billImage) payload.billImage = billImage;
   if (STATE.editingReceiptId) payload.id = STATE.editingReceiptId;
   api('saveReceipt', payload).then(function (r) {
     var editing = !!STATE.editingReceiptId;
-    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท');
+    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท' +
+      (billImage ? ' · เก็บรูปบิลแล้ว' : ''));
     STATE.editingReceiptId = null;
     STATE.receive.lines = [];
     STATE.pendingBillImage = '';
@@ -1145,9 +1159,9 @@ function saveReceipt() {
 function loadReceipts() {
   api('listReceipts').then(function (r) {
     document.getElementById('rcHistory').innerHTML = (r.receipts || []).slice(0, 10).map(function (x) {
-      var viewBtn = x.hasImage
-        ? '<button type="button" class="btn-icon-view" title="ดูรูปบิล" onclick="viewReceiptBill(\'' + x.id + '\')" aria-label="ดูรูปบิล"><span class="ico-search" aria-hidden="true"></span></button>'
-        : '<span class="btn-icon-view disabled" title="ไม่มีรูปบิล" aria-hidden="true"><span class="ico-search"></span></span>';
+      var viewBtn = '<button type="button" class="btn-icon-view' + (x.hasImage ? '' : ' is-empty') +
+        '" title="' + (x.hasImage ? 'ดูรูปบิล' : 'ยังไม่มีรูปบิล') +
+        '" onclick="viewReceiptBill(\'' + x.id + '\')" aria-label="ดูรูปบิล"><span class="ico-search" aria-hidden="true"></span></button>';
       return '<div class="user-row wd-history-row">' +
         '<span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</span>' +
         '<span class="wd-history-actions">' + viewBtn +
@@ -1157,9 +1171,12 @@ function loadReceipts() {
 }
 
 function viewReceiptBill(id) {
+  toast('กำลังเปิดรูปบิล...');
   api('getReceipt', { id: id }).then(function (data) {
     var img = data.receipt && data.receipt.billImage;
-    if (!img) return toast('ใบรับนี้ไม่มีรูปบิล');
+    if (!img) {
+      return toast('ใบรับนี้ยังไม่มีรูปบิล — สแกน OCR แล้วบันทึกใหม่เพื่อเก็บรูป');
+    }
     openBillImageModal_(img, data.receipt.number || data.receipt.id || '');
   }).catch(function (e) { toast(e.message || String(e)); });
 }
@@ -1168,16 +1185,25 @@ function openBillImageModal_(src, title) {
   var bg = document.getElementById('billImageModal');
   var img = document.getElementById('billImageView');
   var cap = document.getElementById('billImageCaption');
-  if (!bg || !img) return;
+  if (!bg || !img) {
+    toast('ไม่พบหน้าต่างแสดงรูป');
+    return;
+  }
+  img.onload = function () { /* ok */ };
+  img.onerror = function () { toast('เปิดรูปบิลไม่สำเร็จ'); };
   img.src = src;
   if (cap) cap.textContent = title ? ('ใบรับ ' + title) : 'รูปบิล';
   bg.style.display = 'flex';
+  bg.classList.add('open');
 }
 
 function closeBillImageModal() {
   var bg = document.getElementById('billImageModal');
   var img = document.getElementById('billImageView');
-  if (bg) bg.style.display = 'none';
+  if (bg) {
+    bg.style.display = 'none';
+    bg.classList.remove('open');
+  }
   if (img) img.removeAttribute('src');
 }
 
@@ -1423,6 +1449,7 @@ function clearOcrReview() {
 }
 
 function confirmOcrReview() {
+  capturePendingBillImage_();
   var rows = (STATE.ocrReview || []).filter(function (l) { return l.keep && String(l.name || '').trim() && Number(l.qty) > 0; });
   if (!rows.length) return toast('เลือกรายการที่ต้องการอย่างน้อย 1 รายการ');
   var kind = document.getElementById('rcKind').value;

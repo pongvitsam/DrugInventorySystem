@@ -589,7 +589,6 @@ function apiSaveReceipt_(p) {
     source: String(p.source || 'โรงพยาบาลคลองท่อม'),
     kind: p.kind || 'ยา',
     notes: String(p.notes || ''),
-    billImage: String(p.billImage || ''),
     totalValue: 0,
     createdAt: nowIso_()
   };
@@ -601,6 +600,9 @@ function apiSaveReceipt_(p) {
   writeObjects_('Receipts', receipts);
   writeObjects_('ReceiptLines', rLines);
   writeObjects_('Movements', moves);
+  if (p.billImage) {
+    try { DB.setReceiptImage(rec.id, String(p.billImage)); } catch (e) { /* ignore */ }
+  }
   return { ok: true, receipt: rec };
 }
 
@@ -637,7 +639,7 @@ function apiUpdateReceipt_(p) {
   rec.kind = p.kind || 'ยา';
   rec.notes = String(p.notes || '');
   if (p.billImage != null && String(p.billImage) !== '') {
-    rec.billImage = String(p.billImage);
+    try { DB.setReceiptImage(rec.id, String(p.billImage)); } catch (e) { /* ignore */ }
   }
   rec.totalValue = 0;
 
@@ -654,6 +656,8 @@ function apiUpdateReceipt_(p) {
 function apiListReceipts_() {
   return {
     receipts: filterHistoryDocs_(readObjects_('Receipts')).slice().reverse().map(function (r) {
+      var hasImg = false;
+      try { hasImg = !!(DB.getReceiptImage(r.id) || r.billImage); } catch (e) { hasImg = !!r.billImage; }
       return {
         id: r.id,
         number: r.number,
@@ -663,7 +667,7 @@ function apiListReceipts_() {
         notes: r.notes,
         totalValue: r.totalValue,
         createdAt: r.createdAt,
-        hasImage: !!(r.billImage && String(r.billImage).length > 32)
+        hasImage: hasImg
       };
     })
   };
@@ -672,6 +676,8 @@ function apiListReceipts_() {
 function apiGetReceipt_(p) {
   var rec = findById_(readObjects_('Receipts'), p.id);
   if (!rec) throw new Error('ไม่พบใบรับ');
+  var billImage = '';
+  try { billImage = DB.getReceiptImage(rec.id) || rec.billImage || ''; } catch (e) { billImage = rec.billImage || ''; }
   var items = indexById_(readObjects_('Items'));
   var lines = readObjects_('ReceiptLines').filter(function (l) { return l.receiptId === rec.id; }).map(function (l) {
     var it = items[l.itemId] || {};
@@ -682,7 +688,7 @@ function apiGetReceipt_(p) {
       category: it.category || ''
     });
   });
-  return { receipt: rec, lines: lines };
+  return { receipt: Object.assign({}, rec, { billImage: billImage }), lines: lines };
 }
 
 function apiSaveTransfer_(p) {

@@ -52,13 +52,58 @@ var DB = {
     DB_MEM.SeqObj = obj || {};
     localStorage.setItem(DB_PREFIX + 'SeqObj', JSON.stringify(DB_MEM.SeqObj));
   },
+  readReceiptImages: function () {
+    if (DB_MEM.ReceiptImages) return DB_MEM.ReceiptImages;
+    try {
+      var raw = localStorage.getItem(DB_PREFIX + 'ReceiptImages');
+      DB_MEM.ReceiptImages = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      DB_MEM.ReceiptImages = {};
+    }
+    return DB_MEM.ReceiptImages;
+  },
+  writeReceiptImages: function (obj) {
+    DB_MEM.ReceiptImages = obj || {};
+    try {
+      localStorage.setItem(DB_PREFIX + 'ReceiptImages', JSON.stringify(DB_MEM.ReceiptImages));
+    } catch (e) {
+      // quota: keep newest ~15 images
+      try {
+        var keys = Object.keys(DB_MEM.ReceiptImages);
+        if (keys.length > 15) {
+          keys.slice(0, keys.length - 15).forEach(function (k) { delete DB_MEM.ReceiptImages[k]; });
+          localStorage.setItem(DB_PREFIX + 'ReceiptImages', JSON.stringify(DB_MEM.ReceiptImages));
+        }
+      } catch (e2) { /* ignore */ }
+    }
+  },
+  setReceiptImage: function (id, dataUrl) {
+    if (!id || !dataUrl) return;
+    var o = DB.readReceiptImages();
+    o[String(id)] = String(dataUrl);
+    DB.writeReceiptImages(o);
+  },
+  getReceiptImage: function (id) {
+    if (!id) return '';
+    var o = DB.readReceiptImages();
+    return o[String(id)] || '';
+  },
   exportAll: function () {
     var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
     var out = {};
+    var imgs = DB.readReceiptImages();
     keys.forEach(function (k) {
       if (k === 'SettingsObj') out[k] = DB.readSettingsObj();
       else if (k === 'SeqObj') out[k] = DB.readSeqObj();
-      else out[k] = DB.readObjects(k);
+      else if (k === 'Receipts') {
+        out[k] = (DB.readObjects('Receipts') || []).map(function (r) {
+          var copy = Object.assign({}, r);
+          var img = imgs[String(r.id)] || r.billImage || '';
+          if (img) copy.billImage = img;
+          else delete copy.billImage;
+          return copy;
+        });
+      } else out[k] = DB.readObjects(k);
     });
     return out;
   },
@@ -92,6 +137,13 @@ var DB = {
     var d = data || {};
     DB.writeSettingsObj(d.SettingsObj || {});
     DB.writeSeqObj(d.SeqObj || {});
+    var imgs = {};
+    try { imgs = JSON.parse(localStorage.getItem(DB_PREFIX + 'ReceiptImages') || '{}') || {}; } catch (e) { imgs = {}; }
+    (d.Receipts || []).forEach(function (r) {
+      if (r && r.id && r.billImage) imgs[String(r.id)] = r.billImage;
+      if (r) delete r.billImage;
+    });
+    DB.writeReceiptImages(imgs);
     ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
       'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'].forEach(function (k) {
       DB.writeObjects(k, DB.dedupeRows(k, d[k] || []));
