@@ -135,7 +135,7 @@ function applyBoot(b) {
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 71) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 72) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -255,6 +255,39 @@ function refreshAfterMutation() {
     api('bootstrap').then(function (b) { applyBoot(b); });
   }, 280);
 }
+function deferWarmCaches_() {
+  var run = function () {
+    if (!STATE.items || !STATE.items.length) loadItems();
+    refreshStockCache();
+  };
+  if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 2000 });
+  else setTimeout(run, 300);
+}
+
+function loadScriptOnce_(src) {
+  loadScriptOnce_._map = loadScriptOnce_._map || {};
+  if (loadScriptOnce_._map[src]) return loadScriptOnce_._map[src];
+  loadScriptOnce_._map[src] = new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = function () { resolve(); };
+    s.onerror = function () { reject(new Error('โหลดสคริปต์ไม่สำเร็จ')); };
+    document.head.appendChild(s);
+  });
+  return loadScriptOnce_._map[src];
+}
+
+function ensureChartJs_() {
+  if (typeof Chart !== 'undefined') return Promise.resolve();
+  return loadScriptOnce_('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js');
+}
+
+function ensureTesseractJs_() {
+  if (typeof Tesseract !== 'undefined') return Promise.resolve();
+  return loadScriptOnce_('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+}
+
 function loadBootstrap() {
   if (typeof RemoteDB !== 'undefined') {
     RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
@@ -268,14 +301,12 @@ function loadBootstrap() {
     }
     if (b.imported) {
       setStatus('');
-      loadItems();
-      refreshStockCache();
+      deferWarmCaches_();
       return Promise.resolve();
     }
     if (gasOn) {
-      setStatus('ยังไม่มีข้อมูลบน Google Sheets');
-      loadItems();
-      refreshStockCache();
+      setStatus('กำลังซิงก์จาก Google Sheets...');
+      deferWarmCaches_();
       return Promise.resolve();
     }
     setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
@@ -284,37 +315,17 @@ function loadBootstrap() {
       return api('bootstrap').then(function (b2) {
         applyBoot(b2);
         setStatus('');
-        loadItems();
-        refreshStockCache();
+        deferWarmCaches_();
       });
     });
   }
 
-  if (gasOn) {
-    setStatus('กำลังโหลดจาก Google Sheets...');
-    updateSyncIndicator('syncing');
-    return RemoteDB.ensureLoaded().then(function () {
-      applyRemoteSyncToasts_();
-      return api('bootstrap').then(function (b) {
-        return paint(b).then(function () {
-          updateSyncIndicator('');
-          RemoteDB.startPolling(onRemoteDataChanged);
-        });
-      });
-    }).catch(function (e) {
-      updateSyncIndicator('');
-      setStatus('โหลดจาก Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่อง', true);
-      updateGasStatus((e && e.message) || 'โหลดจาก Google ไม่สำเร็จ', true);
-      return api('bootstrap').then(paint).then(function () {
-        if (RemoteDB.enabled()) RemoteDB.startPolling(onRemoteDataChanged);
-      });
-    });
-  }
-
-  setStatus('กำลังโหลดข้อมูล...');
-  api('bootstrap').then(function (b) {
+  // แสดงแดชบอร์ดจากข้อมูลในเครื่องทันที — ไม่รอ Google
+  setStatus(gasOn ? 'กำลังแสดงข้อมูล...' : 'กำลังโหลดข้อมูล...');
+  return api('bootstrap').then(function (b) {
     return paint(b).then(function () {
-      return syncGoogleInBackground_();
+      if (gasOn) return syncGoogleInBackground_();
+      return Promise.resolve();
     });
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
@@ -348,6 +359,7 @@ function syncGoogleInBackground_() {
     applyRemoteSyncToasts_();
     return api('bootstrap').then(function (b2) {
       applyBoot(b2);
+      setStatus('');
       refreshActivePageViews_();
       refreshStockCache();
       updateSyncIndicator('');
@@ -355,6 +367,7 @@ function syncGoogleInBackground_() {
     });
   }).catch(function () {
     updateSyncIndicator('');
+    setStatus('');
     updateGasStatus('ซิงก์ Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่องนี้ไปก่อน', true);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
@@ -1153,7 +1166,9 @@ function runBillOcr() {
   });
 
   chain.then(function (items) {
-    return BillOcr.scanFile(file, items);
+    return ensureTesseractJs_().then(function () {
+      return BillOcr.scanFile(file, items);
+    });
   }).then(function (parsed) {
     STATE.ocrReview = (parsed.lines || []).map(function (l, i) {
       var row = Object.assign({ _id: 'ocr' + i }, l, { keep: true });
@@ -1933,6 +1948,11 @@ function destroyDrugCharts_() {
   DRUG_CHARTS_ = [];
 }
 function initDrugCharts_(d) {
+  ensureChartJs_().then(function () {
+    initDrugChartsNow_(d);
+  }).catch(function () { /* chart optional */ });
+}
+function initDrugChartsNow_(d) {
   if (typeof Chart === 'undefined') return;
   var months = d.months || [];
   var labels = months.map(function (m) { return m.shortLabel || m.label; });
@@ -2583,7 +2603,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 71) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 72) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }

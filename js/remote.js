@@ -462,12 +462,9 @@ var RemoteDB = (function () {
     });
   }
 
-  function ensureLoaded() {
-    if (!enabled()) return Promise.resolve(false);
-    if (loaded) return Promise.resolve(true);
-    if (loadPromise) return loadPromise;
+  function fetchAndApplyExport_() {
     var url = baseUrl() + '?action=export&t=' + Date.now();
-    loadPromise = fetchJson(url).then(function (res) {
+    return fetchJson(url).then(function (res) {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
@@ -497,7 +494,31 @@ var RemoteDB = (function () {
       if (applyRemotePayload_(res, false)) lastSyncAction = 'pulled';
       loaded = true;
       return Promise.resolve();
-    }).finally(function () {
+    });
+  }
+
+  function ensureLoaded() {
+    if (!enabled()) return Promise.resolve(false);
+    if (loaded) return Promise.resolve(true);
+    if (loadPromise) return loadPromise;
+
+    // Fast path: ถ้ามีข้อมูลในเครื่องและ revision บน Google ยังไม่เปลี่ยน — ข้าม export ทั้งชุด
+    if (localRevision > 0 && hasLocalData_()) {
+      loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
+        if (meta && meta.ok && Number(meta.revision) <= localRevision) {
+          loaded = true;
+          return true;
+        }
+        return fetchAndApplyExport_();
+      }).catch(function () {
+        return fetchAndApplyExport_();
+      }).finally(function () {
+        loadPromise = null;
+      });
+      return loadPromise;
+    }
+
+    loadPromise = fetchAndApplyExport_().finally(function () {
       loadPromise = null;
     });
     return loadPromise;
@@ -687,7 +708,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 71,
+    build: 72,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,
