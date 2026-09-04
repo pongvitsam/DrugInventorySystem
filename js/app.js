@@ -1185,7 +1185,13 @@ function runBillOcr() {
       var st = document.getElementById('ocrStatus');
       if (st) st.textContent = 'อ่านแล้วแต่แยกแถวไม่เจอชัด — ดูตัวอย่างรูปแล้วกรอกมือ หรือลองใหม่';
     } else {
-      toast('พบ ' + STATE.ocrReview.length + ' รายการ — กรุณาตรวจแก้');
+      var byCode = STATE.ocrReview.filter(function (r) {
+        return r.matchedBy === 'code' || r.matchedBy === 'code-fuzzy';
+      }).length;
+      var byName = STATE.ocrReview.filter(function (r) { return r.matchedBy === 'name'; }).length;
+      var msg = 'พบ ' + STATE.ocrReview.length + ' รายการ';
+      if (byCode || byName) msg += ' · จับคู่รหัส ' + byCode + ' · ชื่อ ' + byName;
+      toast(msg + ' — กรุณาตรวจแก้');
     }
   }).catch(function (e) {
     toast(e.message || String(e));
@@ -1216,6 +1222,14 @@ function ocrRegistrySelectHtml(i, row) {
   });
   html += '</select>';
   if (row.raw) html += '<div class="muted ocr-raw">จาก OCR: ' + esc(row.raw) + '</div>';
+  if (row.matchedBy === 'code' || row.matchedBy === 'code-fuzzy') {
+    html += '<div class="pill" style="margin-top:4px">จับคู่จากรหัสยา' +
+      (row.matchedBy === 'code-fuzzy' ? ' (ใกล้เคียง)' : '') + '</div>';
+  } else if (row.matchedBy === 'name') {
+    html += '<div class="pill gold" style="margin-top:4px">จับคู่จากชื่อ</div>';
+  } else if (!row.itemId) {
+    html += '<div class="pill warn" style="margin-top:4px">ยังไม่พบในทะเบียน</div>';
+  }
   html += '</div>';
   return html;
 }

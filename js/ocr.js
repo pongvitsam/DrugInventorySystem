@@ -146,10 +146,17 @@ var BillOcr = (function () {
     }
 
     var code = '';
-    work = work.replace(/^(\d{1,3})\s+(\d{6,7})\s+/, function (_, seq, c) {
-      code = c;
-      return '';
+    work = work.replace(/^(\d{1,3})\s+([A-Za-z0-9]{5,10})\s+/, function (_, seq, c) {
+      if (!/^(20\d{2}|256\d)$/.test(c)) code = normalizeCode(c);
+      return code ? '' : _;
     });
+    if (!code) {
+      var early = work.match(/^([A-Za-z]?\d{5,8}|\d{5,8})\s+/);
+      if (early) {
+        code = normalizeCode(early[1]);
+        work = work.slice(early[0].length).trim();
+      }
+    }
 
     var form = '';
     var unit = '';
@@ -215,8 +222,8 @@ var BillOcr = (function () {
     return nums;
   }
 
-  function pushLine(out, seen, row, knownItems) {
-    var known = matchKnownItem(row.name, knownItems);
+  function pushLine(out, seen, row, knownItems, index) {
+    var known = matchKnownItemSmart(row, knownItems, index);
     var name = known ? known.name : row.name;
     var itemId = known ? known.id : '';
     var packSize = row.packSize || (known && known.packSize) || 'กล่อง';
@@ -230,13 +237,13 @@ var BillOcr = (function () {
     if (!unitPrice && amount && qty) unitPrice = round2(amount / qty);
     else if (known && !unitPrice) unitPrice = Number(known.unitPrice || 0);
 
-    var key = (name + '|' + qty + '|' + amount).toLowerCase();
+    var key = ((row.code || '') + '|' + name + '|' + qty + '|' + amount).toLowerCase();
     if (seen[key]) return;
     seen[key] = true;
 
     out.push({
       name: name,
-      code: row.code || (known && known.code) || '',
+      code: (known && known.code) || row.code || '',
       form: row.form || (known && known.form) || '',
       itemId: itemId,
       packSize: packSize,
@@ -245,6 +252,8 @@ var BillOcr = (function () {
       amount: amount || round2(unitPrice * qty),
       expiry: row.expiry || '',
       matched: !!known,
+      matchedBy: known ? (known._matchedBy || 'name') : '',
+      matchScore: known ? (known._matchScore || 0) : 0,
       raw: row.raw || row.name
     });
   }
@@ -253,16 +262,19 @@ var BillOcr = (function () {
     if (SKIP.test(line) || line.length < 3) return null;
     if (/^[\d.\s]+$/.test(line)) return null;
 
+    var extractedCode = extractDrugCodeFromLine(line);
+
     var qp = null;
     var qpMatch = line.match(/(\d+(?:\.\d+)?)\s*[xX×*]\s*\d*(?:\.\d+)?\s*['’]?s?/i);
     if (qpMatch) qp = parseQtyPack(qpMatch[0]);
 
     var nums = extractNumbers(line);
     if (!qp && nums.length < 2) {
-      var hitOnly = matchKnownItem(line, knownItems);
-      if (hitOnly && line.length >= 4) {
+      var hitOnly = matchKnownItemSmart({ name: line, code: extractedCode, raw: line }, knownItems);
+      if (hitOnly && (extractedCode || line.length >= 4)) {
         return {
           name: hitOnly.name,
+          code: hitOnly.code || extractedCode || '',
           itemId: hitOnly.id,
           packSize: hitOnly.packSize || '',
           qty: 1,
@@ -299,15 +311,17 @@ var BillOcr = (function () {
     if (qpMatch) namePart = line.slice(0, qpMatch.index).trim();
     namePart = namePart
       .replace(/^\d+[\).]\s*/, '')
-      .replace(/^\d+\s+\d{6,7}\s+/, '')
+      .replace(/^\d{1,3}\s+[A-Za-z0-9]{4,12}\s+/, '')
+      .replace(/^\d+\s+\d{5,8}\s+/, '')
       .replace(/\d+(?:\.\d+)?\s*$/, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
     namePart = namePart.replace(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+\.\d+)\s*$/g, '').trim();
-    if (namePart.length < 2) return null;
+    if (namePart.length < 2 && !extractedCode) return null;
 
     return {
-      name: namePart,
+      name: namePart || extractedCode || 'ไม่ทราบชื่อ',
+      code: extractedCode || '',
       packSize: packSize || 'กล่อง',
       qty: qty,
       unitPrice: unitPrice,
@@ -323,16 +337,18 @@ var BillOcr = (function () {
     var out = [];
     var seen = {};
     var meta = parseReceiptMeta(text);
+    var index = buildItemIndex_(knownItems);
 
     lines.forEach(function (line) {
       var kh = parseKhlongThomRow(line);
       if (kh) {
         kh.raw = line;
-        pushLine(out, seen, kh, knownItems);
+        if (!kh.code) kh.code = extractDrugCodeFromLine(line);
+        pushLine(out, seen, kh, knownItems, index);
         return;
       }
       var generic = parseGenericLine(line, knownItems);
-      if (generic) pushLine(out, seen, generic, knownItems);
+      if (generic) pushLine(out, seen, generic, knownItems, index);
     });
 
     return {
@@ -343,9 +359,100 @@ var BillOcr = (function () {
     };
   }
 
-  function matchKnownItem(text, items) {
+  /** แก้ตัวอักษรที่ OCR มักอ่านผิดในรหัสยา (O↔0, I/l↔1, S↔5, B↔8) */
+  function normalizeCode(raw) {
+    var s = String(raw || '').toUpperCase().replace(/[\s\-_.]/g, '');
+    if (!s) return '';
+    // ถ้าเป็นตัวเลขเป็นหลัก ให้แก้ตัวอักษรที่คล้ายเลข
+    if (/^[0-9A-Z]+$/.test(s) && (s.replace(/\D/g, '').length >= s.length * 0.6)) {
+      s = s.replace(/O/g, '0').replace(/[IL]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2');
+    }
+    return s;
+  }
+
+  function extractDrugCodeFromLine(line) {
+    var work = normalizeLine(line);
+    if (!work) return '';
+    // รูปแบบมาตรฐานใบคลองท่อม: ลำดับ + รหัสยา (5–8 หลัก) + ชื่อ
+    var m1 = work.match(/^(\d{1,3})\s+([A-Za-z0-9]{5,10})\s+/);
+    if (m1 && !/^(20\d{2}|256\d)$/.test(m1[2])) return normalizeCode(m1[2]);
+    // รหัสอยู่ต้นบรรทัดโดยไม่มีลำดับ
+    var m2 = work.match(/^([A-Za-z]?\d{5,8}|\d{5,8}[A-Za-z]?)\s+[A-Za-zก-๙]/);
+    if (m2) return normalizeCode(m2[1]);
+    // หาเลข 6–7 หลักหลังลำดับสั้นๆ ภายใน 40 ตัวแรก
+    var head = work.slice(0, 48);
+    var m3 = head.match(/\b(\d{6,7})\b/);
+    if (m3) return normalizeCode(m3[1]);
+    return '';
+  }
+
+  function buildItemIndex_(items) {
+    var byCode = {};
+    (items || []).forEach(function (it) {
+      if (!it || it.active === '0') return;
+      var c = normalizeCode(it.code);
+      if (!c) return;
+      if (!byCode[c]) byCode[c] = it;
+    });
+    return { byCode: byCode, items: items || [] };
+  }
+
+  function codeDistance_(a, b) {
+    a = String(a || '');
+    b = String(b || '');
+    if (a === b) return 0;
+    if (Math.abs(a.length - b.length) > 1) return 99;
+    // Levenshtein แบบสั้น (รหัสยาไม่ยาว)
+    var n = a.length;
+    var m = b.length;
+    var prev = [];
+    var cur = [];
+    var i, j;
+    for (j = 0; j <= m; j++) prev[j] = j;
+    for (i = 1; i <= n; i++) {
+      cur[0] = i;
+      for (j = 1; j <= m; j++) {
+        var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      }
+      var tmp = prev; prev = cur; cur = tmp;
+    }
+    return prev[m];
+  }
+
+  function matchByCode_(code, index) {
+    var c = normalizeCode(code);
+    if (!c || !index) return null;
+    if (index.byCode[c]) {
+      return Object.assign({}, index.byCode[c], { _matchedBy: 'code', _matchScore: 1000 });
+    }
+    // รหัสใกล้เคียง (OCR พลาด 1 ตัว) — เฉพาะความยาวเท่ากัน
+    var best = null;
+    var bestDist = 99;
+    Object.keys(index.byCode).forEach(function (k) {
+      if (k.length !== c.length) return;
+      var d = codeDistance_(c, k);
+      if (d > 0 && d <= 1 && d < bestDist) {
+        bestDist = d;
+        best = index.byCode[k];
+      }
+    });
+    if (best) {
+      return Object.assign({}, best, { _matchedBy: 'code-fuzzy', _matchScore: 900 });
+    }
+    return null;
+  }
+
+  function matchByName_(text, items) {
     var t = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
     if (!t || !items || !items.length) return null;
+    // ตัดรหัส/ลำดับออกจากข้อความก่อนเทียบชื่อ
+    t = t
+      .replace(/^\d{1,3}\s+[a-z0-9]{5,10}\s+/i, '')
+      .replace(/^\d{5,8}\s+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!t) return null;
     var best = null;
     var bestScore = 0;
     items.forEach(function (it) {
@@ -358,14 +465,48 @@ var BillOcr = (function () {
       else {
         var parts = n.split(/\s+/).filter(function (p) { return p.length > 2; });
         var hit = parts.filter(function (p) { return t.indexOf(p) >= 0; }).length;
-        if (parts.length && hit / parts.length >= 0.6) score = 50 + hit;
+        if (parts.length && hit / parts.length >= 0.6) score = 50 + hit * 5;
+        // token overlap จากชื่อ OCR
+        var tParts = t.split(/\s+/).filter(function (p) { return p.length > 2; });
+        if (tParts.length >= 2 && parts.length) {
+          var hit2 = tParts.filter(function (p) { return n.indexOf(p) >= 0; }).length;
+          var ratio = hit2 / tParts.length;
+          if (ratio >= 0.5) score = Math.max(score, 45 + Math.round(ratio * 40));
+        }
       }
+      // ชื่อยาสั้นมากต้องตรงเกือบทั้งหมด
+      if (n.length <= 4 && score < 80) return;
       if (score > bestScore) {
         bestScore = score;
         best = it;
       }
     });
-    return bestScore >= 50 ? best : null;
+    if (bestScore >= 50 && best) {
+      return Object.assign({}, best, { _matchedBy: 'name', _matchScore: bestScore });
+    }
+    return null;
+  }
+
+  /**
+   * จับคู่ทะเบียน: รหัสยาก่อน → รหัสใกล้เคียง → ชื่อ
+   * row = { name, code, raw } หรือสตริงชื่อ
+   */
+  function matchKnownItemSmart(row, items, index) {
+    if (!items || !items.length) return null;
+    if (typeof row === 'string') row = { name: row, code: '', raw: row };
+    row = row || {};
+    index = index || buildItemIndex_(items);
+
+    var code = normalizeCode(row.code) || extractDrugCodeFromLine(row.raw || row.name || '');
+    var byCode = matchByCode_(code, index);
+    if (byCode) return byCode;
+
+    return matchByName_(row.name || row.raw || '', items);
+  }
+
+  /** เผื่อโค้ดเก่าเรียก */
+  function matchKnownItem(text, items) {
+    return matchKnownItemSmart({ name: text, code: extractDrugCodeFromLine(text), raw: text }, items);
   }
 
   function round2(n) {
@@ -388,6 +529,8 @@ var BillOcr = (function () {
 
   return {
     scanFile: scanFile,
-    parseReceiptText: parseReceiptText
+    parseReceiptText: parseReceiptText,
+    matchKnownItem: matchKnownItem,
+    normalizeCode: normalizeCode
   };
 })();
