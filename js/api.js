@@ -227,7 +227,8 @@ function apiSaveSettings_(p) {
     'receiverName', 'receiverPosition',
     'issuerName', 'issuerPosition',
     'gasWebAppUrl',
-    'logoDataUrl'
+    'logoDataUrl',
+    'historyFromDate'
   ];
   keys.forEach(function (k) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
@@ -1338,10 +1339,6 @@ function ensureDb_() {
   });
   if (!cur.loginUsers) {
     cur.loginUsers = '["Napatsorn"]';
-    changed = true;
-  }
-  if (cur.historyFromDate !== HISTORY_FROM_DATE_) {
-    cur.historyFromDate = HISTORY_FROM_DATE_;
     changed = true;
   }
   if (changed) {

@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=76">
+  <link rel="stylesheet" href="css/styles.css?v=77">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -343,11 +343,19 @@
         </div>
         <div class="card" style="margin-top:14px">
           <h3>ประวัติการเคลื่อนไหว</h3>
-          <p class="muted">ยอดคงเหลือจากข้อมูลเดิมยังใช้ได้ — รับเข้า · เบิกออก · รายงาน · กราฟ นับตั้งแต่ 1 กันยายน 2569 เท่านั้น</p>
-          <div class="field" style="margin-top:8px;max-width:320px">
-            <label>นับประวัติตั้งแต่</label>
-            <input id="stHistoryFrom" type="text" readonly class="readonly-field">
+          <p class="muted">ยอดคงเหลือจากข้อมูลเดิมยังใช้ได้ — รับเข้า · เบิกออก · รายงาน · กราฟ นับตั้งแต่วันที่ที่กำหนดเท่านั้น</p>
+          <div class="row" style="align-items:flex-end;margin-top:8px;flex-wrap:wrap;gap:8px">
+            <div class="field th-date-field" style="max-width:280px">
+              <label>นับประวัติตั้งแต่</label>
+              <input id="stHistoryFrom" type="hidden">
+              <button type="button" class="th-date-btn" data-for="stHistoryFrom">เลือกวันที่</button>
+            </div>
+            <div class="field" style="flex:0">
+              <label>&nbsp;</label>
+              <button type="button" class="btn secondary" onclick="saveHistoryFromDate()">บันทึกวันที่</button>
+            </div>
           </div>
+          <p class="muted" style="margin-top:8px">การเปลี่ยนวันที่ต้องยืนยันด้วย Username ของผู้ที่เข้าสู่ระบบอยู่</p>
         </div>
         <div class="card" style="margin-top:14px">
           <h3>เตือนใกล้หมด / ใกล้หมดอายุ</h3>
@@ -457,14 +465,14 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=76"></script>
-  <script src="js/remote.js?v=76"></script>
-  <script src="js/api.js?v=76"></script>
-  <script src="js/options.js?v=76"></script>
-  <script src="js/thdate.js?v=76"></script>
-  <script src="js/seed.js?v=76"></script>
-  <script src="js/ocr.js?v=76"></script>
-  <script src="js/app.js?v=76"></script>
-  <script src="js/auth.js?v=76"></script>
+  <script src="js/db.js?v=77"></script>
+  <script src="js/remote.js?v=77"></script>
+  <script src="js/api.js?v=77"></script>
+  <script src="js/options.js?v=77"></script>
+  <script src="js/thdate.js?v=77"></script>
+  <script src="js/seed.js?v=77"></script>
+  <script src="js/ocr.js?v=77"></script>
+  <script src="js/app.js?v=77"></script>
+  <script src="js/auth.js?v=77"></script>
 </body>
 </html>

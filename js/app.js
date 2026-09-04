@@ -122,9 +122,7 @@ function applyBoot(b) {
   if (stExp) stExp.value = s.expiryWarnMonths || '6';
   var stHist = document.getElementById('stHistoryFrom');
   if (stHist) {
-    stHist.value = s.historyFromDate
-      ? (typeof ThDate !== 'undefined' && ThDate.formatDateLong ? ThDate.formatDateLong(s.historyFromDate) : s.historyFromDate)
-      : '-';
+    ThDate.set('stHistoryFrom', s.historyFromDate || '2026-09-01');
   }
   var gasMsg = '';
   if (b.storageMode === 'gas') {
@@ -2223,6 +2221,28 @@ function renderLowStockSettings() {
     }).join('');
   }
   el.innerHTML = html;
+}
+
+function saveHistoryFromDate() {
+  var iso = typeof ThDate !== 'undefined' ? ThDate.get('stHistoryFrom') : '';
+  if (!iso) return toast('กรุณาเลือกวันที่');
+  var curUser = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
+  if (!curUser) return toast('กรุณาเข้าสู่ระบบก่อน');
+  var typed = prompt('ใส่ Username เพื่อยืนยันการเปลี่ยนวันที่นับประวัติ');
+  if (typed == null) return;
+  typed = String(typed).trim();
+  if (!typed) return toast('กรุณาใส่ Username');
+  if (String(typed).toLowerCase() !== String(curUser).toLowerCase()) {
+    return toast('Username ไม่ถูกต้อง');
+  }
+  var label = (typeof ThDate !== 'undefined' && ThDate.formatDateLong)
+    ? ThDate.formatDateLong(iso)
+    : iso;
+  if (!confirm('เปลี่ยนวันนับประวัติเป็น ' + label + ' หรือไม่?\nรับเข้า · เบิก · รายงาน จะนับตั้งแต่วันนี้เป็นต้นไป')) return;
+  api('saveSettings', { historyFromDate: iso }).then(function () {
+    toast('บันทึกวันที่นับประวัติแล้ว');
+    loadBootstrap();
+  }).catch(function (e) { toast(e.message || String(e)); });
 }
 
 function saveLowStockSettings() {
