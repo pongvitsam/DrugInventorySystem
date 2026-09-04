@@ -95,7 +95,7 @@ function applyBoot(b) {
   STATE.boot = b;
   var s = b.settings || {};
   if (typeof RemoteDB !== 'undefined') RemoteDB.applyUrlFromSettings(s);
-  var modeLabel = b.storageMode === 'gas' ? ' · Google Sheets (หลายเครื่อง)' : ' · เครื่องนี้';
+  var modeLabel = b.storageMode === 'gas' ? '' : ' · เครื่องนี้';
   document.getElementById('brandSub').textContent = (s.unitName || '') + ' · ' + (s.unitSub || '') + modeLabel;
   document.getElementById('dashSub').textContent = s.unitName || '';
   var link = document.getElementById('sheetLink');
