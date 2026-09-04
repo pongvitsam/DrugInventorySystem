@@ -589,6 +589,7 @@ function apiSaveReceipt_(p) {
     source: String(p.source || 'โรงพยาบาลคลองท่อม'),
     kind: p.kind || 'ยา',
     notes: String(p.notes || ''),
+    billImage: String(p.billImage || ''),
     totalValue: 0,
     createdAt: nowIso_()
   };
@@ -635,6 +636,9 @@ function apiUpdateReceipt_(p) {
   rec.source = String(p.source || 'โรงพยาบาลคลองท่อม');
   rec.kind = p.kind || 'ยา';
   rec.notes = String(p.notes || '');
+  if (p.billImage != null && String(p.billImage) !== '') {
+    rec.billImage = String(p.billImage);
+  }
   rec.totalValue = 0;
 
   appendReceiptLines_(rec, lines, items, stock, rLines, moves);
@@ -649,7 +653,19 @@ function apiUpdateReceipt_(p) {
 
 function apiListReceipts_() {
   return {
-    receipts: filterHistoryDocs_(readObjects_('Receipts')).slice().reverse()
+    receipts: filterHistoryDocs_(readObjects_('Receipts')).slice().reverse().map(function (r) {
+      return {
+        id: r.id,
+        number: r.number,
+        date: r.date,
+        source: r.source,
+        kind: r.kind,
+        notes: r.notes,
+        totalValue: r.totalValue,
+        createdAt: r.createdAt,
+        hasImage: !!(r.billImage && String(r.billImage).length > 32)
+      };
+    })
   };
 }
 

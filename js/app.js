@@ -8,6 +8,7 @@ var STATE = {
   receive: { item: null, lines: [] },
   editingReceiptId: null,
   ocrReview: [],
+  pendingBillImage: '',
   pickStock: [],
   withdrawCart: [],
   editingWithdrawId: null,
@@ -1126,12 +1127,15 @@ function saveReceipt() {
     notes: document.getElementById('rcNotes').value,
     lines: STATE.receive.lines
   };
+  if (STATE.pendingBillImage) payload.billImage = STATE.pendingBillImage;
   if (STATE.editingReceiptId) payload.id = STATE.editingReceiptId;
   api('saveReceipt', payload).then(function (r) {
     var editing = !!STATE.editingReceiptId;
     toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท');
     STATE.editingReceiptId = null;
     STATE.receive.lines = [];
+    STATE.pendingBillImage = '';
+    clearOcrReview();
     updateReceiptEditUI();
     renderReceive();
     loadReceipts();
@@ -1141,11 +1145,40 @@ function saveReceipt() {
 function loadReceipts() {
   api('listReceipts').then(function (r) {
     document.getElementById('rcHistory').innerHTML = (r.receipts || []).slice(0, 10).map(function (x) {
+      var viewBtn = x.hasImage
+        ? '<button type="button" class="btn-icon-view" title="ดูรูปบิล" onclick="viewReceiptBill(\'' + x.id + '\')" aria-label="ดูรูปบิล"><span class="ico-search" aria-hidden="true"></span></button>'
+        : '<span class="btn-icon-view disabled" title="ไม่มีรูปบิล" aria-hidden="true"><span class="ico-search"></span></span>';
       return '<div class="user-row wd-history-row">' +
         '<span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.number || x.id) + ' · ' + money(x.totalValue) + ' ฿ · ' + esc(x.source) + '</span>' +
-        '<button type="button" class="btn ghost" onclick="editReceipt(\'' + x.id + '\')">แก้ไข</button></div>';
+        '<span class="wd-history-actions">' + viewBtn +
+        '<button type="button" class="btn ghost" onclick="editReceipt(\'' + x.id + '\')">แก้ไข</button></span></div>';
     }).join('') || 'ยังไม่มี';
   });
+}
+
+function viewReceiptBill(id) {
+  api('getReceipt', { id: id }).then(function (data) {
+    var img = data.receipt && data.receipt.billImage;
+    if (!img) return toast('ใบรับนี้ไม่มีรูปบิล');
+    openBillImageModal_(img, data.receipt.number || data.receipt.id || '');
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function openBillImageModal_(src, title) {
+  var bg = document.getElementById('billImageModal');
+  var img = document.getElementById('billImageView');
+  var cap = document.getElementById('billImageCaption');
+  if (!bg || !img) return;
+  img.src = src;
+  if (cap) cap.textContent = title ? ('ใบรับ ' + title) : 'รูปบิล';
+  bg.style.display = 'flex';
+}
+
+function closeBillImageModal() {
+  var bg = document.getElementById('billImageModal');
+  var img = document.getElementById('billImageView');
+  if (bg) bg.style.display = 'none';
+  if (img) img.removeAttribute('src');
 }
 
 function runBillOcr() {
@@ -1168,6 +1201,7 @@ function runBillOcr() {
       return BillOcr.scanFile(file, items);
     });
   }).then(function (parsed) {
+    if (parsed.imageDataUrl) STATE.pendingBillImage = parsed.imageDataUrl;
     STATE.ocrReview = (parsed.lines || []).map(function (l, i) {
       var row = Object.assign({ _id: 'ocr' + i }, l, { keep: true });
       syncOcrLinePricing(row);
@@ -1378,6 +1412,7 @@ function updateOcrField(i, key, value) {
 
 function clearOcrReview() {
   STATE.ocrReview = [];
+  STATE.pendingBillImage = '';
   renderOcrReview();
   var preview = document.getElementById('ocrPreview');
   if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }

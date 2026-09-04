@@ -187,6 +187,16 @@ function exportAll_() {
   DATA_KEYS_.forEach(function (name) {
     data[name] = readSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name]);
   });
+  if (data.Receipts && data.Receipts.length) {
+    var props = PropertiesService.getScriptProperties();
+    data.Receipts.forEach(function (r) {
+      if (!r || !r.id) return;
+      try {
+        var img = props.getProperty('RIMG_' + r.id);
+        if (img) r.billImage = img;
+      } catch (e) { /* ignore */ }
+    });
+  }
   return {
     ok: true,
     revision: Number(settings.syncRevision) || 0,
@@ -205,6 +215,16 @@ function importAll_(data) {
   data.SettingsObj = settings;
   writeSettingsObj_(ss, settings);
   if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
+  if (data.Receipts && data.Receipts.length) {
+    var props2 = PropertiesService.getScriptProperties();
+    data.Receipts.forEach(function (r) {
+      if (!r || !r.id) return;
+      if (r.billImage) {
+        try { props2.setProperty('RIMG_' + r.id, String(r.billImage)); } catch (e) { /* quota */ }
+        delete r.billImage;
+      }
+    });
+  }
   DATA_KEYS_.forEach(function (name) {
     if (data[name]) {
       writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);

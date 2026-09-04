@@ -516,14 +516,35 @@ var BillOcr = (function () {
   function scanFile(file, knownItems) {
     return loadImage(file).then(function (canvas) {
       var preview = document.getElementById('ocrPreview');
+      var imageDataUrl = '';
+      try {
+        // ย่อรูปบิลสำหรับเก็บคู่ใบรับ (ดูภายหลังได้)
+        var maxW = 1200;
+        var out = canvas;
+        if (canvas.width > maxW) {
+          var scale = maxW / canvas.width;
+          out = document.createElement('canvas');
+          out.width = Math.round(canvas.width * scale);
+          out.height = Math.round(canvas.height * scale);
+          out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
+        }
+        var q = 0.62;
+        imageDataUrl = out.toDataURL('image/jpeg', q);
+        while (imageDataUrl.length > 45000 && q > 0.35) {
+          q -= 0.08;
+          imageDataUrl = out.toDataURL('image/jpeg', q);
+        }
+      } catch (e) { imageDataUrl = ''; }
       if (preview) {
-        preview.src = canvas.toDataURL('image/jpeg', 0.85);
+        preview.src = imageDataUrl || canvas.toDataURL('image/jpeg', 0.85);
         preview.style.display = 'block';
       }
-      return recognize(canvas);
-    }).then(function (text) {
-      progressEl('แยกรายการแล้ว — กรุณาตรวจสอบด้านล่าง', 100);
-      return parseReceiptText(text, knownItems);
+      return recognize(canvas).then(function (text) {
+        progressEl('แยกรายการแล้ว — กรุณาตรวจสอบด้านล่าง', 100);
+        var parsed = parseReceiptText(text, knownItems);
+        parsed.imageDataUrl = imageDataUrl;
+        return parsed;
+      });
     });
   }
 

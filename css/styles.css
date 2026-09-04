@@ -1582,6 +1582,70 @@ select option[value="__add__"] {
   }
 }
 
+.wd-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.btn-icon-view {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background .12s, border-color .12s;
+}
+.btn-icon-view:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+.btn-icon-view.disabled {
+  opacity: .35;
+  cursor: default;
+  pointer-events: none;
+}
+.ico-search {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--primary-deep);
+  border-radius: 50%;
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+}
+.ico-search::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 2px;
+  background: var(--primary-deep);
+  border-radius: 2px;
+  right: -5px;
+  bottom: -1px;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+.bill-image-modal {
+  width: min(920px, 100%);
+  max-height: 92vh;
+}
+.bill-image-view {
+  display: block;
+  width: 100%;
+  max-height: min(78vh, 900px);
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #f4faf8;
+}
+
 /* Preview ใบเบิกบนจอให้ใกล้เคียง A4 แนวตั้ง */
 #wdPrintOut.print-sheet {
   max-width: 210mm;
