@@ -53,7 +53,7 @@ var DB = {
     localStorage.setItem(DB_PREFIX + 'SeqObj', JSON.stringify(DB_MEM.SeqObj));
   },
   exportAll: function () {
-    var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'];
+    var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
     var out = {};
     keys.forEach(function (k) {
       if (k === 'SettingsObj') out[k] = DB.readSettingsObj();
@@ -73,6 +73,8 @@ var DB = {
       var key;
       if (name === 'MonthlyRequests') {
         key = String(row.monthKey || '') + '|' + String(row.itemId || '');
+      } else if (name === 'ClimateLogs') {
+        key = String(row.date || '') + '|' + String(row.slot || '');
       } else if (row.id != null && row.id !== '') {
         key = String(row.id);
       } else {
@@ -91,7 +93,7 @@ var DB = {
     DB.writeSettingsObj(d.SettingsObj || {});
     DB.writeSeqObj(d.SeqObj || {});
     ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
-      'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'].forEach(function (k) {
+      'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'].forEach(function (k) {
       DB.writeObjects(k, DB.dedupeRows(k, d[k] || []));
     });
   }

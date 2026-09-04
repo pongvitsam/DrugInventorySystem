@@ -458,8 +458,9 @@ var ThDate = (function () {
   }
 
   function initAll() {
-    ['rcDate', 'rcExpiry', 'wdDate', 'rpFrom', 'rpTo'].forEach(initDateField);
+    ['rcDate', 'rcExpiry', 'wdDate', 'rpFrom', 'rpTo', 'stHistoryFrom', 'clEntryDate', 'clDayDate'].forEach(initDateField);
     initMonthField('rpMonth');
+    initMonthField('clMonth');
   }
 
   document.addEventListener('click', function () { closePop(); });

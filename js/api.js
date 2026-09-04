@@ -29,6 +29,7 @@ var SHEET_DEFS = {
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
   MonthlyRequests: ['monthKey', 'itemId', 'qty'],
+  ClimateLogs: ['id', 'date', 'slot', 'temperature', 'humidity', 'recordedBy', 'recordedAt', 'notes'],
   Seq: ['name', 'n']
 };
 
@@ -159,7 +160,11 @@ function callApi(name, payload) {
     login: apiLogin_,
     listUsers: apiListUsers_,
     addUser: apiAddUser_,
-    removeUser: apiRemoveUser_
+    removeUser: apiRemoveUser_,
+    listClimateLogs: apiListClimateLogs_,
+    saveClimateLog: apiSaveClimateLog_,
+    deleteClimateLog: apiDeleteClimateLog_,
+    climateReport: apiClimateReport_
   };
   if (!fns[name]) throw new Error('ไม่พบคำสั่ง: ' + name);
   var result = fns[name](payload || {});
@@ -1515,6 +1520,273 @@ function shouldCountMovement_(m) {
   return true;
 }
 
+function climateSlotLabel_(slot) {
+  return slot === 'pm' ? '16:00 น.' : '08:30 น.';
+}
+
+function apiListClimateLogs_(p) {
+  var from = toIsoDate_(p && p.from);
+  var to = toIsoDate_(p && p.to);
+  var rows = readObjects_('ClimateLogs').slice().filter(function (r) {
+    var d = toIsoDate_(r.date);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  }).sort(function (a, b) {
+    var da = String(a.date || '');
+    var db = String(b.date || '');
+    if (da !== db) return db.localeCompare(da);
+    return String(a.slot || '') === 'am' ? -1 : 1;
+  });
+  return { logs: rows };
+}
+
+function apiSaveClimateLog_(p) {
+  var date = toIsoDate_(p && p.date);
+  var slot = String((p && p.slot) || '').toLowerCase() === 'pm' ? 'pm' : 'am';
+  var temp = Number(p && p.temperature);
+  var hum = Number(p && p.humidity);
+  if (!date) throw new Error('กรุณาเลือกวันที่');
+  if (isNaN(temp) || temp < -20 || temp > 60) throw new Error('อุณหภูมิไม่ถูกต้อง (°C)');
+  if (isNaN(hum) || hum < 0 || hum > 100) throw new Error('ความชื้นไม่ถูกต้อง (%RH)');
+  var rows = readObjects_('ClimateLogs');
+  var existing = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (toIsoDate_(rows[i].date) === date && rows[i].slot === slot) {
+      existing = rows[i];
+      break;
+    }
+  }
+  var row = {
+    id: existing ? existing.id : nextId_('CL'),
+    date: date,
+    slot: slot,
+    temperature: String(Math.round(temp * 10) / 10),
+    humidity: String(Math.round(hum * 10) / 10),
+    recordedBy: String((p && p.recordedBy) || ''),
+    recordedAt: new Date().toISOString(),
+    notes: String((p && p.notes) || '')
+  };
+  if (existing) {
+    rows = rows.map(function (r) { return r.id === existing.id ? row : r; });
+  } else {
+    rows.push(row);
+  }
+  writeObjects_('ClimateLogs', rows);
+  return { ok: true, log: row };
+}
+
+function apiDeleteClimateLog_(p) {
+  var id = String((p && p.id) || '');
+  if (!id) throw new Error('ไม่พบรหัสรายการ');
+  var rows = readObjects_('ClimateLogs').filter(function (r) { return r.id !== id; });
+  writeObjects_('ClimateLogs', rows);
+  return { ok: true };
+}
+
+function apiClimateReport_(p) {
+  var mode = String((p && p.mode) || 'day');
+  var settings = readSettings_();
+  var logs = readObjects_('ClimateLogs').slice().sort(function (a, b) {
+    var da = String(a.date || '');
+    var db = String(b.date || '');
+    if (da !== db) return da.localeCompare(db);
+    return String(a.slot || '') === 'am' ? -1 : 1;
+  });
+
+  function statsOf(list) {
+    if (!list.length) {
+      return { count: 0, avgTemp: null, minTemp: null, maxTemp: null, avgHum: null, minHum: null, maxHum: null };
+    }
+    var temps = list.map(function (r) { return Number(r.temperature); }).filter(function (n) { return !isNaN(n); });
+    var hums = list.map(function (r) { return Number(r.humidity); }).filter(function (n) { return !isNaN(n); });
+    function avg(arr) {
+      if (!arr.length) return null;
+      return Math.round((arr.reduce(function (s, x) { return s + x; }, 0) / arr.length) * 10) / 10;
+    }
+    return {
+      count: list.length,
+      avgTemp: avg(temps),
+      minTemp: temps.length ? Math.min.apply(null, temps) : null,
+      maxTemp: temps.length ? Math.max.apply(null, temps) : null,
+      avgHum: avg(hums),
+      minHum: hums.length ? Math.min.apply(null, hums) : null,
+      maxHum: hums.length ? Math.max.apply(null, hums) : null
+    };
+  }
+
+  var points = [];
+  var title = '';
+  var tableRows = [];
+
+  if (mode === 'year') {
+    var year = String((p && p.year) || new Date().getFullYear());
+    title = 'ปี พ.ศ. ' + (Number(year) + 543);
+    var byMonth = {};
+    logs.forEach(function (r) {
+      var d = toIsoDate_(r.date);
+      if (!d || d.slice(0, 4) !== year) return;
+      var mk = d.slice(0, 7);
+      if (!byMonth[mk]) byMonth[mk] = [];
+      byMonth[mk].push(r);
+    });
+    for (var m = 1; m <= 12; m++) {
+      var mk2 = year + '-' + String(m).padStart(2, '0');
+      var list = byMonth[mk2] || [];
+      var st = statsOf(list);
+      var label = m + '/' + (Number(year) + 543);
+      points.push({
+        key: mk2,
+        label: label,
+        temperature: st.avgTemp,
+        humidity: st.avgHum,
+        count: st.count
+      });
+      if (st.count) {
+        tableRows.push({
+          label: label,
+          amTemp: '', amHum: '', pmTemp: '', pmHum: '',
+          avgTemp: st.avgTemp, avgHum: st.avgHum, count: st.count
+        });
+      }
+    }
+  } else if (mode === 'month') {
+    var monthKey = String((p && p.month) || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+      var now = new Date();
+      monthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    }
+    var y = Number(monthKey.slice(0, 4));
+    var mo = Number(monthKey.slice(5, 7));
+    title = 'เดือน ' + mo + ' พ.ศ. ' + (y + 543);
+    var daysInMonth = new Date(y, mo, 0).getDate();
+    var byDay = {};
+    logs.forEach(function (r) {
+      var d = toIsoDate_(r.date);
+      if (!d || d.slice(0, 7) !== monthKey) return;
+      if (!byDay[d]) byDay[d] = { am: null, pm: null };
+      byDay[d][r.slot === 'pm' ? 'pm' : 'am'] = r;
+    });
+    for (var day = 1; day <= daysInMonth; day++) {
+      var dKey = monthKey + '-' + String(day).padStart(2, '0');
+      var pair = byDay[dKey] || { am: null, pm: null };
+      var dayLogs = [pair.am, pair.pm].filter(Boolean);
+      var st2 = statsOf(dayLogs);
+      points.push({
+        key: dKey,
+        label: String(day),
+        temperature: st2.avgTemp,
+        humidity: st2.avgHum,
+        tempAm: pair.am ? Number(pair.am.temperature) : null,
+        tempPm: pair.pm ? Number(pair.pm.temperature) : null,
+        humAm: pair.am ? Number(pair.am.humidity) : null,
+        humPm: pair.pm ? Number(pair.pm.humidity) : null,
+        count: dayLogs.length
+      });
+      if (dayLogs.length) {
+        tableRows.push({
+          label: day + '/' + mo + '/' + (y + 543),
+          amTemp: pair.am ? pair.am.temperature : '—',
+          amHum: pair.am ? pair.am.humidity : '—',
+          pmTemp: pair.pm ? pair.pm.temperature : '—',
+          pmHum: pair.pm ? pair.pm.humidity : '—',
+          avgTemp: st2.avgTemp,
+          avgHum: st2.avgHum,
+          count: dayLogs.length
+        });
+      }
+    }
+  } else {
+    // day mode: last 14 days ending at selected date (or today)
+    var end = toIsoDate_(p && p.date) || todayIsoDate_();
+    var endDt = new Date(end + 'T12:00:00+07:00');
+    var startDt = new Date(endDt.getTime());
+    startDt.setDate(startDt.getDate() - 13);
+    var start = toIsoDate_(startDt);
+    title = 'รายวัน (14 วันล่าสุดถึง ' + end + ')';
+    var byDay2 = {};
+    logs.forEach(function (r) {
+      var d = toIsoDate_(r.date);
+      if (!d || d < start || d > end) return;
+      if (!byDay2[d]) byDay2[d] = { am: null, pm: null };
+      byDay2[d][r.slot === 'pm' ? 'pm' : 'am'] = r;
+    });
+    for (var i = 0; i < 14; i++) {
+      var cur = new Date(startDt.getTime());
+      cur.setDate(startDt.getDate() + i);
+      var dKey2 = toIsoDate_(cur);
+      var pair2 = byDay2[dKey2] || { am: null, pm: null };
+      var dayLogs2 = [pair2.am, pair2.pm].filter(Boolean);
+      var st3 = statsOf(dayLogs2);
+      var dParts = dKey2.split('-');
+      var label2 = Number(dParts[2]) + '/' + Number(dParts[1]);
+      points.push({
+        key: dKey2,
+        label: label2,
+        temperature: st3.avgTemp,
+        humidity: st3.avgHum,
+        tempAm: pair2.am ? Number(pair2.am.temperature) : null,
+        tempPm: pair2.pm ? Number(pair2.pm.temperature) : null,
+        humAm: pair2.am ? Number(pair2.am.humidity) : null,
+        humPm: pair2.pm ? Number(pair2.pm.humidity) : null,
+        count: dayLogs2.length
+      });
+      if (dayLogs2.length) {
+        tableRows.push({
+          label: label2 + '/' + (Number(dParts[0]) + 543),
+          amTemp: pair2.am ? pair2.am.temperature : '—',
+          amHum: pair2.am ? pair2.am.humidity : '—',
+          pmTemp: pair2.pm ? pair2.pm.temperature : '—',
+          pmHum: pair2.pm ? pair2.pm.humidity : '—',
+          avgTemp: st3.avgTemp,
+          avgHum: st3.avgHum,
+          count: dayLogs2.length
+        });
+      }
+    }
+  }
+
+  var allForStats = [];
+  points.forEach(function (pt) {
+    if (pt.tempAm != null) allForStats.push({ temperature: pt.tempAm, humidity: pt.humAm });
+    if (pt.tempPm != null) allForStats.push({ temperature: pt.tempPm, humidity: pt.humPm });
+    else if (pt.temperature != null && pt.count && mode === 'year') {
+      allForStats.push({ temperature: pt.temperature, humidity: pt.humidity });
+    }
+  });
+  // Prefer raw logs in range for accurate stats
+  var rangeLogs = [];
+  if (mode === 'year') {
+    var yr = String((p && p.year) || new Date().getFullYear());
+    rangeLogs = logs.filter(function (r) { return String(r.date || '').slice(0, 4) === yr; });
+  } else if (mode === 'month') {
+    var mk3 = String((p && p.month) || '').slice(0, 7);
+    rangeLogs = logs.filter(function (r) { return String(r.date || '').slice(0, 7) === mk3; });
+  } else {
+    var end2 = toIsoDate_(p && p.date) || todayIsoDate_();
+    var endDt2 = new Date(end2 + 'T12:00:00+07:00');
+    var startDt2 = new Date(endDt2.getTime());
+    startDt2.setDate(startDt2.getDate() - 13);
+    var start2 = toIsoDate_(startDt2);
+    rangeLogs = logs.filter(function (r) {
+      var d = toIsoDate_(r.date);
+      return d && d >= start2 && d <= end2;
+    });
+  }
+
+  return {
+    mode: mode,
+    title: title,
+    points: points,
+    tableRows: tableRows,
+    stats: statsOf(rangeLogs),
+    unitName: settings.unitName || '',
+    unitSub: settings.unitSub || '',
+    logoDataUrl: settings.logoDataUrl || ''
+  };
+}
+
 function isNearExpiry_(v, settings) {
   var iso = toIsoDate_(v);
   if (!iso) return false;
@@ -1817,7 +2089,9 @@ var MUTATION_APIS_ = {
   deleteTransfer: 1,
   importSeed: 1,
   addUser: 1,
-  removeUser: 1
+  removeUser: 1,
+  saveClimateLog: 1,
+  deleteClimateLog: 1
 };
 
 return {

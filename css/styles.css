@@ -143,6 +143,14 @@ h1, h2, h3, .brand h1, .login-card h1, .top h2 {
 .nav-ico[data-ico="withdraw"]::before { left: 10px; top: 5px; width: 2px; height: 12px; }
 .nav-ico[data-ico="withdraw"]::after { left: 5px; bottom: 7px; width: 12px; height: 2px; }
 .nav-ico[data-ico="reports"]::before { left: 5px; bottom: 5px; width: 3px; height: 8px; box-shadow: 5px -3px 0 rgba(255,255,255,.88), 10px 1px 0 rgba(255,255,255,.88); }
+.nav-ico[data-ico="climate"]::before {
+  left: 7px; top: 5px; width: 8px; height: 10px; border-radius: 6px 6px 3px 3px;
+  background: rgba(255,255,255,.88);
+}
+.nav-ico[data-ico="climate"]::after {
+  left: 9px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%;
+  background: rgba(125,255,201,.95);
+}
 .nav-ico[data-ico="import"]::before { inset: 6px; border-radius: 50%; border: 2px solid rgba(255,255,255,.9); background: transparent; }
 .nav-ico[data-ico="import"]::after { left: 10px; top: 7px; width: 2px; height: 7px; }
 .sidebar .grow { flex: 1; }
@@ -1345,6 +1353,12 @@ select option[value="__add__"] {
   .mob-nav-ico[data-ico="items"]::before { inset: 5px; border: 1.5px solid currentColor; background: transparent; border-radius: 3px; }
   .mob-nav-ico[data-ico="items"]::after  { left: 8px; right: 8px; top: 9px; height: 1.5px; box-shadow: 0 4px 0 currentColor; }
   .mob-nav-ico[data-ico="reports"]::before { left: 5px; bottom: 5px; width: 3px; height: 8px; box-shadow: 5px -3px 0 currentColor, 10px 1px 0 currentColor; }
+  .mob-nav-ico[data-ico="climate"]::before {
+    left: 7px; top: 5px; width: 8px; height: 10px; border-radius: 6px 6px 3px 3px; background: currentColor;
+  }
+  .mob-nav-ico[data-ico="climate"]::after {
+    left: 9px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .85;
+  }
   .mob-nav-ico[data-ico="import"]::before  { inset: 6px; border-radius: 50%; border: 2px solid currentColor; background: transparent; }
   .mob-nav-ico[data-ico="import"]::after   { left: 10px; top: 7px; width: 2px; height: 7px; }
   /* "more" icon — 3 dots */
@@ -1404,6 +1418,167 @@ select option[value="__add__"] {
   .mob-more-item:hover { background: var(--primary-soft); }
   .mob-more-item .mob-nav-ico {
     width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0;
+  }
+}
+
+/* ---- Climate (humidity / temperature) ---- */
+.cl-slot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.cl-slot-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(160deg, #fff 0%, #f3faf7 100%);
+}
+.cl-slot-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+.cl-slot-time {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--primary-deep);
+}
+.cl-slot-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.cl-slot-status.ok {
+  background: var(--primary-soft);
+  color: var(--primary-deep);
+}
+.cl-slot-status.pending {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.cl-chart-wrap { height: 320px; }
+.cl-print-sheet {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 12mm 12mm;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.cl-print-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--primary);
+  padding-bottom: 12px;
+}
+.cl-print-logo, .cl-print-logo-ph {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.cl-print-logo-ph {
+  background: linear-gradient(145deg, #3ecfad 0%, var(--primary) 55%, #0b6b8a 100%);
+}
+.cl-print-head h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  color: var(--primary-deep);
+}
+.cl-print-unit { margin: 0; font-weight: 600; }
+.cl-print-sub, .cl-print-period { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.cl-print-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cl-print-kpis > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: center;
+  background: #f7fbf9;
+}
+.cl-print-kpis b {
+  display: block;
+  font-size: 18px;
+  color: var(--primary-deep);
+  font-family: var(--display);
+}
+.cl-print-kpis span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cl-print-chart-wrap {
+  height: 220px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+}
+.cl-print-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+.cl-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.cl-print-table th, .cl-print-table td {
+  border: 1px solid #c9e0d7;
+  padding: 5px 6px;
+}
+.cl-print-table th {
+  background: #0b6b5b;
+  color: #fff;
+}
+.cl-print-foot {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  margin: 0;
+}
+@media (max-width: 768px) {
+  .cl-slot-grid { grid-template-columns: 1fr; }
+  .cl-print-kpis { grid-template-columns: 1fr 1fr; }
+  .cl-chart-wrap { height: 260px; }
+}
+@media print {
+  html.print-climate .sidebar,
+  html.print-climate .mob-nav,
+  html.print-climate .mob-more-bg,
+  html.print-climate .mob-more-sheet,
+  html.print-climate .toolbar,
+  html.print-climate .toast,
+  html.print-climate .btn,
+  html.print-climate .top,
+  html.print-climate .watermark { display: none !important; }
+  html.print-climate .app { display: block; }
+  html.print-climate .main { padding: 0; }
+  html.print-climate .page { display: none !important; }
+  html.print-climate #page-climate {
+    display: block !important;
+  }
+  html.print-climate #page-climate > .card:not(.cl-print-card) { display: none !important; }
+  html.print-climate .cl-print-card {
+    display: block !important;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+  html.print-climate .cl-print-card > .row { display: none !important; }
+  html.print-climate .cl-print-sheet {
+    border: none;
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
   }
 }
 

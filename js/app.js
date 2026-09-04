@@ -73,6 +73,9 @@ function showPage(id) {
     setReportRangeMode(STATE.reportRangeMode || 'month', true);
     setReportLookback(STATE.reportLookback != null ? STATE.reportLookback : 12);
   }
+  if (id === 'climate' && typeof ClimateUI !== 'undefined') {
+    ClimateUI.initPage();
+  }
 }
 
 document.querySelectorAll('.nav-btn').forEach(function (btn) {
@@ -2328,6 +2331,9 @@ function refreshActivePageViews_() {
   if (active.id === 'page-import') {
     loadLoginUsers();
     loadLowStockSettings();
+  }
+  if (active.id === 'page-climate' && typeof ClimateUI !== 'undefined') {
+    ClimateUI.initPage();
   }
 }
 

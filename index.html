@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=77">
+  <link rel="stylesheet" href="css/styles.css?v=78">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -49,6 +49,7 @@
       <button class="nav-btn" data-page="receive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังหลัก</button>
       <button class="nav-btn" data-page="withdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังหลัก</button>
       <button class="nav-btn" data-page="reports"><span class="nav-ico" data-ico="reports"></span>สรุปรายเดือน</button>
+      <button class="nav-btn" data-page="climate"><span class="nav-ico" data-ico="climate"></span>ความชื้น/อุณหภูมิ</button>
       <button class="nav-btn" data-page="import"><span class="nav-ico" data-ico="import"></span>ตั้งค่า / นำเข้า</button>
       <div class="grow"></div>
       <div class="user-box">
@@ -282,6 +283,87 @@
         </div>
       </section>
 
+      <section class="page" id="page-climate">
+        <div class="top">
+          <div>
+            <h2>ความชื้น / อุณหภูมิห้อง</h2>
+            <div class="sub">บันทึกวันละ 2 รอบ · 08:30 น. และ 16:00 น. · กราฟรายวัน/เดือน/ปี · Export PDF</div>
+          </div>
+          <button type="button" class="btn" onclick="ClimateUI.exportPdf()">Export PDF</button>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+          <h3>บันทึกรายวัน</h3>
+          <div class="row" style="align-items:flex-end;margin-bottom:12px">
+            <div class="field th-date-field" style="max-width:260px">
+              <label>วันที่บันทึก</label>
+              <input id="clEntryDate" type="hidden">
+              <button type="button" class="th-date-btn" data-for="clEntryDate">เลือกวันที่</button>
+            </div>
+            <button type="button" class="btn secondary" onclick="ClimateUI.loadTodaySlots()">โหลดข้อมูลวันนี้</button>
+          </div>
+          <div class="cl-slot-grid">
+            <div class="cl-slot-card">
+              <div class="cl-slot-head"><span class="cl-slot-time">08:30 น.</span><span id="clStatusAm" class="cl-slot-status pending">ยังไม่บันทึก</span></div>
+              <div class="row">
+                <div class="field"><label>อุณหภูมิ (°C)</label><input id="clTempAm" type="number" step="0.1" min="-20" max="60" placeholder="เช่น 25.5"></div>
+                <div class="field"><label>ความชื้น (%RH)</label><input id="clHumAm" type="number" step="0.1" min="0" max="100" placeholder="เช่น 55"></div>
+              </div>
+              <button type="button" class="btn" style="margin-top:10px;width:100%" onclick="ClimateUI.saveSlot('am')">บันทึก 08:30</button>
+            </div>
+            <div class="cl-slot-card">
+              <div class="cl-slot-head"><span class="cl-slot-time">16:00 น.</span><span id="clStatusPm" class="cl-slot-status pending">ยังไม่บันทึก</span></div>
+              <div class="row">
+                <div class="field"><label>อุณหภูมิ (°C)</label><input id="clTempPm" type="number" step="0.1" min="-20" max="60" placeholder="เช่น 27.0"></div>
+                <div class="field"><label>ความชื้น (%RH)</label><input id="clHumPm" type="number" step="0.1" min="0" max="100" placeholder="เช่น 60"></div>
+              </div>
+              <button type="button" class="btn" style="margin-top:10px;width:100%" onclick="ClimateUI.saveSlot('pm')">บันทึก 16:00</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+          <h3>กราฟแนวโน้ม</h3>
+          <div class="toolbar rp-toolbar" style="margin-bottom:10px">
+            <div class="rp-range-mode" id="clModeChips">
+              <button type="button" class="chip active" data-cl="day" onclick="ClimateUI.setMode('day')">รายวัน</button>
+              <button type="button" class="chip" data-cl="month" onclick="ClimateUI.setMode('month')">รายเดือน</button>
+              <button type="button" class="chip" data-cl="year" onclick="ClimateUI.setMode('year')">รายปี</button>
+            </div>
+            <div id="clDayWrap" class="field th-date-field" style="max-width:220px">
+              <label>ถึงวันที่</label>
+              <input id="clDayDate" type="hidden">
+              <button type="button" class="th-date-btn" data-for="clDayDate">เลือกวันที่</button>
+            </div>
+            <div id="clMonthWrap" class="field th-date-field" style="max-width:220px;display:none">
+              <label>เดือน</label>
+              <input id="clMonth" type="hidden">
+              <button type="button" class="th-date-btn" data-for="clMonth">เลือกเดือน</button>
+            </div>
+            <div id="clYearWrap" class="field" style="max-width:160px;display:none">
+              <label>ปี พ.ศ.</label>
+              <input id="clYear" type="number" min="2560" max="2600" step="1">
+            </div>
+            <button type="button" class="btn secondary" onclick="ClimateUI.loadReport()">ดูกราฟ</button>
+          </div>
+          <div class="cards" id="clStats" style="margin-bottom:12px"></div>
+          <div class="rp-chart-wrap cl-chart-wrap"><canvas id="clChart"></canvas></div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+          <h3>รายการ 30 วันล่าสุด</h3>
+          <div class="table-wrap"><table id="clRecentTable"></table></div>
+        </div>
+
+        <div class="card cl-print-card" id="clPrintCard">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h3 style="margin:0">ตัวอย่างรายงาน PDF</h3>
+            <button type="button" class="btn" onclick="ClimateUI.exportPdf()">พิมพ์ / บันทึก PDF</button>
+          </div>
+          <div id="clPrintOut" class="print-sheet cl-print-sheet" style="margin-top:12px"></div>
+        </div>
+      </section>
+
       <section class="page" id="page-import">
         <div class="top">
           <div>
@@ -402,6 +484,7 @@
       <div class="mob-more-handle"></div>
       <button class="mob-more-item" data-page="items" onclick="mobPickPage('items')"><span class="mob-nav-ico" data-ico="items" style="background:rgba(10,122,102,.12)"></span>ทะเบียนรายการ</button>
       <button class="mob-more-item" data-page="reports" onclick="mobPickPage('reports')"><span class="mob-nav-ico" data-ico="reports" style="background:rgba(10,122,102,.12)"></span>สรุปรายเดือน</button>
+      <button class="mob-more-item" data-page="climate" onclick="mobPickPage('climate')"><span class="mob-nav-ico" data-ico="climate" style="background:rgba(10,122,102,.12)"></span>ความชื้น/อุณหภูมิ</button>
       <button class="mob-more-item" data-page="import" onclick="mobPickPage('import')"><span class="mob-nav-ico" data-ico="import" style="background:rgba(10,122,102,.12)"></span>ตั้งค่า / นำเข้า</button>
       <button class="mob-more-item" onclick="closeMobMore(); doLogout()">ออกจากระบบ</button>
     </div>
@@ -465,14 +548,15 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=77"></script>
-  <script src="js/remote.js?v=77"></script>
-  <script src="js/api.js?v=77"></script>
-  <script src="js/options.js?v=77"></script>
-  <script src="js/thdate.js?v=77"></script>
-  <script src="js/seed.js?v=77"></script>
-  <script src="js/ocr.js?v=77"></script>
-  <script src="js/app.js?v=77"></script>
-  <script src="js/auth.js?v=77"></script>
+  <script src="js/db.js?v=78"></script>
+  <script src="js/remote.js?v=78"></script>
+  <script src="js/api.js?v=78"></script>
+  <script src="js/options.js?v=78"></script>
+  <script src="js/thdate.js?v=78"></script>
+  <script src="js/seed.js?v=78"></script>
+  <script src="js/ocr.js?v=78"></script>
+  <script src="js/climate.js?v=78"></script>
+  <script src="js/app.js?v=78"></script>
+  <script src="js/auth.js?v=78"></script>
 </body>
 </html>

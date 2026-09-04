@@ -16,12 +16,13 @@ var SHEET_DEFS = {
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
   MonthlyRequests: ['monthKey', 'itemId', 'qty'],
+  ClimateLogs: ['id', 'date', 'slot', 'temperature', 'humidity', 'recordedBy', 'recordedAt', 'notes'],
   Settings: ['key', 'value'],
   Seq: ['name', 'n']
 };
 
 var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
-  'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests'];
+  'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
 
 function doGet(e) {
   try {
