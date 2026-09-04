@@ -892,6 +892,7 @@ select option[value="__add__"] {
 }
 .low-stock-settings-wrap { max-height: min(420px, 50vh); overflow: auto; }
 .low-stock-input { text-align: right; }
+.wd-edit-banner {
   display: none;
   align-items: center;
   justify-content: space-between;

@@ -418,13 +418,13 @@ var RemoteDB = (function () {
     return false;
   }
 
-  function postImport_(force) {
+  function postImport_(force, exportOpts) {
     return fetchJson(baseUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         action: 'import',
-        data: DB.exportAll(),
+        data: DB.exportAll(exportOpts || {}),
         expectedRevision: force ? null : localRevision,
         force: !!force
       })
@@ -457,7 +457,13 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.resolve();
     if (syncing) return Promise.resolve();
     syncing = true;
-    return postImport_(!!opts.force).then(handleImportResult_).finally(function () {
+    var exportOpts = {};
+    if (opts.skipImages) exportOpts.skipImages = true;
+    if (opts.includeImages) exportOpts.includeImages = true;
+    if (opts.includeAllImages) exportOpts.includeAllImages = true;
+    // ค่าเริ่มต้น: ไม่ส่งรูปบิลทุกครั้ง (เร็ว) ยกเว้นเรียก includeImages
+    if (!opts.includeImages && !opts.includeAllImages) exportOpts.skipImages = true;
+    return postImport_(!!opts.force, exportOpts).then(handleImportResult_).finally(function () {
       syncing = false;
     });
   }
@@ -555,7 +561,7 @@ var RemoteDB = (function () {
 
   function pushLocal() {
     if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
-    return sync({ force: true });
+    return sync({ force: true, includeImages: true });
   }
 
   function pullRemote() {
@@ -675,7 +681,7 @@ var RemoteDB = (function () {
       }
       loaded = true;
       if (enabled()) {
-        return sync({ force: true }).then(function () { return info; });
+        return sync({ force: true, includeImages: true }).then(function () { return info; });
       }
       return info;
     });
@@ -698,7 +704,7 @@ var RemoteDB = (function () {
     applyDump_(data, false);
     loaded = true;
     lastSyncAction = 'imported-file';
-    if (enabled()) return sync({ force: true });
+    if (enabled()) return sync({ force: true, includeImages: true });
     return Promise.resolve();
   }
 
@@ -708,7 +714,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 72,
+    build: 73,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

@@ -528,10 +528,10 @@ var BillOcr = (function () {
           out.height = Math.round(canvas.height * scale);
           out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
         }
-        var q = 0.62;
+        var q = 0.55;
         imageDataUrl = out.toDataURL('image/jpeg', q);
-        while (imageDataUrl.length > 45000 && q > 0.35) {
-          q -= 0.08;
+        while (imageDataUrl.length > 28000 && q > 0.28) {
+          q -= 0.07;
           imageDataUrl = out.toDataURL('image/jpeg', q);
         }
       } catch (e) { imageDataUrl = ''; }

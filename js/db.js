@@ -88,21 +88,35 @@ var DB = {
     var o = DB.readReceiptImages();
     return o[String(id)] || '';
   },
-  exportAll: function () {
+  exportAll: function (opts) {
+    opts = opts || {};
     var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
     var out = {};
-    var imgs = DB.readReceiptImages();
+    var imgs = opts.skipImages ? {} : DB.readReceiptImages();
     keys.forEach(function (k) {
       if (k === 'SettingsObj') out[k] = DB.readSettingsObj();
       else if (k === 'SeqObj') out[k] = DB.readSeqObj();
       else if (k === 'Receipts') {
-        out[k] = (DB.readObjects('Receipts') || []).map(function (r) {
+        var rows = (DB.readObjects('Receipts') || []).map(function (r) {
           var copy = Object.assign({}, r);
-          var img = imgs[String(r.id)] || r.billImage || '';
-          if (img) copy.billImage = img;
-          else delete copy.billImage;
+          delete copy.billImage;
+          if (!opts.skipImages) {
+            var img = imgs[String(r.id)] || r.billImage || '';
+            if (img) copy.billImage = img;
+          }
           return copy;
         });
+        // จำกัดจำนวนรูปที่ส่งซิงก์ เพื่อไม่ให้ payload ใหญ่เกินไป
+        if (!opts.skipImages && !opts.includeAllImages) {
+          var withImg = rows.filter(function (r) { return r.billImage; })
+            .sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+          var keep = {};
+          withImg.slice(0, 12).forEach(function (r) { keep[String(r.id)] = 1; });
+          rows.forEach(function (r) {
+            if (r.billImage && !keep[String(r.id)]) delete r.billImage;
+          });
+        }
+        out[k] = rows;
       } else out[k] = DB.readObjects(k);
     });
     return out;

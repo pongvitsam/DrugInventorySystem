@@ -134,7 +134,7 @@ function applyBoot(b) {
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 72) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 73) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -1228,6 +1228,7 @@ function runBillOcr() {
     });
   }).then(function (parsed) {
     if (parsed.imageDataUrl) STATE.pendingBillImage = parsed.imageDataUrl;
+    else capturePendingBillImage_();
     STATE.ocrReview = (parsed.lines || []).map(function (l, i) {
       var row = Object.assign({ _id: 'ocr' + i }, l, { keep: true });
       syncOcrLinePricing(row);
@@ -1436,20 +1437,27 @@ function updateOcrField(i, key, value) {
   renderOcrReview();
 }
 
-function clearOcrReview() {
+function clearOcrReview(opts) {
+  opts = opts || {};
   STATE.ocrReview = [];
-  STATE.pendingBillImage = '';
+  if (!opts.keepImage) STATE.pendingBillImage = '';
   renderOcrReview();
   var preview = document.getElementById('ocrPreview');
-  if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+  if (preview && !opts.keepImage) {
+    preview.style.display = 'none';
+    preview.removeAttribute('src');
+  } else if (preview) {
+    preview.style.display = 'none';
+  }
   var status = document.getElementById('ocrStatus');
   if (status) { status.style.display = 'none'; status.textContent = ''; }
   var file = document.getElementById('ocrFile');
-  if (file) file.value = '';
+  if (file && !opts.keepImage) file.value = '';
 }
 
 function confirmOcrReview() {
   capturePendingBillImage_();
+  var keptImage = STATE.pendingBillImage;
   var rows = (STATE.ocrReview || []).filter(function (l) { return l.keep && String(l.name || '').trim() && Number(l.qty) > 0; });
   if (!rows.length) return toast('เลือกรายการที่ต้องการอย่างน้อย 1 รายการ');
   var kind = document.getElementById('rcKind').value;
@@ -1477,8 +1485,12 @@ function confirmOcrReview() {
     });
   });
   renderReceive();
-  clearOcrReview();
-  toast('ใส่รายการรับเข้าแล้ว ' + rows.length + ' รายการ — ตรวจวันหมดอายุแล้วบันทึกได้');
+  // สำคัญ: อย่าลบรูปบิลก่อนกดบันทึกรับเข้า
+  clearOcrReview({ keepImage: true });
+  STATE.pendingBillImage = keptImage || STATE.pendingBillImage || '';
+  toast('ใส่รายการรับเข้าแล้ว ' + rows.length + ' รายการ' +
+    (STATE.pendingBillImage ? ' · มีรูปบิลรอบันทึก' : '') +
+    ' — ตรวจวันหมดอายุแล้วบันทึกได้');
 }
 
 function loadWithdrawPick() {
@@ -2582,7 +2594,7 @@ function startApp() {
     toast('โหลดระบบไม่สำเร็จ กรุณารีเฟรชหน้า');
     return;
   }
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 72) {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.build || RemoteDB.build < 73) {
     setStatus('ไฟล์เว็บยังเป็นเวอร์ชันเก่า — กด Ctrl+Shift+R (หรือ Ctrl+F5) เพื่อโหลดใหม่', true);
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }
