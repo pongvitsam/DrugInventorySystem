@@ -67,7 +67,6 @@ function showPage(id) {
   if (id === 'import') {
     loadLoginUsers();
     loadLowStockSettings();
-    refreshDataCompare();
   }
   if (id === 'reports') {
     setReportTab(STATE.reportKind || 'month');
@@ -127,8 +126,6 @@ function applyBoot(b) {
       ? (typeof ThDate !== 'undefined' && ThDate.formatDateLong ? ThDate.formatDateLong(s.historyFromDate) : s.historyFromDate)
       : '-';
   }
-  var stGas = document.getElementById('stGasUrl');
-  if (stGas && typeof RemoteDB !== 'undefined') stGas.value = RemoteDB.getUrl() || s.gasWebAppUrl || '';
   var gasMsg = '';
   if (b.storageMode === 'gas') {
     gasMsg = 'เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
@@ -2351,95 +2348,6 @@ function refreshCloudData() {
   reloadFromRemote(false);
 }
 
-function saveGasUrl() {
-  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
-  var url = (document.getElementById('stGasUrl').value || '').trim();
-  var result = RemoteDB.setUrl(url);
-  if (result && result.ok === false) {
-    updateGasStatus(result.error || 'URL ไม่ถูกต้อง', true);
-    toast(result.error || 'URL ไม่ถูกต้อง');
-    return;
-  }
-  if (result && result.url) {
-    document.getElementById('stGasUrl').value = result.url;
-  }
-  if (url && RemoteDB.enabled()) {
-    api('saveSettings', { gasWebAppUrl: RemoteDB.getUrl() }).catch(function () {});
-    toast('บันทึก URL แล้ว — กำลังเชื่อมต่อ...');
-    updateGasStatus('กำลังเชื่อมต่อ Google (ข้าม CORS) — URL ต้องลงท้าย /exec และสิทธิ์ Anyone');
-    updateSyncIndicator('syncing');
-    loadBootstrap();
-  } else {
-    toast('ล้าง URL แล้ว — ใช้ข้อมูลในเครื่อง');
-    updateGasStatus('ใช้ข้อมูลในเบราว์เซอร์เครื่องนี้');
-    RemoteDB.stopPolling();
-    updateSyncIndicator('');
-    loadBootstrap();
-  }
-}
-
-function testGasConnection() {
-  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
-  var url = (document.getElementById('stGasUrl').value || '').trim();
-  var result = RemoteDB.setUrl(url);
-  if (result && result.ok === false) {
-    updateGasStatus(result.error || 'URL ไม่ถูกต้อง', true);
-    return toast(result.error || 'URL ไม่ถูกต้อง');
-  }
-  if (result && result.url) document.getElementById('stGasUrl').value = result.url;
-  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App ที่ลงท้าย /exec');
-  updateGasStatus('กำลังทดสอบ...');
-  RemoteDB.ping().then(function (r) {
-    if (r && r.ok) {
-      var extra = r.spreadsheetUrl ? ' — ชีต: ' + r.spreadsheetUrl : '';
-      updateGasStatus('เชื่อมต่อสำเร็จ — ' + (r.service || 'GAS') + ' v' + (r.version || '') + extra);
-      toast('เชื่อมต่อ Google สำเร็จ');
-    } else {
-      updateGasStatus((r && r.error) || 'เชื่อมต่อไม่สำเร็จ', true);
-    }
-  }).catch(function (e) {
-    updateGasStatus(e.message || String(e), true);
-    toast(e.message || String(e));
-  });
-}
-
-function refreshDataCompare() {
-  var el = document.getElementById('dataCompareOut');
-  if (!el || typeof RemoteDB === 'undefined' || !RemoteDB.describeSources) return;
-  el.textContent = 'กำลังเทียบชุดข้อมูล...';
-  RemoteDB.describeSources().then(function (info) {
-    var lines = (info.sources || []).map(function (s) {
-      var mark = (info.richest && info.richest.name === s.name) ? ' ← มากที่สุด' : '';
-      return s.label + ': ' + s.summary + mark;
-    });
-    el.textContent = lines.join('\n') || 'ยังไม่มีข้อมูลให้เทียบ';
-    el.style.whiteSpace = 'pre-line';
-  }).catch(function (e) {
-    el.textContent = e.message || String(e);
-  });
-}
-
-function restoreRichestData() {
-  if (typeof RemoteDB === 'undefined' || !RemoteDB.restoreRichest) {
-    return toast('โมดูล remote ไม่พร้อม');
-  }
-  if (!confirm('จะใช้ชุดข้อมูลที่มีใบรับ/ใบเบิกมากที่สุด (เครื่องนี้ · สำเนากู้ · Google) แล้วอัปโหลดเป็นชุดหลัก ดำเนินการต่อหรือไม่?')) return;
-  updateGasStatus('กำลังกู้ชุดข้อมูลที่มากที่สุด...');
-  updateSyncIndicator('syncing');
-  RemoteDB.restoreRichest().then(function (info) {
-    var name = info && info.richest ? info.richest.label : '';
-    var summary = info && info.richest ? info.richest.summary : '';
-    toast('กู้แล้วจาก: ' + name);
-    updateGasStatus('ใช้ชุดข้อมูลจาก ' + name + ' — ' + summary);
-    refreshDataCompare();
-    loadBootstrap();
-  }).catch(function (e) {
-    updateGasStatus(e.message || String(e), true);
-    toast(e.message || String(e));
-    updateSyncIndicator('online');
-  });
-}
-
 function updateBackupStatus(msg, isError) {
   var el = document.getElementById('backupStatus');
   if (!el) return;
@@ -2468,7 +2376,6 @@ function restoreFromJsonFile(input) {
           updateBackupStatus('อัปโหลดสำเร็จ — ข้อมูลถูกทับทั้งชุด ไม่ซ้อน');
           if (typeof updateGasStatus === 'function') updateGasStatus('อัปโหลดไฟล์สำรองแล้ว');
           input.value = '';
-          if (typeof refreshDataCompare === 'function') refreshDataCompare();
           loadBootstrap();
         });
       };
@@ -2495,36 +2402,6 @@ function restoreFromJsonFile(input) {
   reader.readAsText(file);
 }
 
-function pushGasData() {
-  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
-  saveGasUrl();
-  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
-  if (!confirm('อัปโหลดข้อมูลทั้งหมดจากเครื่องนี้ไปทับบน Google Sheets หรือไม่?')) return;
-  updateGasStatus('กำลังอัปโหลด...');
-  RemoteDB.pushLocal().then(function () {
-    updateGasStatus('อัปโหลดขึ้น Google แล้ว');
-    toast('อัปโหลดสำเร็จ');
-  }).catch(function (e) {
-    updateGasStatus(e.message || String(e), true);
-    toast(e.message || String(e));
-  });
-}
-
-function pullGasData() {
-  if (typeof RemoteDB === 'undefined') return toast('โมดูล remote ไม่พร้อม');
-  saveGasUrl();
-  if (!RemoteDB.enabled()) return toast('กรุณาใส่ URL Web App');
-  if (!confirm('ดึงข้อมูลจาก Google มาแทนข้อมูลในเครื่องนี้หรือไม่?')) return;
-  updateGasStatus('กำลังดึงข้อมูล...');
-  RemoteDB.pullRemote().then(function () {
-    updateGasStatus('ดึงข้อมูลจาก Google แล้ว');
-    toast('ดึงข้อมูลสำเร็จ');
-    loadBootstrap();
-  }).catch(function (e) {
-    updateGasStatus(e.message || String(e), true);
-    toast(e.message || String(e));
-  });
-}
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];

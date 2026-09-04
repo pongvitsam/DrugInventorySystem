@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=75">
+  <link rel="stylesheet" href="css/styles.css?v=76">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -330,23 +330,6 @@
           <button class="btn secondary" style="margin-top:10px" onclick="saveSettings()">บันทึกตั้งค่า</button>
         </div>
         <div class="card" style="margin-top:14px">
-          <h3>ฐานข้อมูล Google (GAS + Sheets)</h3>
-          <p class="muted">ใส่ URL จาก Deploy → Manage deployments ที่ลงท้าย <b>/exec</b> เท่านั้น (ห้ามใช้ลิงก์หน้าแก้ไขโค้ด /edit) · สิทธิ์ต้องเป็น Anyone</p>
-          <div class="field" style="margin-top:8px">
-            <label>URL Web App (GAS)</label>
-            <input id="stGasUrl" placeholder="https://script.google.com/macros/s/...../exec" autocomplete="off">
-          </div>
-          <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
-            <button type="button" class="btn secondary" onclick="saveGasUrl()">บันทึก URL</button>
-            <button type="button" class="btn secondary" onclick="testGasConnection()">ทดสอบการเชื่อมต่อ</button>
-            <button type="button" class="btn" onclick="restoreRichestData()">กู้ข้อมูลชุดที่มากที่สุด</button>
-            <button type="button" class="btn secondary" onclick="pushGasData()">อัปโหลดเครื่องนี้ขึ้น Google</button>
-            <button type="button" class="btn secondary" onclick="pullGasData()">ดึงจาก Google</button>
-          </div>
-          <p class="muted" id="dataCompareOut" style="margin-top:10px">กำลังเทียบชุดข้อมูล...</p>
-          <p class="muted" id="gasStatus" style="margin-top:10px"></p>
-        </div>
-        <div class="card" style="margin-top:14px">
           <h3>สำรอง / กู้คืนข้อมูลทั้งหมด</h3>
           <p class="muted">Export = ดาวน์โหลด JSON ทั้งระบบ · อัปโหลดกลับ = ทับข้อมูลเดิมทั้งชุด (อัปโหลดซ้ำไม่คูณสอง)</p>
           <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:flex-end">
@@ -474,14 +457,14 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=75"></script>
-  <script src="js/remote.js?v=75"></script>
-  <script src="js/api.js?v=75"></script>
-  <script src="js/options.js?v=75"></script>
-  <script src="js/thdate.js?v=75"></script>
-  <script src="js/seed.js?v=75"></script>
-  <script src="js/ocr.js?v=75"></script>
-  <script src="js/app.js?v=75"></script>
-  <script src="js/auth.js?v=75"></script>
+  <script src="js/db.js?v=76"></script>
+  <script src="js/remote.js?v=76"></script>
+  <script src="js/api.js?v=76"></script>
+  <script src="js/options.js?v=76"></script>
+  <script src="js/thdate.js?v=76"></script>
+  <script src="js/seed.js?v=76"></script>
+  <script src="js/ocr.js?v=76"></script>
+  <script src="js/app.js?v=76"></script>
+  <script src="js/auth.js?v=76"></script>
 </body>
 </html>
