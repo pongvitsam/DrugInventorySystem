@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=83">
+  <link rel="stylesheet" href="css/styles.css?v=84">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -95,8 +95,12 @@
         <div class="toolbar">
           <div class="field"><label>ค้นหา</label><input id="itemQ" oninput="renderItems()" placeholder="ชื่อยา / ขนาดบรรจุ"></div>
           <div class="field"><label>หมวด</label><select id="itemCatFilter" onchange="renderItems()"><option value="">ทั้งหมด</option></select></div>
+          <div class="field" style="flex:0"><label>&nbsp;</label><button type="button" class="btn secondary" onclick="exportItemsPdf()">Export PDF หมวดนี้</button></div>
         </div>
         <div class="card table-wrap table-wrap-full"><table id="itemTable"></table></div>
+        <div id="itemsPrintCard" class="card items-print-card" style="display:none" aria-hidden="true">
+          <div id="itemsPrintOut" class="print-sheet items-print-sheet"></div>
+        </div>
       </section>
 
       <section class="page" id="page-stock">
@@ -300,7 +304,7 @@
               <input id="clEntryDate" type="hidden">
               <button type="button" class="th-date-btn" data-for="clEntryDate">เลือกวันที่</button>
             </div>
-            <button type="button" class="btn secondary" onclick="ClimateUI.loadTodaySlots()">โหลดข้อมูลวันนี้</button>
+            <p class="muted" style="margin:0 0 8px">บันทึกแล้วสถานะอัปเดตทันที · เปลี่ยนวันที่แล้วโหลดให้อัตโนมัติ</p>
           </div>
           <div class="cl-slot-grid">
             <div class="cl-slot-card">
@@ -454,7 +458,7 @@
           <h3>ผู้ใช้ที่ Login ได้</h3>
           <p class="muted">Username เดียวก็ได้ (ไม่มีรหัสผ่าน)</p>
           <div class="row" style="align-items:flex-end">
-            <div class="field"><label>Username ใหม่</label><input id="newUserName" placeholder="ชื่อผู้ใช้"></div>
+            <div class="field"><label>Username ใหม่</label><input id="newUserName" placeholder="ชื่อผู้ใช้" onkeydown="if(event.key==='Enter'){event.preventDefault();addLoginUser();}"></div>
             <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addLoginUser()">เพิ่มผู้ใช้</button></div>
           </div>
           <div id="userList" style="margin-top:12px"></div>
@@ -557,15 +561,15 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=83"></script>
-  <script src="js/remote.js?v=83"></script>
-  <script src="js/api.js?v=83"></script>
-  <script src="js/options.js?v=83"></script>
-  <script src="js/thdate.js?v=83"></script>
-  <script src="js/seed.js?v=83"></script>
-  <script src="js/ocr.js?v=83"></script>
-  <script src="js/climate.js?v=83"></script>
-  <script src="js/app.js?v=83"></script>
-  <script src="js/auth.js?v=83"></script>
+  <script src="js/db.js?v=84"></script>
+  <script src="js/remote.js?v=84"></script>
+  <script src="js/api.js?v=84"></script>
+  <script src="js/options.js?v=84"></script>
+  <script src="js/thdate.js?v=84"></script>
+  <script src="js/seed.js?v=84"></script>
+  <script src="js/ocr.js?v=84"></script>
+  <script src="js/climate.js?v=84"></script>
+  <script src="js/app.js?v=84"></script>
+  <script src="js/auth.js?v=84"></script>
 </body>
 </html>

@@ -615,6 +615,80 @@ function renderItems() {
   }).join('');
   document.getElementById('itemTable').innerHTML = html || '<tr><td>ยังไม่มีรายการ</td></tr>';
 }
+
+function getFilteredItems_() {
+  var q = (document.getElementById('itemQ').value || '').toLowerCase();
+  var cat = document.getElementById('itemCatFilter').value;
+  return (STATE.items || []).filter(function (i) {
+    return i.active !== '0' &&
+      (!cat || i.category === cat) &&
+      (!q || (i.name + i.packSize + i.code).toLowerCase().indexOf(q) >= 0);
+  }).slice().sort(function (a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''), 'th');
+  });
+}
+
+function exportItemsPdf() {
+  var cat = document.getElementById('itemCatFilter').value;
+  var q = (document.getElementById('itemQ').value || '').trim();
+  var rows = getFilteredItems_();
+  if (!rows.length) return toast('ไม่มีรายการในหมวด/การค้นหานี้');
+  var settings = (STATE.boot && STATE.boot.settings) || {};
+  var catLabel = cat || 'ทุกหมวด';
+  var totalQty = 0;
+  var totalValue = 0;
+  rows.forEach(function (i) {
+    totalQty += Number(i.stockQty || 0);
+    totalValue += Number(i.stockValue || 0);
+  });
+  var body = rows.map(function (i, n) {
+    var qty = Number(i.stockQty || 0);
+    var val = Number(i.stockValue || 0);
+    var lots = (i.lots || []).map(function (l) {
+      var exp = l.expiryLabel || (l.expiry ? ThDate.formatDateLong(l.expiry) : 'ไม่ระบุ');
+      return l.qty + (l.packSize ? ' · ' + l.packSize : '') + ' · ' + exp;
+    }).join(' / ') || '—';
+    return '<tr>' +
+      '<td class="right">' + (n + 1) + '</td>' +
+      '<td>' + esc(i.code || '—') + '</td>' +
+      '<td>' + esc(i.name) + '</td>' +
+      '<td>' + esc(i.category || '') + '</td>' +
+      '<td>' + esc(formatItemPackLabel(i, i.lots || [])) + '</td>' +
+      '<td class="right">' + money(i.unitPrice) + '</td>' +
+      '<td class="right"><b>' + qty + '</b></td>' +
+      '<td class="right">' + money(val) + '</td>' +
+      '<td>' + esc(lots) + '</td>' +
+      '</tr>';
+  }).join('');
+  var filterNote = [];
+  if (cat) filterNote.push('หมวด: ' + cat);
+  if (q) filterNote.push('ค้นหา: ' + q);
+  var out = document.getElementById('itemsPrintOut');
+  out.innerHTML =
+    '<div class="items-print-head">' +
+    '<div><b>' + esc(settings.unitName || '') + '</b>' +
+    '<div>' + esc(settings.unitSub || '') + '</div>' +
+    '<h2 style="margin:8px 0 4px">สรุปทะเบียนยาและเวชภัณฑ์</h2>' +
+    '<div class="muted">' + esc(catLabel) +
+    (filterNote.length ? ' · ' + esc(filterNote.join(' · ')) : '') +
+    ' · ' + rows.length + ' รายการ</div></div></div>' +
+    '<div class="items-print-kpis">' +
+    '<div><b>' + rows.length + '</b><span>รายการ</span></div>' +
+    '<div><b>' + totalQty + '</b><span>คงเหลือรวม</span></div>' +
+    '<div><b>' + money(totalValue) + ' ฿</b><span>มูลค่ารวม</span></div>' +
+    '</div>' +
+    '<table class="items-print-table"><thead><tr>' +
+    '<th class="right">#</th><th>รหัส</th><th>ชื่อ</th><th>หมวด</th><th>บรรจุ</th>' +
+    '<th class="right">ราคา</th><th class="right">คงเหลือ</th><th class="right">มูลค่า</th><th>ล็อต / หมดอายุ</th>' +
+    '</tr></thead><tbody>' + body + '</tbody></table>' +
+    '<p class="items-print-foot">พิมพ์จากระบบคลังยา · ' + esc(new Date().toLocaleString('th-TH')) + '</p>';
+
+  document.documentElement.classList.add('print-items');
+  var done = function () { document.documentElement.classList.remove('print-items'); };
+  window.addEventListener('afterprint', done, { once: true });
+  window.print();
+  setTimeout(done, 1000);
+}
 function openItem(id) {
   var it = id ? (STATE.items || []).filter(function (x) { return x.id === id; })[0] : {};
   document.getElementById('itId').value = it.id || '';
@@ -2537,22 +2611,46 @@ function exportBackup() {
 function loadLoginUsers() {
   api('listUsers').then(function (r) {
     var users = r.users || [];
-    var html = users.map(function (u) {
-      var safe = esc(u).replace(/'/g, "\\'");
-      return '<div class="user-row"><span>' + esc(u) + '</span><button class="btn ghost" onclick="removeLoginUser(\'' + safe + '\')">ลบ</button></div>';
+    var html = users.map(function (u, idx) {
+      return '<div class="user-row"><span>' + esc(u) + '</span><button type="button" class="btn ghost" data-user-idx="' + idx + '">ลบ</button></div>';
     }).join('');
-    document.getElementById('userList').innerHTML = html || '<p class="muted">ยังไม่มีผู้ใช้</p>';
+    var box = document.getElementById('userList');
+    box.innerHTML = html || '<p class="muted">ยังไม่มีผู้ใช้</p>';
+    box.querySelectorAll('[data-user-idx]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var i = Number(btn.getAttribute('data-user-idx'));
+        if (!isNaN(i) && users[i]) removeLoginUser(users[i]);
+      });
+    });
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
 function addLoginUser() {
   var name = (document.getElementById('newUserName').value || '').trim();
   if (!name) return toast('กรุณาใส่ Username');
-  api('addUser', { username: name }).then(function () {
+  if (name.length < 2) return toast('Username สั้นเกินไป (อย่างน้อย 2 ตัวอักษร)');
+  var btn = document.querySelector('#page-settings button[onclick="addLoginUser()"]');
+  if (btn) btn.disabled = true;
+  api('addUser', { username: name }).then(function (r) {
     document.getElementById('newUserName').value = '';
     toast('เพิ่มผู้ใช้แล้ว');
-    loadLoginUsers();
-  }).catch(function (e) { toast(e.message || String(e)); });
+    if (r && r.users) {
+      var box = document.getElementById('userList');
+      var users = r.users || [];
+      box.innerHTML = users.map(function (u, idx) {
+        return '<div class="user-row"><span>' + esc(u) + '</span><button type="button" class="btn ghost" data-user-idx="' + idx + '">ลบ</button></div>';
+      }).join('') || '<p class="muted">ยังไม่มีผู้ใช้</p>';
+      box.querySelectorAll('[data-user-idx]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var i = Number(b.getAttribute('data-user-idx'));
+          if (!isNaN(i) && users[i]) removeLoginUser(users[i]);
+        });
+      });
+    } else {
+      loadLoginUsers();
+    }
+  }).catch(function (e) { toast(e.message || String(e)); })
+    .then(function () { if (btn) btn.disabled = false; });
 }
 
 function removeLoginUser(name) {

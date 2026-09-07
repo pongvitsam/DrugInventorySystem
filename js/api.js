@@ -246,7 +246,12 @@ function parseUsers_(settings) {
     var raw = settings.loginUsers;
     if (!raw) return ['Napatsorn'];
     var arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return Array.isArray(arr) && arr.length ? arr : ['Napatsorn'];
+    if (typeof arr === 'string') {
+      try { arr = JSON.parse(arr); } catch (e2) { arr = [arr]; }
+    }
+    if (!Array.isArray(arr)) return ['Napatsorn'];
+    var cleaned = arr.map(function (u) { return String(u || '').trim(); }).filter(Boolean);
+    return cleaned.length ? cleaned : ['Napatsorn'];
   } catch (e) {
     return ['Napatsorn'];
   }
@@ -268,7 +273,7 @@ function apiLogin_(p) {
 }
 
 function apiAddUser_(p) {
-  var name = String(p.username || '').trim();
+  var name = String(p.username || '').trim().replace(/\s+/g, ' ');
   if (!name) throw new Error('กรุณาใส่ Username');
   if (name.length < 2) throw new Error('Username สั้นเกินไป');
   var users = parseUsers_(readSettings_());
@@ -2135,7 +2140,13 @@ return {
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
-          return RemoteDB.sync(syncOpts).then(function () { return result; });
+          // คืนผลทันทีหลังบันทึกในเครื่อง — ซิงก์พื้นหลัง (คิวใน RemoteDB.sync)
+          RemoteDB.sync(syncOpts).catch(function (err) {
+            if (typeof toast === 'function') {
+              toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
+            }
+          });
+          return result;
         });
       }
       return Promise.resolve().then(run);

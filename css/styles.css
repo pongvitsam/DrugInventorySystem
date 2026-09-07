@@ -1666,3 +1666,84 @@ select option[value="__add__"] {
   box-shadow: 0 8px 24px rgba(4, 40, 35, 0.08);
   box-sizing: border-box;
 }
+
+.items-print-card { display: none; }
+.items-print-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+.items-print-kpis > div {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.items-print-kpis b {
+  display: block;
+  font-size: 18px;
+  color: var(--primary-ink, #065649);
+}
+.items-print-kpis span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.items-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.items-print-table th,
+.items-print-table td {
+  border: 1px solid #c5d5cf;
+  padding: 5px 6px;
+  vertical-align: top;
+}
+.items-print-table th {
+  background: #e8f3ef;
+  text-align: left;
+}
+.items-print-foot {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+@media print {
+  html.print-items .sidebar,
+  html.print-items .mob-nav,
+  html.print-items .mob-more-bg,
+  html.print-items .mob-more-sheet,
+  html.print-items .toolbar,
+  html.print-items .toast,
+  html.print-items .btn,
+  html.print-items .top,
+  html.print-items .watermark { display: none !important; }
+  html.print-items .app { display: block; }
+  html.print-items .main { padding: 0; }
+  html.print-items .page { display: none !important; }
+  html.print-items #page-items {
+    display: block !important;
+  }
+  html.print-items #page-items > .card:not(.items-print-card),
+  html.print-items #page-items > .table-wrap { display: none !important; }
+  html.print-items .items-print-card {
+    display: block !important;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+  }
+  html.print-items .items-print-sheet {
+    border: none;
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+  html.print-items .items-print-kpis > div {
+    break-inside: avoid;
+  }
+  html.print-items .items-print-table { font-size: 11px; }
+}

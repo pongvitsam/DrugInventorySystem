@@ -406,12 +406,44 @@ var RemoteDB = (function () {
     return !imported && items.length === 0 && !hasRealActivity_(fp);
   }
 
+  function mergeLoginUsersInto_(data) {
+    if (!data) return data;
+    data.SettingsObj = data.SettingsObj || {};
+    try {
+      var localRaw = (DB.readSettingsObj() || {}).loginUsers;
+      var remoteRaw = data.SettingsObj.loginUsers;
+      var localArr = [];
+      var remoteArr = [];
+      try {
+        localArr = typeof localRaw === 'string' ? JSON.parse(localRaw || '[]') : (localRaw || []);
+      } catch (e1) { localArr = []; }
+      try {
+        remoteArr = typeof remoteRaw === 'string' ? JSON.parse(remoteRaw || '[]') : (remoteRaw || []);
+      } catch (e2) { remoteArr = []; }
+      if (!Array.isArray(localArr)) localArr = [];
+      if (!Array.isArray(remoteArr)) remoteArr = [];
+      if (!localArr.length) return data;
+      var seen = {};
+      var merged = [];
+      localArr.concat(remoteArr).forEach(function (u) {
+        var name = String(u || '').trim();
+        if (!name) return;
+        var key = name.toLowerCase();
+        if (seen[key]) return;
+        seen[key] = 1;
+        merged.push(name);
+      });
+      if (merged.length) data.SettingsObj.loginUsers = JSON.stringify(merged);
+    } catch (e) { /* ignore */ }
+    return data;
+  }
+
   function applyRemotePayload_(res, force) {
     if (!res) return false;
     applyRevision_(res.revision);
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
-      DB.importAll(res.data || {});
+      DB.importAll(mergeLoginUsersInto_(res.data || {}));
       resetApiCaches_();
       return true;
     }
@@ -452,20 +484,26 @@ var RemoteDB = (function () {
     applyRevision_(res.revision);
   }
 
+  var syncChain_ = Promise.resolve();
+
   function sync(opts) {
     opts = opts || {};
     if (!enabled()) return Promise.resolve();
-    if (syncing) return Promise.resolve();
-    syncing = true;
-    var exportOpts = {};
-    if (opts.skipImages) exportOpts.skipImages = true;
-    if (opts.includeImages) exportOpts.includeImages = true;
-    if (opts.includeAllImages) exportOpts.includeAllImages = true;
-    // ค่าเริ่มต้น: ไม่ส่งรูปบิลทุกครั้ง (เร็ว) ยกเว้นเรียก includeImages
-    if (!opts.includeImages && !opts.includeAllImages) exportOpts.skipImages = true;
-    return postImport_(!!opts.force, exportOpts).then(handleImportResult_).finally(function () {
-      syncing = false;
-    });
+    // คิวซิงก์แทนการข้าม — กันบันทึกผู้ใช้/ความชื้นหายตอน sync ค้าง
+    var job = function () {
+      syncing = true;
+      var exportOpts = {};
+      if (opts.skipImages) exportOpts.skipImages = true;
+      if (opts.includeImages) exportOpts.includeImages = true;
+      if (opts.includeAllImages) exportOpts.includeAllImages = true;
+      // ค่าเริ่มต้น: ไม่ส่งรูปบิลทุกครั้ง (เร็ว) ยกเว้นเรียก includeImages
+      if (!opts.includeImages && !opts.includeAllImages) exportOpts.skipImages = true;
+      return postImport_(!!opts.force, exportOpts).then(handleImportResult_).finally(function () {
+        syncing = false;
+      });
+    };
+    syncChain_ = syncChain_.then(job, job);
+    return syncChain_;
   }
 
   function fetchAndApplyExport_() {
@@ -714,7 +752,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 73,
+    build: 84,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

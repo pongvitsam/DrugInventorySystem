@@ -117,10 +117,17 @@ var ClimateUI = (function () {
       temperature: temperature,
       humidity: humidity,
       recordedBy: recordedBy
-    }).then(function () {
+    }).then(function (r) {
+      // แสดงสถานะทันทีจากผลบันทึก — ไม่ต้องกดโหลดข้อมูลวันนี้
+      fillSlotForm_(slot, (r && r.log) || {
+        temperature: temperature,
+        humidity: humidity,
+        recordedBy: recordedBy,
+        slot: slot
+      });
       if (typeof toast === 'function') toast('บันทึก ' + (slot === 'pm' ? '16:00' : '08:30') + ' แล้ว');
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
-      loadTodaySlots();
+      renderRecentTable_();
       loadReport();
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
