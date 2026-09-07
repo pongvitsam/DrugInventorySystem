@@ -143,7 +143,9 @@ var ClimateUI = (function () {
       }
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       renderRecentTable_();
-      loadReport();
+      // กราฟ/รายงานอัปเดตทีหลัง — ไม่บล็อกการแสดงสถานะ
+      clearTimeout(saveSlot._repTimer);
+      saveSlot._repTimer = setTimeout(loadReport, 400);
     }).catch(function (e) {
       // ถ้าบันทึกไม่สำเร็จ โหลดสถานะจริงกลับ
       loadTodaySlots();

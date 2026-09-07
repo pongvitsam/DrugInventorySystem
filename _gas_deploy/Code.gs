@@ -26,21 +26,50 @@ var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'Tr
 
 function doGet(e) {
   try {
-    var action = String((e && e.parameter && e.parameter.action) || 'ping').toLowerCase();
+    var p = (e && e.parameter) || {};
+    if (String(p.bridge || '') === '1') {
+      return serveBridge_(p);
+    }
+    var action = String(p.action || 'ping').toLowerCase();
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 2 });
+      return json_({ ok: true, service: 'DrugInventoryGAS', version: 3 });
     }
     if (action === 'meta') {
       return json_(getMeta_());
     }
     if (action === 'export') {
-      return json_(exportAll_());
+      var slim = String(p.slim || '') === '1';
+      return json_(exportAll_({ slim: slim }));
     }
     return json_({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return json_({ ok: false, error: String(err.message || err) });
   }
 }
+
+function serveBridge_(p) {
+  var action = String(p.action || 'ping').toLowerCase();
+  var slim = String(p.slim || '') === '1';
+  var payload;
+  try {
+    if (action === 'meta') payload = getMeta_();
+    else if (action === 'export') payload = exportAll_({ slim: slim });
+    else payload = { ok: true, service: 'DrugInventoryGAS', version: 3 };
+  } catch (err) {
+    payload = { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+  var t = HtmlService.createTemplateFromFile('Bridge');
+  t.payloadJson = JSON.stringify(payload);
+  t.reqIdJson = JSON.stringify(String(p.reqId || ''));
+  t.actionJson = JSON.stringify(action);
+  return t.evaluate()
+    .setTitle('DrugInventory bridge')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function gasExport() { return exportAll_({ slim: true }); }
+function gasMeta() { return getMeta_(); }
+function gasPing() { return { ok: true, service: 'DrugInventoryGAS', version: 3 }; }
 
 function doPost(e) {
   try {
@@ -177,7 +206,8 @@ function getMeta_() {
   };
 }
 
-function exportAll_() {
+function exportAll_(opts) {
+  opts = opts || {};
   var ss = getSpreadsheet_();
   var settings = readSettingsObj_(ss);
   var data = {
@@ -187,7 +217,7 @@ function exportAll_() {
   DATA_KEYS_.forEach(function (name) {
     data[name] = readSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name]);
   });
-  if (data.Receipts && data.Receipts.length) {
+  if (!opts.slim && data.Receipts && data.Receipts.length) {
     var props = PropertiesService.getScriptProperties();
     data.Receipts.forEach(function (r) {
       if (!r || !r.id) return;

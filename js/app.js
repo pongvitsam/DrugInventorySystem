@@ -58,6 +58,7 @@ function showPage(id) {
   if (id === 'receive') {
     loadReceipts();
     updateReceiptEditUI();
+    ensureOcrLoaded_().catch(function () {});
     if (!STATE.items || !STATE.items.length) loadItems();
     else initItemOptionSelects(STATE.items);
   }
@@ -74,8 +75,10 @@ function showPage(id) {
     setReportRangeMode(STATE.reportRangeMode || 'month', true);
     setReportLookback(STATE.reportLookback != null ? STATE.reportLookback : 12);
   }
-  if (id === 'climate' && typeof ClimateUI !== 'undefined') {
-    ClimateUI.initPage();
+  if (id === 'climate') {
+    ensureClimateLoaded_().then(function () {
+      if (typeof ClimateUI !== 'undefined') ClimateUI.initPage();
+    }).catch(function (e) { toast(e.message || String(e)); });
   }
 }
 
@@ -134,7 +137,7 @@ function applyBoot(b) {
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 88) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 90) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+F5 เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -250,9 +253,28 @@ function refreshStockCache(cb) {
 function refreshAfterMutation() {
   clearTimeout(STATE.refreshTimer);
   STATE.refreshTimer = setTimeout(function () {
+    // เบา: อัปเดตแดชบอร์ด + สต็อกแคช ไม่ refill ฟอร์มตั้งค่าทั้งหน้า
     refreshStockCache();
-    api('bootstrap').then(function (b) { applyBoot(b); });
-  }, 280);
+    api('bootstrap').then(function (b) {
+      applyBootLight_(b);
+    }).catch(function () {});
+  }, 120);
+}
+
+function applyBootLight_(b) {
+  if (!b) return;
+  STATE.boot = b;
+  var s = b.settings || {};
+  var modeLabel = b.storageMode === 'gas' ? '' : ' · เครื่องนี้';
+  var brandSub = document.getElementById('brandSub');
+  if (brandSub) brandSub.textContent = (s.unitName || '') + ' · ' + (s.unitSub || '') + modeLabel;
+  var dashSub = document.getElementById('dashSub');
+  if (dashSub) dashSub.textContent = s.unitName || '';
+  if (b.categories && b.categories.length) {
+    fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories), true);
+    fillSelect('wdCatFilter', ['ทั้งหมด'].concat(b.categories), true);
+  }
+  renderDash(b);
 }
 function deferWarmCaches_() {
   var run = function () {
@@ -304,12 +326,13 @@ function loadBootstrap() {
       return Promise.resolve();
     }
     if (gasOn) {
-      setStatus('กำลังซิงก์จาก Google Sheets...');
       deferWarmCaches_();
       return Promise.resolve();
     }
     setStatus('กำลังนำเข้ายาและเวชภัณฑ์จากไฟล์เดิม กรุณารอสักครู่...');
-    return api('importSeed', { force: false }).then(function (r) {
+    return ensureSeedLoaded_().then(function () {
+      return api('importSeed', { force: false });
+    }).then(function (r) {
       toast(r.message || 'นำเข้าแล้ว');
       return api('bootstrap').then(function (b2) {
         applyBoot(b2);
@@ -319,32 +342,16 @@ function loadBootstrap() {
     });
   }
 
-  // เชื่อม Google Sheets แล้ว: ดึงจาก Sheet ก่อน แล้วค่อยแสดง (Sheet เป็นต้นทาง)
-  if (gasOn) {
-    setStatus('กำลังดึงข้อมูลจาก Google Sheets...');
-    updateSyncIndicator('syncing');
-    return RemoteDB.ensureLoaded().then(function () {
-      applyRemoteSyncToasts_();
-      return api('bootstrap').then(function (b) {
-        return paint(b).then(function () {
-          setStatus('');
-          updateSyncIndicator('');
-          updateGasStatus('ดึงจาก Google Sheets แล้ว — Sheet เป็นต้นทาง');
-          if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
-        });
-      });
-    }).catch(function (e) {
-      updateSyncIndicator('');
-      var msg = (e && e.message) ? e.message : String(e);
-      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ: ' + msg, true);
-      updateGasStatus('ดึงจาก Google ไม่สำเร็จ — ไม่ใช้ข้อมูลเก่าในเครื่องทับ Sheet', true);
-      toast(msg);
-    });
-  }
-
-  setStatus('กำลังโหลดข้อมูล...');
+  // แสดงจากแคชในเครื่องทันที แล้วค่อยเช็ค/ดึง Sheet พื้นหลัง (Sheet ยังเป็นต้นทางเมื่อมี revision ใหม่)
+  setStatus(gasOn ? 'กำลังแสดงข้อมูล...' : 'กำลังโหลดข้อมูล...');
   return api('bootstrap').then(function (b) {
-    return paint(b);
+    return paint(b).then(function () {
+      setStatus('');
+      if (!gasOn) return Promise.resolve();
+      updateSyncIndicator('syncing');
+      updateGasStatus('กำลังตรวจ Google Sheets...');
+      return syncGoogleInBackground_();
+    });
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
@@ -362,8 +369,10 @@ function applyRemoteSyncToasts_() {
     toast('นำเข้าจากไฟล์สำรองแล้ว');
     updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
   } else if (syncAction === 'pulled') {
-    toast('ดึงข้อมูลจาก Google Sheets แล้ว');
+    toast('อัปเดตจาก Google Sheets แล้ว');
     updateGasStatus('ดึงจาก Google Sheets แล้ว — Sheet เป็นต้นทาง');
+  } else if (syncAction === 'cached') {
+    updateGasStatus('Sheet เป็นต้นทาง · ใช้แคชล่าสุด (เร็ว)');
   } else if (syncAction === 'restored') {
     toast('กู้จากสำเนาในเครื่องแล้ว');
   }
@@ -375,21 +384,37 @@ function syncGoogleInBackground_() {
   return RemoteDB.ensureLoaded().then(function () {
     applyRemoteSyncToasts_();
     return api('bootstrap').then(function (b2) {
-      applyBoot(b2);
+      applyBootLight_(b2);
       setStatus('');
       refreshActivePageViews_();
       refreshStockCache();
       updateSyncIndicator('');
+      updateGasStatus('Sheet เป็นต้นทาง · พร้อมใช้งาน');
       if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
     });
-  }).catch(function () {
+  }).catch(function (e) {
     updateSyncIndicator('');
     setStatus('');
-    updateGasStatus('ดึงจาก Google ไม่สำเร็จ', true);
+    updateGasStatus('ตรวจ Google ไม่สำเร็จ — ใช้แคชล่าสุดไปก่อน', true);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
     }
   });
+}
+
+function ensureSeedLoaded_() {
+  if (typeof getSeedMedicine === 'function') return Promise.resolve();
+  return loadScriptOnce_('js/seed.js?v=90');
+}
+
+function ensureOcrLoaded_() {
+  if (typeof BillOcr !== 'undefined') return Promise.resolve();
+  return loadScriptOnce_('js/ocr.js?v=90');
+}
+
+function ensureClimateLoaded_() {
+  if (typeof ClimateUI !== 'undefined') return Promise.resolve();
+  return loadScriptOnce_('js/climate.js?v=90');
 }
 
 function fillSelect(id, arr, withBlank) {
@@ -1315,7 +1340,9 @@ function runBillOcr() {
   });
 
   chain.then(function (items) {
-    return ensureTesseractJs_().then(function () {
+    return ensureOcrLoaded_().then(function () {
+      return ensureTesseractJs_();
+    }).then(function () {
       return BillOcr.scanFile(file, items);
     });
   }).then(function (parsed) {
@@ -2359,7 +2386,9 @@ function doImport(force) {
   if (force && !confirm('จะล้างสต็อกแล้วดึงจากไฟล์เดิมใหม่ ดำเนินการต่อหรือไม่?')) return;
   document.getElementById('btnImport').disabled = true;
   document.getElementById('importMsg').textContent = 'กำลังนำเข้า อาจใช้เวลาสักครู่...';
-  api('importSeed', { force: force }).then(function (r) {
+  ensureSeedLoaded_().then(function () {
+    return api('importSeed', { force: force });
+  }).then(function (r) {
     document.getElementById('importMsg').textContent = r.message || JSON.stringify(r);
     toast(r.message || 'เสร็จแล้ว');
     loadBootstrap();
@@ -2512,8 +2541,10 @@ function refreshActivePageViews_() {
     loadLoginUsers();
     loadLowStockSettings();
   }
-  if (active.id === 'page-climate' && typeof ClimateUI !== 'undefined') {
-    ClimateUI.initPage();
+  if (active.id === 'page-climate') {
+    ensureClimateLoaded_().then(function () {
+      if (typeof ClimateUI !== 'undefined') ClimateUI.initPage();
+    }).catch(function () {});
   }
 }
 

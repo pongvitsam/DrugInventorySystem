@@ -7,7 +7,7 @@ var RemoteDB = (function () {
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var HISTORY_CUTOFF_ = '2026-09-01';
-  var POLL_MS = 12000;
+  var POLL_MS = 20000;
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
   var CHUNK_CHARS_ = 8000;
   var loaded = false;
@@ -126,28 +126,32 @@ var RemoteDB = (function () {
   }
 
   function saveSafetyBackup_() {
-    var data = DB.exportAll();
-    var fp = fingerprint_(data);
-    if (!hasLocalData_() && !hasRealActivity_(fp)) return;
-    var payload = { savedAt: new Date().toISOString(), fingerprint: fp, data: data };
-    try {
-      localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
-    } catch (e) {
+    var run = function () {
+      var data = DB.exportAll();
+      var fp = fingerprint_(data);
+      if (!hasLocalData_() && !hasRealActivity_(fp)) return;
+      var payload = { savedAt: new Date().toISOString(), fingerprint: fp, data: data };
       try {
-        payload.data = {
-          SettingsObj: data.SettingsObj,
-          SeqObj: data.SeqObj,
-          Stock: data.Stock,
-          Receipts: data.Receipts,
-          ReceiptLines: data.ReceiptLines,
-          Transfers: data.Transfers,
-          TransferLines: data.TransferLines,
-          Movements: data.Movements
-        };
-        payload.slim = true;
         localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
-      } catch (e2) { /* ignore quota */ }
-    }
+      } catch (e) {
+        try {
+          payload.data = {
+            SettingsObj: data.SettingsObj,
+            SeqObj: data.SeqObj,
+            Stock: data.Stock,
+            Receipts: data.Receipts,
+            ReceiptLines: data.ReceiptLines,
+            Transfers: data.Transfers,
+            TransferLines: data.TransferLines,
+            Movements: data.Movements
+          };
+          payload.slim = true;
+          localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
+        } catch (e2) { /* ignore quota */ }
+      }
+    };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 4000 });
+    else setTimeout(run, 0);
   }
 
   function applyDump_(data, slim) {
@@ -471,7 +475,8 @@ var RemoteDB = (function () {
   }
 
   function fetchAndApplyExport_() {
-    var url = baseUrl() + '?action=export&t=' + Date.now();
+    // slim=1 ข้ามรูปบิล — โหลดเร็วขึ้นมาก (รูปยังอยู่ในเครื่องแยก)
+    var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
@@ -501,7 +506,22 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.resolve(false);
     if (loaded) return Promise.resolve(true);
     if (loadPromise) return loadPromise;
-    // เปิดแอป / โหลดครั้งแรก = ดึงจาก Sheet เสมอ
+    // ถ้า revision ยังเท่า Sheet → ใช้แคชในเครื่อง (เป็น snapshot ของ Sheet ล่าสุด) ไม่ export ทั้งชุด
+    if (localRevision > 0 && hasLocalData_()) {
+      loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
+        if (meta && meta.ok && Number(meta.revision) <= localRevision) {
+          loaded = true;
+          lastSyncAction = 'cached';
+          return true;
+        }
+        return fetchAndApplyExport_();
+      }).catch(function () {
+        return fetchAndApplyExport_();
+      }).finally(function () {
+        loadPromise = null;
+      });
+      return loadPromise;
+    }
     loadPromise = fetchAndApplyExport_().finally(function () {
       loadPromise = null;
     });
@@ -515,7 +535,7 @@ var RemoteDB = (function () {
       if (!meta || !meta.ok) return { changed: false };
       var remoteRev = Number(meta.revision) || 0;
       if (remoteRev <= localRevision) return { changed: false, revision: localRevision };
-      return fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (res) {
+      return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (res) {
         if (!res || !res.ok) return { changed: false };
         // Sheet ใหม่กว่า — ดึงทับเครื่องเสมอ ไม่ push local ทับ Sheet
         var changed = applyRemotePayload_(res, true);
@@ -692,7 +712,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 89,
+    build: 90,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
