@@ -2132,15 +2132,16 @@ return {
     };
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       if (MUTATION_APIS_[name]) {
-        return RemoteDB.ensureLoaded().catch(function () { return false; }).then(function () {
-          return RemoteDB.refreshIfNewer().catch(function () { return null; });
-        }).then(function () {
+        // ไม่รอ refresh จาก Google ก่อนบันทึก — เขียนในเครื่องทันที แล้วซิงก์พื้นหลัง
+        var ready = (RemoteDB.isLoaded && RemoteDB.isLoaded())
+          ? Promise.resolve(true)
+          : RemoteDB.ensureLoaded().catch(function () { return false; });
+        return ready.then(function () {
           var result = run();
           // ซิงก์รูปบิลเฉพาะตอนบันทึกใบรับ — mutation อื่นข้ามรูปเพื่อให้เร็ว
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
-          // คืนผลทันทีหลังบันทึกในเครื่อง — ซิงก์พื้นหลัง (คิวใน RemoteDB.sync)
           RemoteDB.sync(syncOpts).catch(function (err) {
             if (typeof toast === 'function') {
               toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');

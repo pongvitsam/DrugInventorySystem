@@ -117,6 +117,19 @@ var ClimateUI = (function () {
     var recordedBy = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
     var statusEl = document.getElementById(slot === 'pm' ? 'clStatusPm' : 'clStatusAm');
     var wasEdit = !!(statusEl && statusEl.classList.contains('ok'));
+    var saveBtn = document.getElementById(slot === 'pm' ? 'clSavePm' : 'clSaveAm');
+    var preview = {
+      temperature: temperature,
+      humidity: humidity,
+      recordedBy: recordedBy,
+      slot: slot
+    };
+    // แสดงสถานะทันทีตอนกด — ไม่รอ Google
+    fillSlotForm_(slot, preview);
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'กำลังบันทึก...';
+    }
     api('saveClimateLog', {
       date: date,
       slot: slot,
@@ -124,12 +137,7 @@ var ClimateUI = (function () {
       humidity: humidity,
       recordedBy: recordedBy
     }).then(function (r) {
-      fillSlotForm_(slot, (r && r.log) || {
-        temperature: temperature,
-        humidity: humidity,
-        recordedBy: recordedBy,
-        slot: slot
-      });
+      fillSlotForm_(slot, (r && r.log) || preview);
       if (typeof toast === 'function') {
         toast((wasEdit ? 'แก้ไข' : 'บันทึก') + ' ' + (slot === 'pm' ? '16:00' : '08:30') + ' แล้ว');
       }
@@ -137,7 +145,11 @@ var ClimateUI = (function () {
       renderRecentTable_();
       loadReport();
     }).catch(function (e) {
+      // ถ้าบันทึกไม่สำเร็จ โหลดสถานะจริงกลับ
+      loadTodaySlots();
       if (typeof toast === 'function') toast(e.message || String(e));
+    }).then(function () {
+      if (saveBtn) saveBtn.disabled = false;
     });
   }
 
