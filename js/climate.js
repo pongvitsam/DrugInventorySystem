@@ -90,17 +90,21 @@ var ClimateUI = (function () {
     var t = document.getElementById(slot === 'pm' ? 'clTempPm' : 'clTempAm');
     var h = document.getElementById(slot === 'pm' ? 'clHumPm' : 'clHumAm');
     var st = document.getElementById(slot === 'pm' ? 'clStatusPm' : 'clStatusAm');
+    var saveBtn = document.getElementById(slot === 'pm' ? 'clSavePm' : 'clSaveAm');
+    var delBtn = document.getElementById(slot === 'pm' ? 'clDelPm' : 'clDelAm');
     if (t) t.value = row ? row.temperature : '';
     if (h) h.value = row ? row.humidity : '';
     if (st) {
       if (row) {
-        st.textContent = 'บันทึกแล้ว' + (row.recordedBy ? ' · ' + row.recordedBy : '');
+        st.textContent = 'บันทึกแล้ว' + (row.recordedBy ? ' · ' + row.recordedBy : '') + ' · แก้ได้';
         st.className = 'cl-slot-status ok';
       } else {
         st.textContent = 'ยังไม่บันทึก';
         st.className = 'cl-slot-status pending';
       }
     }
+    if (saveBtn) saveBtn.textContent = row ? ('แก้ไข ' + (slot === 'pm' ? '16:00' : '08:30')) : ('บันทึก ' + (slot === 'pm' ? '16:00' : '08:30'));
+    if (delBtn) delBtn.style.display = row ? '' : 'none';
   }
 
   function saveSlot(slot) {
@@ -111,6 +115,8 @@ var ClimateUI = (function () {
     var temperature = tempEl ? tempEl.value : '';
     var humidity = humEl ? humEl.value : '';
     var recordedBy = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
+    var statusEl = document.getElementById(slot === 'pm' ? 'clStatusPm' : 'clStatusAm');
+    var wasEdit = !!(statusEl && statusEl.classList.contains('ok'));
     api('saveClimateLog', {
       date: date,
       slot: slot,
@@ -118,14 +124,15 @@ var ClimateUI = (function () {
       humidity: humidity,
       recordedBy: recordedBy
     }).then(function (r) {
-      // แสดงสถานะทันทีจากผลบันทึก — ไม่ต้องกดโหลดข้อมูลวันนี้
       fillSlotForm_(slot, (r && r.log) || {
         temperature: temperature,
         humidity: humidity,
         recordedBy: recordedBy,
         slot: slot
       });
-      if (typeof toast === 'function') toast('บันทึก ' + (slot === 'pm' ? '16:00' : '08:30') + ' แล้ว');
+      if (typeof toast === 'function') {
+        toast((wasEdit ? 'แก้ไข' : 'บันทึก') + ' ' + (slot === 'pm' ? '16:00' : '08:30') + ' แล้ว');
+      }
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       renderRecentTable_();
       loadReport();
@@ -133,6 +140,8 @@ var ClimateUI = (function () {
       if (typeof toast === 'function') toast(e.message || String(e));
     });
   }
+
+  var RECENT_ROWS_ = [];
 
   function renderRecentTable_() {
     var el = document.getElementById('clRecentTable');
@@ -143,12 +152,13 @@ var ClimateUI = (function () {
     var from = fromDt.getFullYear() + '-' + String(fromDt.getMonth() + 1).padStart(2, '0') + '-' + String(fromDt.getDate()).padStart(2, '0');
     api('listClimateLogs', { from: from, to: to }).then(function (r) {
       var rows = r.logs || [];
+      RECENT_ROWS_ = rows;
       if (!rows.length) {
         el.innerHTML = '<tr><td class="muted">ยังไม่มีข้อมูล 30 วันล่าสุด</td></tr>';
         return;
       }
       var html = '<tr><th>วันที่</th><th>รอบ</th><th class="right">°C</th><th class="right">%RH</th><th>ผู้บันทึก</th><th></th></tr>';
-      html += rows.map(function (row) {
+      html += rows.map(function (row, idx) {
         var label = (typeof ThDate !== 'undefined' && ThDate.formatDateLong)
           ? ThDate.formatDateLong(row.date)
           : row.date;
@@ -158,20 +168,70 @@ var ClimateUI = (function () {
           '<td class="right">' + esc(row.temperature) + '</td>' +
           '<td class="right">' + esc(row.humidity) + '</td>' +
           '<td>' + esc(row.recordedBy || '—') + '</td>' +
-          '<td><button type="button" class="btn ghost danger" style="padding:4px 8px;font-size:12px" onclick="ClimateUI.removeLog(\'' + esc(row.id) + '\')">ลบ</button></td>' +
+          '<td class="cl-row-actions">' +
+          '<button type="button" class="btn ghost" style="padding:4px 8px;font-size:12px" data-cl-edit="' + idx + '">แก้ไข</button> ' +
+          '<button type="button" class="btn ghost danger" style="padding:4px 8px;font-size:12px" data-cl-del="' + idx + '">ลบ</button>' +
+          '</td>' +
           '</tr>';
       }).join('');
       el.innerHTML = html;
+      el.querySelectorAll('[data-cl-edit]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var i = Number(btn.getAttribute('data-cl-edit'));
+          if (!isNaN(i) && RECENT_ROWS_[i]) editLog(RECENT_ROWS_[i]);
+        });
+      });
+      el.querySelectorAll('[data-cl-del]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var i = Number(btn.getAttribute('data-cl-del'));
+          if (!isNaN(i) && RECENT_ROWS_[i]) removeLog(RECENT_ROWS_[i].id);
+        });
+      });
     }).catch(function () {});
   }
 
+  function editLog(row) {
+    if (!row) return;
+    if (typeof ThDate !== 'undefined' && ThDate.set) {
+      ThDate.set('clEntryDate', row.date);
+    }
+    loadTodaySlots();
+    var card = document.querySelector('#page-climate .cl-slot-grid');
+    if (card && card.scrollIntoView) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (typeof toast === 'function') {
+      toast('โหลดเพื่อแก้ไข ' + (row.slot === 'pm' ? '16:00' : '08:30') + ' แล้ว — แก้ตัวเลขแล้วกดแก้ไข');
+    }
+  }
+
+  function clearSlot(slot) {
+    slot = slot === 'pm' ? 'pm' : 'am';
+    var date = (typeof ThDate !== 'undefined' && ThDate.get('clEntryDate')) || todayIso();
+    api('listClimateLogs', { from: date, to: date }).then(function (r) {
+      var found = (r.logs || []).filter(function (row) {
+        return row.slot === slot;
+      })[0];
+      if (!found) {
+        fillSlotForm_(slot, null);
+        if (typeof toast === 'function') toast('ยังไม่มีข้อมูลรอบนี้');
+        return;
+      }
+      removeLog(found.id);
+    }).catch(function (e) {
+      if (typeof toast === 'function') toast(e.message || String(e));
+    });
+  }
+
   function removeLog(id) {
+    if (!id) return;
     if (!confirm('ลบรายการบันทึกนี้หรือไม่?')) return;
     api('deleteClimateLog', { id: id }).then(function () {
       if (typeof toast === 'function') toast('ลบแล้ว');
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       loadTodaySlots();
       loadReport();
+      renderRecentTable_();
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
     });
@@ -388,9 +448,11 @@ var ClimateUI = (function () {
     initPage: initPage,
     setMode: setMode,
     saveSlot: saveSlot,
+    clearSlot: clearSlot,
     loadTodaySlots: loadTodaySlots,
     loadReport: loadReport,
     removeLog: removeLog,
+    editLog: editLog,
     exportPdf: exportPdf
   };
 })();
