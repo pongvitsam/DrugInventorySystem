@@ -406,44 +406,13 @@ var RemoteDB = (function () {
     return !imported && items.length === 0 && !hasRealActivity_(fp);
   }
 
-  function mergeLoginUsersInto_(data) {
-    if (!data) return data;
-    data.SettingsObj = data.SettingsObj || {};
-    try {
-      var localRaw = (DB.readSettingsObj() || {}).loginUsers;
-      var remoteRaw = data.SettingsObj.loginUsers;
-      var localArr = [];
-      var remoteArr = [];
-      try {
-        localArr = typeof localRaw === 'string' ? JSON.parse(localRaw || '[]') : (localRaw || []);
-      } catch (e1) { localArr = []; }
-      try {
-        remoteArr = typeof remoteRaw === 'string' ? JSON.parse(remoteRaw || '[]') : (remoteRaw || []);
-      } catch (e2) { remoteArr = []; }
-      if (!Array.isArray(localArr)) localArr = [];
-      if (!Array.isArray(remoteArr)) remoteArr = [];
-      if (!localArr.length) return data;
-      var seen = {};
-      var merged = [];
-      localArr.concat(remoteArr).forEach(function (u) {
-        var name = String(u || '').trim();
-        if (!name) return;
-        var key = name.toLowerCase();
-        if (seen[key]) return;
-        seen[key] = 1;
-        merged.push(name);
-      });
-      if (merged.length) data.SettingsObj.loginUsers = JSON.stringify(merged);
-    } catch (e) { /* ignore */ }
-    return data;
-  }
-
   function applyRemotePayload_(res, force) {
     if (!res) return false;
     applyRevision_(res.revision);
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
-      DB.importAll(mergeLoginUsersInto_(res.data || {}));
+      // Sheet เป็นต้นทาง — ทับทั้งชุดในเครื่อง ไม่ merge จาก local
+      DB.importAll(res.data || {});
       resetApiCaches_();
       return true;
     }
@@ -465,17 +434,12 @@ var RemoteDB = (function () {
 
   function handleImportResult_(res) {
     if (res && res.conflict) {
+      // Sheet ชนะเสมอ — ดึงจาก Google แล้วให้ทำรายการใหม่
       return fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (ex) {
         if (!ex || !ex.ok) throw new Error('ข้อมูลบน Google ใหม่กว่า และโหลดไม่สำเร็จ');
-        var remoteFp = fingerprint_(ex.data);
-        var localFp = localFingerprint_();
-        if (compareFreshness_(localFp, remoteFp) === 'a' && hasRealActivity_(localFp)) {
-          applyRevision_(ex.revision);
-          return postImport_(true).then(handleImportResult_);
-        }
         applyRemotePayload_(ex, true);
         loaded = true;
-        throw new Error('มีข้อมูลใหม่กว่าบน Google — โหลดแล้ว กรุณาทำรายการอีกครั้ง');
+        throw new Error('มีข้อมูลใหม่กว่าบน Google Sheets — โหลดแล้ว กรุณาทำรายการอีกครั้ง');
       });
     }
     if (!res || !res.ok) {
@@ -512,30 +476,22 @@ var RemoteDB = (function () {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
-      var remoteFp = fingerprint_(res.data);
-      restoreBackupIfRicher_(remoteFp);
-      var localFp = localFingerprint_();
       var remoteEmpty = isEmptyRemote_(res.data);
 
+      // Sheet ว่างจริงเท่านั้น — อัปโหลดครั้งแรกเพื่อเริ่มต้น (ไม่มีข้อมูลบน Sheet ให้ดึง)
       if (remoteEmpty) {
         applyRevision_(res.revision);
         loaded = true;
-        if (hasRealActivity_(localFp)) {
+        var localFp = localFingerprint_();
+        if (hasRealActivity_(localFp) || hasLocalData_()) {
           lastSyncAction = 'uploaded';
           return sync({ force: true });
         }
         return Promise.resolve();
       }
 
-      var winner = compareFreshness_(localFp, remoteFp);
-      if (winner === 'a' && hasRealActivity_(localFp)) {
-        applyRevision_(res.revision);
-        loaded = true;
-        lastSyncAction = lastSyncAction === 'restored' ? 'restored' : 'kept-local';
-        return sync({ force: true });
-      }
-
-      if (applyRemotePayload_(res, false)) lastSyncAction = 'pulled';
+      // มีข้อมูลบน Sheet แล้ว — ใช้ Sheet เป็นต้นทางเสมอ ห้ามให้เครื่องทับ
+      if (applyRemotePayload_(res, true)) lastSyncAction = 'pulled';
       loaded = true;
       return Promise.resolve();
     });
@@ -545,23 +501,7 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.resolve(false);
     if (loaded) return Promise.resolve(true);
     if (loadPromise) return loadPromise;
-
-    // Fast path: ถ้ามีข้อมูลในเครื่องและ revision บน Google ยังไม่เปลี่ยน — ข้าม export ทั้งชุด
-    if (localRevision > 0 && hasLocalData_()) {
-      loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
-        if (meta && meta.ok && Number(meta.revision) <= localRevision) {
-          loaded = true;
-          return true;
-        }
-        return fetchAndApplyExport_();
-      }).catch(function () {
-        return fetchAndApplyExport_();
-      }).finally(function () {
-        loadPromise = null;
-      });
-      return loadPromise;
-    }
-
+    // เปิดแอป / โหลดครั้งแรก = ดึงจาก Sheet เสมอ
     loadPromise = fetchAndApplyExport_().finally(function () {
       loadPromise = null;
     });
@@ -577,17 +517,10 @@ var RemoteDB = (function () {
       if (remoteRev <= localRevision) return { changed: false, revision: localRevision };
       return fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (res) {
         if (!res || !res.ok) return { changed: false };
-        var remoteFp = fingerprint_(res.data);
-        var localFp = localFingerprint_();
-        if (compareFreshness_(localFp, remoteFp) === 'a' && hasRealActivity_(localFp)) {
-          applyRevision_(res.revision);
-          lastSyncAction = 'kept-local';
-          return sync({ force: true }).then(function () {
-            return { changed: false, restored: true, revision: localRevision };
-          });
-        }
+        // Sheet ใหม่กว่า — ดึงทับเครื่องเสมอ ไม่ push local ทับ Sheet
         var changed = applyRemotePayload_(res, true);
         loaded = true;
+        if (changed) lastSyncAction = 'pulled';
         return { changed: changed, revision: localRevision };
       });
     });
@@ -703,22 +636,29 @@ var RemoteDB = (function () {
 
   function restoreRichest() {
     return describeSources().then(function (info) {
-      var best = info.richest;
-      if (!best || !hasRealActivity_(best.fingerprint)) {
-        throw new Error('ยังไม่พบชุดข้อมูลรับเข้า/เบิกที่กู้ได้บนเครื่องนี้หรือ Google');
+      // โหมด Sheet เป็นต้นทาง — ถ้ามี Google ให้ใช้ Google ก่อนเสมอ
+      var remote = null;
+      (info.sources || []).forEach(function (s) {
+        if (s.name === 'remote') remote = s;
+      });
+      var best = remote || info.richest;
+      if (!best || (!hasRealActivity_(best.fingerprint) && best.name !== 'remote')) {
+        throw new Error('ยังไม่พบชุดข้อมูลรับเข้า/เบิกที่กู้ได้บน Google Sheets');
       }
-      if (best.name === 'backup') {
-        applyDump_(best.data, best.slim);
-        lastSyncAction = 'restored';
-      } else if (best.name === 'remote') {
+      if (best.name === 'remote') {
         applyDump_(best.data, false);
         applyRevision_(best.revision);
         lastSyncAction = 'pulled';
         loaded = true;
         return info;
       }
+      if (best.name === 'backup') {
+        applyDump_(best.data, best.slim);
+        lastSyncAction = 'restored';
+      }
       loaded = true;
       if (enabled()) {
+        // อัปขึ้น Sheet เฉพาะตอนกู้จากสำเนาในเครื่องเมื่อยังไม่มีบน Google
         return sync({ force: true, includeImages: true }).then(function () { return info; });
       }
       return info;
@@ -752,7 +692,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 86,
+    build: 88,
     ensureLoaded: ensureLoaded,
     refreshIfNewer: refreshIfNewer,
     sync: sync,

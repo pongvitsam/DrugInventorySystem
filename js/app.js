@@ -130,12 +130,12 @@ function applyBoot(b) {
   }
   var gasMsg = '';
   if (b.storageMode === 'gas') {
-    gasMsg = 'เชื่อมต่อหลายเครื่อง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
+    gasMsg = 'Sheet เป็นต้นทาง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 73) {
-    toast('ยังเป็นไฟล์เก่า — กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันใหม่');
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 88) {
+    toast('ยังเป็นไฟล์เก่า — กด Ctrl+F5 เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
   renderDash(b);
@@ -319,13 +319,32 @@ function loadBootstrap() {
     });
   }
 
-  // แสดงแดชบอร์ดจากข้อมูลในเครื่องทันที — ไม่รอ Google
-  setStatus(gasOn ? 'กำลังแสดงข้อมูล...' : 'กำลังโหลดข้อมูล...');
-  return api('bootstrap').then(function (b) {
-    return paint(b).then(function () {
-      if (gasOn) return syncGoogleInBackground_();
-      return Promise.resolve();
+  // เชื่อม Google Sheets แล้ว: ดึงจาก Sheet ก่อน แล้วค่อยแสดง (Sheet เป็นต้นทาง)
+  if (gasOn) {
+    setStatus('กำลังดึงข้อมูลจาก Google Sheets...');
+    updateSyncIndicator('syncing');
+    return RemoteDB.ensureLoaded().then(function () {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b) {
+        return paint(b).then(function () {
+          setStatus('');
+          updateSyncIndicator('');
+          updateGasStatus('ดึงจาก Google Sheets แล้ว — Sheet เป็นต้นทาง');
+          if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+        });
+      });
+    }).catch(function (e) {
+      updateSyncIndicator('');
+      var msg = (e && e.message) ? e.message : String(e);
+      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ: ' + msg, true);
+      updateGasStatus('ดึงจาก Google ไม่สำเร็จ — ไม่ใช้ข้อมูลเก่าในเครื่องทับ Sheet', true);
+      toast(msg);
     });
+  }
+
+  setStatus('กำลังโหลดข้อมูล...');
+  return api('bootstrap').then(function (b) {
+    return paint(b);
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
@@ -337,17 +356,16 @@ function applyRemoteSyncToasts_() {
   if (typeof RemoteDB === 'undefined' || !RemoteDB.consumeSyncAction) return;
   var syncAction = RemoteDB.consumeSyncAction();
   if (syncAction === 'uploaded') {
-    toast('อัปโหลดข้อมูลเครื่องนี้ขึ้น Google อัตโนมัติแล้ว');
-    updateGasStatus('อัปโหลดขึ้น Google แล้ว — พร้อมใช้หลายเครื่อง');
-  } else if (syncAction === 'kept-local') {
-    toast('เก็บข้อมูลใหม่ในเครื่องนี้ไว้ และอัปโหลดทับข้อมูลเก่าบน Google');
-    updateGasStatus('ข้อมูลใหม่ในเครื่องนี้ใหม่กว่า — อัปโหลดขึ้น Google แล้ว');
+    toast('อัปโหลดขึ้น Google Sheets ครั้งแรกแล้ว (Sheet ว่าง)');
+    updateGasStatus('อัปโหลดขึ้น Google แล้ว — Sheet เป็นต้นทาง');
   } else if (syncAction === 'imported-file') {
     toast('นำเข้าจากไฟล์สำรองแล้ว');
     updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
   } else if (syncAction === 'pulled') {
-    toast('อัปเดตข้อมูลจาก Google แล้ว');
-    updateGasStatus('ดึงจาก Google แล้ว — พร้อมใช้หลายเครื่อง');
+    toast('ดึงข้อมูลจาก Google Sheets แล้ว');
+    updateGasStatus('ดึงจาก Google Sheets แล้ว — Sheet เป็นต้นทาง');
+  } else if (syncAction === 'restored') {
+    toast('กู้จากสำเนาในเครื่องแล้ว');
   }
 }
 
@@ -367,7 +385,7 @@ function syncGoogleInBackground_() {
   }).catch(function () {
     updateSyncIndicator('');
     setStatus('');
-    updateGasStatus('ซิงก์ Google ไม่สำเร็จ — ใช้ข้อมูลในเครื่องนี้ไปก่อน', true);
+    updateGasStatus('ดึงจาก Google ไม่สำเร็จ', true);
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       RemoteDB.startPolling(onRemoteDataChanged);
     }
