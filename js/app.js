@@ -484,24 +484,31 @@ function syncGoogleInBackground_() {
     });
   }).catch(function () {
     updateSyncIndicator('');
-    setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — ไม่ใช้ข้อมูลในเครื่อง', true);
+    if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
+      setStatus('ยืนยัน Sheet ไม่สำเร็จ — แสดงข้อมูลล่าสุดในเครื่อง (กดเชื่อมต่อเพื่อดึงใหม่)', true);
+      showGasConnectButton_();
+      updateGasStatus('ดึง Sheet ไม่สำเร็จ — แสดง snapshot', true);
+      return;
+    }
+    setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — กดปุ่มเพื่อเปิดหน้าต่างเชื่อมต่อ', true);
+    showGasConnectButton_();
     updateGasStatus('ดึง Sheet ไม่สำเร็จ', true);
   });
 }
 
 function ensureSeedLoaded_() {
   if (typeof getSeedMedicine === 'function') return Promise.resolve();
-  return loadScriptOnce_('js/seed.js?v=97');
+  return loadScriptOnce_('js/seed.js?v=98');
 }
 
 function ensureOcrLoaded_() {
   if (typeof BillOcr !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/ocr.js?v=97');
+  return loadScriptOnce_('js/ocr.js?v=98');
 }
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=97');
+  return loadScriptOnce_('js/climate.js?v=98');
 }
 
 function fillSelect(id, arr, withBlank) {
