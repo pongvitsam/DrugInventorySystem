@@ -249,15 +249,48 @@ var RemoteDB = (function () {
     return getUrl().replace(/\/$/, '');
   }
 
+  var PREFER_RELAY_KEY = 'pharma:preferRelay';
+  var allowRelayPopup_ = false;
+
+  function isEdgeBrowser_() {
+    var ua = String(navigator.userAgent || '');
+    return /Edg\//.test(ua) || /Edge\//.test(ua);
+  }
+
+  function getPreferRelay_() {
+    try { return localStorage.getItem(PREFER_RELAY_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function setPreferRelay_(on) {
+    try {
+      if (on) localStorage.setItem(PREFER_RELAY_KEY, '1');
+      else localStorage.removeItem(PREFER_RELAY_KEY);
+    } catch (e) {}
+  }
+
+  function needsRelayPopup() {
+    return getPreferRelay_() || isEdgeBrowser_();
+  }
+
   function fetchJson(url, options) {
     options = options || {};
     if (!options.method || String(options.method).toUpperCase() === 'GET') {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q).catch(function (err) {
-        // Edge/หลายบัญชี Google มัก 404 ที่ /macros/u/N — ใช้ป๊อปอัปบนโดเมน Google
-        if (allowRelayPopup_) return relayGet_(q);
+      // Edge: ลอง CORS แบบไม่ส่งคุกกี้ก่อน (เลี่ยง redirect /macros/u/N จากหลายบัญชี Google)
+      // แล้วค่อย JSONP — ป๊อปอัปใช้เมื่อผู้ใช้กดเชื่อมต่อ/รีเฟรช
+      var chain = corsFetchGet_(q).catch(function () { return jsonpGet_(q); });
+      return chain.then(function (data) {
+        return data;
+      }).catch(function (err) {
+        if (allowRelayPopup_) {
+          return relayGet_(q).then(function (data) {
+            setPreferRelay_(true);
+            return data;
+          });
+        }
+        if (isEdgeBrowser_()) setPreferRelay_(true);
         err = err || new Error('โหลดจาก Google Sheets ไม่สำเร็จ');
         err.code = 'NEED_RELAY';
         throw err;
@@ -266,11 +299,45 @@ var RemoteDB = (function () {
     return postJsonViaChunks_(options.body);
   }
 
-  var allowRelayPopup_ = false;
-
-  function isEdgeBrowser_() {
-    var ua = String(navigator.userAgent || '');
-    return /Edg\//.test(ua) || /Edge\//.test(ua);
+  /**
+   * GET แบบ CORS + credentials:omit — สำคัญกับ Edge (ไม่ติด session Google ผิดบัญชี)
+   */
+  function corsFetchGet_(query) {
+    return new Promise(function (resolve, reject) {
+      if (typeof fetch !== 'function') {
+        reject(new Error('ไม่มี fetch'));
+        return;
+      }
+      var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
+      var url = baseUrl() + '?' + q + (q ? '&' : '') + 't=' + Date.now();
+      var ms = /action=export/.test(q) ? 90000 : 18000;
+      var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timer = setTimeout(function () {
+        if (ctrl) try { ctrl.abort(); } catch (e) {}
+        reject(new Error('หมดเวลา (CORS)'));
+      }, ms);
+      fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: ctrl ? ctrl.signal : undefined
+      }).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text().then(function (txt) {
+          if (!txt || txt.charAt(0) === '<') throw new Error('ได้หน้า HTML แทน JSON');
+          return JSON.parse(txt);
+        });
+      }).then(function (data) {
+        clearTimeout(timer);
+        if (!data || typeof data !== 'object') throw new Error('ข้อมูลไม่ถูกต้อง');
+        resolve(data);
+      }).catch(function (err) {
+        clearTimeout(timer);
+        reject(err || new Error('CORS ไม่สำเร็จ'));
+      });
+    });
   }
 
   /**
@@ -281,7 +348,7 @@ var RemoteDB = (function () {
     return new Promise(function (resolve, reject) {
       var cb = 'pharmaGasCb_' + String(Date.now()) + '_' + Math.floor(Math.random() * 1e6);
       var settled = false;
-      var ms = /action=export/.test(query) ? (isEdgeBrowser_() ? 25000 : 90000) : (isEdgeBrowser_() ? 12000 : 45000);
+      var ms = /action=export/.test(query) ? (isEdgeBrowser_() ? 20000 : 90000) : (isEdgeBrowser_() ? 10000 : 45000);
       var script = document.createElement('script');
       var timer = setTimeout(function () {
         if (settled) return;
@@ -366,7 +433,10 @@ var RemoteDB = (function () {
     allowRelayPopup_ = true;
     loaded = false;
     loadPromise = null;
-    return ensureLoaded({ force: true }).finally(function () {
+    return ensureLoaded({ force: true }).then(function (res) {
+      setPreferRelay_(true);
+      return res;
+    }).finally(function () {
       allowRelayPopup_ = false;
     });
   }
@@ -784,7 +854,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 97,
+    build: 100,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
@@ -793,6 +863,8 @@ var RemoteDB = (function () {
     pushLocal: pushLocal,
     pullRemote: pullRemote,
     pullWithPopup: pullWithPopup,
+    needsRelayPopup: needsRelayPopup,
+    isEdgeBrowser: isEdgeBrowser_,
     hasSheetSnapshot: hasSheetSnapshot,
     startPolling: startPolling,
     stopPolling: stopPolling,

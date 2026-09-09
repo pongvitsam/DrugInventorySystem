@@ -309,6 +309,49 @@ function ensureTesseractJs_() {
   return loadScriptOnce_('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
 }
 
+function refreshFromGoogle_() {
+  if (typeof RemoteDB !== 'undefined') {
+    RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
+  }
+  var gasOn = typeof RemoteDB !== 'undefined' && RemoteDB.enabled();
+  // Edge: ปุ่มรีเฟรชเป็น user gesture — เปิดป๊อปอัปเชื่อมต่อได้ทันที
+  if (gasOn && RemoteDB.needsRelayPopup && RemoteDB.needsRelayPopup() && RemoteDB.pullWithPopup) {
+    setStatus('กำลังเปิดหน้าต่างเชื่อมต่อ Google Sheets (Edge)…');
+    updateSyncIndicator('syncing');
+    updateGasStatus('กำลังเชื่อมต่อผ่านหน้าต่าง Google…');
+    return RemoteDB.pullWithPopup().then(function () {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b) {
+        applyBoot(b);
+        setStatus('');
+        updateSyncIndicator('');
+        updateGasStatus('แสดงจาก Google Sheets');
+        toast('ดึงจาก Google Sheets แล้ว');
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+        refreshActivePageViews_();
+        refreshStockCache();
+      });
+    }).catch(function (e) {
+      updateSyncIndicator('');
+      var msg = (e && e.message) ? e.message : String(e);
+      if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
+        return api('bootstrap').then(function (b) {
+          applyBoot(b);
+          setStatus('ใช้ข้อมูลในเครื่อง — ' + msg, true);
+          showGasConnectButton_();
+          updateGasStatus('ดึง Sheet ไม่สำเร็จ — แสดง snapshot', true);
+          toast(msg);
+        });
+      }
+      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — กดปุ่มด้านล่างเพื่อเปิดหน้าต่างเชื่อมต่อ', true);
+      showGasConnectButton_();
+      updateGasStatus('ดึง Sheet ไม่สำเร็จ', true);
+      toast(msg);
+    });
+  }
+  return loadBootstrap();
+}
+
 function loadBootstrap() {
   if (typeof RemoteDB !== 'undefined') {
     RemoteDB.applyUrlFromSettings(DB.readSettingsObj());
