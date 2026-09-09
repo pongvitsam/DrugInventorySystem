@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=92">
+  <link rel="stylesheet" href="css/styles.css?v=93">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -471,7 +471,7 @@
         </div>
         <div class="card" style="margin-top:14px">
           <h3>นำเข้าข้อมูลเดิม</h3>
-          <p>เมื่อตั้ง Google Sheets แล้ว ระบบ<strong>แสดงเฉพาะข้อมูลจาก Sheet</strong> — เปิดแอปจะดึงจาก Sheet ก่อนเสมอ ไม่ใช้ข้อมูลเก่าในเครื่องมาแสดง</p>
+          <p>เมื่อตั้ง Google Sheets แล้ว ระบบ<strong>แสดงเฉพาะข้อมูลจาก Sheet</strong> — เปิดแอปจะตรวจ revision กับ Sheet ก่อน (เร็ว) และดึงทั้งชุดเฉพาะเมื่อมีข้อมูลใหม่</p>
           <button class="btn" id="btnImport" onclick="doImport(false)">นำเข้าข้อมูลเริ่มต้น</button>
           <button class="btn danger" onclick="doImport(true)">นำเข้าใหม่ทับของเดิม</button>
           <p class="muted" id="importMsg"></p>
@@ -567,13 +567,13 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=92"></script>
-  <script src="js/remote.js?v=92"></script>
-  <script src="js/api.js?v=92"></script>
-  <script src="js/options.js?v=92"></script>
-  <script src="js/thdate.js?v=92"></script>
-  <script src="js/app.js?v=92"></script>
-  <script src="js/auth.js?v=92"></script>
+  <script src="js/db.js?v=93"></script>
+  <script src="js/remote.js?v=93"></script>
+  <script src="js/api.js?v=93"></script>
+  <script src="js/options.js?v=93"></script>
+  <script src="js/thdate.js?v=93"></script>
+  <script src="js/app.js?v=93"></script>
+  <script src="js/auth.js?v=93"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->
 </body>
 </html>

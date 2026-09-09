@@ -494,7 +494,28 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.resolve(false);
     if (loaded && !opts.force) return Promise.resolve(true);
     if (loadPromise) return loadPromise;
-    // เปิดแอป / โหลด = ดึงจาก Sheet เสมอ ไม่ใช้แคชในเครื่องเป็นต้นทาง
+
+    // เร็ว: ถาม revision จาก Sheet ก่อน (เบา) — ถ้าตรงกับครั้งล่าสุดที่ดึง Sheet
+    // แสดง snapshot ของ Sheet ได้ทันที ไม่ต้อง export ทั้งชุด
+    // ยังเป็นข้อมูลจาก Sheet (ไม่ใช่ข้อมูลเก่าแยกเครื่อง)
+    if (!opts.force && localRevision > 0 && hasLocalData_()) {
+      loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
+        if (meta && meta.ok && Number(meta.revision) === localRevision) {
+          loaded = true;
+          lastSyncAction = 'sheet-fresh';
+          return true;
+        }
+        // Sheet มี revision ใหม่ หรือยังไม่ตรง — ดึงทั้งชุด
+        return fetchAndApplyExport_();
+      }).catch(function () {
+        // meta ไม่สำเร็จ → ลอง export ทั้งชุด (ห้าม fallback ข้อมูลเครื่องโดยไม่ยืนยัน Sheet)
+        return fetchAndApplyExport_();
+      }).finally(function () {
+        loadPromise = null;
+      });
+      return loadPromise;
+    }
+
     loadPromise = fetchAndApplyExport_().finally(function () {
       loadPromise = null;
     });
@@ -685,7 +706,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 92,
+    build: 93,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
