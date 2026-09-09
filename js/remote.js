@@ -266,7 +266,7 @@ var RemoteDB = (function () {
       var reqId = 'gas' + String(Date.now()) + Math.floor(Math.random() * 10000);
       var iframe = document.createElement('iframe');
       iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
-      iframe.referrerPolicy = 'no-referrer';
+      // อย่าตั้ง no-referrer — Google มัก redirect เป็น /macros/u/N/s/... แล้ว iframe ได้ 404
       var settled = false;
       var ms = /action=export/.test(query) ? 90000 : 45000;
       var timer = setTimeout(function () {
@@ -303,7 +303,6 @@ var RemoteDB = (function () {
       var name = 'gasPost' + reqId;
       iframe.name = name;
       iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
-      iframe.referrerPolicy = 'no-referrer';
       document.body.appendChild(iframe);
       var form = document.createElement('form');
       form.method = 'POST';

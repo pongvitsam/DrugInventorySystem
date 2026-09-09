@@ -7,6 +7,7 @@
   var payload = <?!= payloadJson ?>;
   var reqId = <?!= reqIdJson ?>;
   var action = <?!= actionJson ?>;
+  var slim = <?!= slimJson ?>;
   function send(p) {
     var msg = { source: 'DrugInventoryGAS', reqId: reqId, payload: p };
     try { window.top.postMessage(msg, '*'); } catch (e) {}
@@ -21,7 +22,7 @@
     .withFailureHandler(function (err) {
       send({ ok: false, error: String(err && err.message ? err.message : err) });
     });
-  if (action === 'export') runner.gasExport();
+  if (action === 'export') runner.gasExport({ slim: !!slim });
   else if (action === 'meta') runner.gasMeta();
   else runner.gasPing();
 })();

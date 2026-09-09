@@ -443,17 +443,17 @@ function syncGoogleInBackground_() {
 
 function ensureSeedLoaded_() {
   if (typeof getSeedMedicine === 'function') return Promise.resolve();
-  return loadScriptOnce_('js/seed.js?v=94');
+  return loadScriptOnce_('js/seed.js?v=95');
 }
 
 function ensureOcrLoaded_() {
   if (typeof BillOcr !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/ocr.js?v=94');
+  return loadScriptOnce_('js/ocr.js?v=95');
 }
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=94');
+  return loadScriptOnce_('js/climate.js?v=95');
 }
 
 function fillSelect(id, arr, withBlank) {
