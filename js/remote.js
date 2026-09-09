@@ -415,12 +415,8 @@ var RemoteDB = (function () {
     applyRevision_(res.revision);
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
-      var data = res.data || {};
-      // กันหาย: backend เก่ายังไม่มี ClimateLogs ใน export — อย่าล้างค่าในเครื่อง
-      if (!Object.prototype.hasOwnProperty.call(data, 'ClimateLogs')) {
-        data.ClimateLogs = DB.readObjects('ClimateLogs') || [];
-      }
-      DB.importAll(data);
+      // Sheet เป็นต้นทางเดียว — ทับทั้งชุดในเครื่องตาม Sheet เสมอ
+      DB.importAll(res.data || {});
       resetApiCaches_();
       return true;
     }
@@ -485,47 +481,20 @@ var RemoteDB = (function () {
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
-      var remoteEmpty = isEmptyRemote_(res.data);
-
-      // Sheet ว่างจริงเท่านั้น — อัปโหลดครั้งแรกเพื่อเริ่มต้น (ไม่มีข้อมูลบน Sheet ให้ดึง)
-      if (remoteEmpty) {
-        applyRevision_(res.revision);
-        loaded = true;
-        var localFp = localFingerprint_();
-        if (hasRealActivity_(localFp) || hasLocalData_()) {
-          lastSyncAction = 'uploaded';
-          return sync({ force: true });
-        }
-        return Promise.resolve();
-      }
-
-      // มีข้อมูลบน Sheet แล้ว — ใช้ Sheet เป็นต้นทางเสมอ ห้ามให้เครื่องทับ
-      if (applyRemotePayload_(res, true)) lastSyncAction = 'pulled';
+      // ใช้ Sheet อย่างเดียว — ทับเครื่องเสมอ (รวมกรณี Sheet ว่าง = ล้างแคชในเครื่อง)
+      applyRemotePayload_(res, true);
       loaded = true;
-      return Promise.resolve();
+      lastSyncAction = 'pulled';
+      return true;
     });
   }
 
-  function ensureLoaded() {
+  function ensureLoaded(opts) {
+    opts = opts || {};
     if (!enabled()) return Promise.resolve(false);
-    if (loaded) return Promise.resolve(true);
+    if (loaded && !opts.force) return Promise.resolve(true);
     if (loadPromise) return loadPromise;
-    // ถ้า revision ยังเท่า Sheet → ใช้แคชในเครื่อง (เป็น snapshot ของ Sheet ล่าสุด) ไม่ export ทั้งชุด
-    if (localRevision > 0 && hasLocalData_()) {
-      loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
-        if (meta && meta.ok && Number(meta.revision) <= localRevision) {
-          loaded = true;
-          lastSyncAction = 'cached';
-          return true;
-        }
-        return fetchAndApplyExport_();
-      }).catch(function () {
-        return fetchAndApplyExport_();
-      }).finally(function () {
-        loadPromise = null;
-      });
-      return loadPromise;
-    }
+    // เปิดแอป / โหลด = ดึงจาก Sheet เสมอ ไม่ใช้แคชในเครื่องเป็นต้นทาง
     loadPromise = fetchAndApplyExport_().finally(function () {
       loadPromise = null;
     });
@@ -716,7 +685,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 91,
+    build: 92,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,

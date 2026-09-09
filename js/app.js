@@ -133,11 +133,11 @@ function applyBoot(b) {
   }
   var gasMsg = '';
   if (b.storageMode === 'gas') {
-    gasMsg = 'Sheet เป็นต้นทาง · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
+    gasMsg = 'แสดงจาก Google Sheets เท่านั้น · เว็บ v' + ((typeof RemoteDB !== 'undefined' && RemoteDB.build) || '?');
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 91) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 92) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+F5 เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -342,16 +342,34 @@ function loadBootstrap() {
     });
   }
 
-  // แสดงจากแคชในเครื่องทันที แล้วค่อยเช็ค/ดึง Sheet พื้นหลัง (Sheet ยังเป็นต้นทางเมื่อมี revision ใหม่)
-  setStatus(gasOn ? 'กำลังแสดงข้อมูล...' : 'กำลังโหลดข้อมูล...');
-  return api('bootstrap').then(function (b) {
-    return paint(b).then(function () {
-      setStatus('');
-      if (!gasOn) return Promise.resolve();
-      updateSyncIndicator('syncing');
-      updateGasStatus('กำลังตรวจ Google Sheets...');
-      return syncGoogleInBackground_();
+  // โหมด Google Sheets: ดึงจาก Sheet ก่อนเสมอ — ไม่แสดงข้อมูลในเครื่อง
+  if (gasOn) {
+    setStatus('กำลังดึงข้อมูลจาก Google Sheets...');
+    updateSyncIndicator('syncing');
+    updateGasStatus('ดึงจาก Google Sheets เท่านั้น...');
+    if (typeof RemoteDB.resetSession === 'function') RemoteDB.resetSession();
+    return RemoteDB.ensureLoaded({ force: true }).then(function () {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b) {
+        return paint(b).then(function () {
+          setStatus('');
+          updateSyncIndicator('');
+          updateGasStatus('แสดงจาก Google Sheets เท่านั้น');
+          if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+        });
+      });
+    }).catch(function (e) {
+      updateSyncIndicator('');
+      var msg = (e && e.message) ? e.message : String(e);
+      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — ไม่ใช้ข้อมูลในเครื่อง', true);
+      updateGasStatus('ดึง Sheet ไม่สำเร็จ — ไม่แสดงข้อมูลในเครื่อง', true);
+      toast(msg);
     });
+  }
+
+  setStatus('กำลังโหลดข้อมูล...');
+  return api('bootstrap').then(function (b) {
+    return paint(b);
   }).catch(function (e) {
     var msg = (e && e.message) ? e.message : String(e);
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
@@ -362,26 +380,18 @@ function loadBootstrap() {
 function applyRemoteSyncToasts_() {
   if (typeof RemoteDB === 'undefined' || !RemoteDB.consumeSyncAction) return;
   var syncAction = RemoteDB.consumeSyncAction();
-  if (syncAction === 'uploaded') {
-    toast('อัปโหลดขึ้น Google Sheets ครั้งแรกแล้ว (Sheet ว่าง)');
-    updateGasStatus('อัปโหลดขึ้น Google แล้ว — Sheet เป็นต้นทาง');
+  if (syncAction === 'pulled') {
+    updateGasStatus('แสดงจาก Google Sheets เท่านั้น');
   } else if (syncAction === 'imported-file') {
     toast('นำเข้าจากไฟล์สำรองแล้ว');
     updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
-  } else if (syncAction === 'pulled') {
-    toast('อัปเดตจาก Google Sheets แล้ว');
-    updateGasStatus('ดึงจาก Google Sheets แล้ว — Sheet เป็นต้นทาง');
-  } else if (syncAction === 'cached') {
-    updateGasStatus('Sheet เป็นต้นทาง · ใช้แคชล่าสุด (เร็ว)');
-  } else if (syncAction === 'restored') {
-    toast('กู้จากสำเนาในเครื่องแล้ว');
   }
 }
 
 function syncGoogleInBackground_() {
   if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return Promise.resolve();
   updateSyncIndicator('syncing');
-  return RemoteDB.ensureLoaded().then(function () {
+  return RemoteDB.ensureLoaded({ force: true }).then(function () {
     applyRemoteSyncToasts_();
     return api('bootstrap').then(function (b2) {
       applyBootLight_(b2);
@@ -389,32 +399,29 @@ function syncGoogleInBackground_() {
       refreshActivePageViews_();
       refreshStockCache();
       updateSyncIndicator('');
-      updateGasStatus('Sheet เป็นต้นทาง · พร้อมใช้งาน');
+      updateGasStatus('แสดงจาก Google Sheets เท่านั้น');
       if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
     });
-  }).catch(function (e) {
+  }).catch(function () {
     updateSyncIndicator('');
-    setStatus('');
-    updateGasStatus('ตรวจ Google ไม่สำเร็จ — ใช้แคชล่าสุดไปก่อน', true);
-    if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
-      RemoteDB.startPolling(onRemoteDataChanged);
-    }
+    setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — ไม่ใช้ข้อมูลในเครื่อง', true);
+    updateGasStatus('ดึง Sheet ไม่สำเร็จ', true);
   });
 }
 
 function ensureSeedLoaded_() {
   if (typeof getSeedMedicine === 'function') return Promise.resolve();
-  return loadScriptOnce_('js/seed.js?v=91');
+  return loadScriptOnce_('js/seed.js?v=92');
 }
 
 function ensureOcrLoaded_() {
   if (typeof BillOcr !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/ocr.js?v=91');
+  return loadScriptOnce_('js/ocr.js?v=92');
 }
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=91');
+  return loadScriptOnce_('js/climate.js?v=92');
 }
 
 function fillSelect(id, arr, withBlank) {
