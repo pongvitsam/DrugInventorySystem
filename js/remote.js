@@ -255,44 +255,48 @@ var RemoteDB = (function () {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return iframeGet_(q);
+      return jsonpGet_(q);
     }
     return postJsonViaChunks_(options.body);
   }
 
-  /** โหลดผ่าน HtmlService iframe แล้วรับข้อมูลด้วย top.postMessage — ไม่ใช้ JSONP/echo */
-  function iframeGet_(query) {
+  /**
+   * GET ผ่าน JSONP (script tag) — ไม่ใช้ HtmlService iframe
+   * เพราะ Edge/Chrome + หลายบัญชี Google มัก 404 ที่ /macros/u/N/s/...
+   */
+  function jsonpGet_(query) {
     return new Promise(function (resolve, reject) {
-      var reqId = 'gas' + String(Date.now()) + Math.floor(Math.random() * 10000);
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;border:0';
-      // อย่าตั้ง no-referrer — Google มัก redirect เป็น /macros/u/N/s/... แล้ว iframe ได้ 404
+      var cb = 'pharmaGasCb_' + String(Date.now()) + '_' + Math.floor(Math.random() * 1e6);
       var settled = false;
       var ms = /action=export/.test(query) ? 90000 : 45000;
+      var script = document.createElement('script');
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
         cleanup();
         reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ'));
       }, ms);
-      function onMsg(ev) {
-        var d = ev && ev.data;
-        if (!d || d.source !== 'DrugInventoryGAS') return;
-        if (d.reqId && d.reqId !== reqId) return;
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = function (data) {
         if (settled) return;
         settled = true;
         cleanup();
-        resolve(d.payload);
-      }
-      function cleanup() {
-        clearTimeout(timer);
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }
-      window.addEventListener('message', onMsg);
-      iframe.src = baseUrl() + '?' + query +
-        (query ? '&' : '') + 'bridge=1&reqId=' + encodeURIComponent(reqId) + '&t=' + Date.now();
-      document.body.appendChild(iframe);
+        resolve(data);
+      };
+      script.onerror = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ (เครือข่าย)'));
+      };
+      var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
+      script.src = baseUrl() + '?' + q +
+        (q ? '&' : '') + 'callback=' + encodeURIComponent(cb) + '&t=' + Date.now();
+      document.head.appendChild(script);
     });
   }
 
