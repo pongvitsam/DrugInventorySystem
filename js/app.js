@@ -137,7 +137,7 @@ function applyBoot(b) {
   }
   updateGasStatus(gasMsg);
   updateSyncIndicator(b.storageMode === 'gas' ? 'online' : '');
-  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 90) {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.build && RemoteDB.build < 91) {
     toast('ยังเป็นไฟล์เก่า — กด Ctrl+F5 เพื่อโหลดเวอร์ชันใหม่');
   }
   updateExpiryWarnLabels(s.expiryWarnMonths || '6');
@@ -404,17 +404,17 @@ function syncGoogleInBackground_() {
 
 function ensureSeedLoaded_() {
   if (typeof getSeedMedicine === 'function') return Promise.resolve();
-  return loadScriptOnce_('js/seed.js?v=90');
+  return loadScriptOnce_('js/seed.js?v=91');
 }
 
 function ensureOcrLoaded_() {
   if (typeof BillOcr !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/ocr.js?v=90');
+  return loadScriptOnce_('js/ocr.js?v=91');
 }
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=90');
+  return loadScriptOnce_('js/climate.js?v=91');
 }
 
 function fillSelect(id, arr, withBlank) {

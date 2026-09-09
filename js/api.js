@@ -2142,6 +2142,10 @@ return {
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
+          // ความชื้น/อุณหภูมิ: รอซิงก์ชีทให้จบ เพื่อยืนยันว่าขึ้น Sheet จริง
+          if (name === 'saveClimateLog' || name === 'deleteClimateLog') {
+            return RemoteDB.sync(syncOpts).then(function () { return result; });
+          }
           RemoteDB.sync(syncOpts).catch(function (err) {
             if (typeof toast === 'function') {
               toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');

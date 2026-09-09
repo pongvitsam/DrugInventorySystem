@@ -415,8 +415,12 @@ var RemoteDB = (function () {
     applyRevision_(res.revision);
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
-      // Sheet เป็นต้นทาง — ทับทั้งชุดในเครื่อง ไม่ merge จาก local
-      DB.importAll(res.data || {});
+      var data = res.data || {};
+      // กันหาย: backend เก่ายังไม่มี ClimateLogs ใน export — อย่าล้างค่าในเครื่อง
+      if (!Object.prototype.hasOwnProperty.call(data, 'ClimateLogs')) {
+        data.ClimateLogs = DB.readObjects('ClimateLogs') || [];
+      }
+      DB.importAll(data);
       resetApiCaches_();
       return true;
     }
@@ -712,7 +716,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 90,
+    build: 91,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
