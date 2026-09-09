@@ -391,8 +391,21 @@ function loadBootstrap() {
     }).catch(function (e) {
       updateSyncIndicator('');
       var msg = (e && e.message) ? e.message : String(e);
-      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — ไม่ใช้ข้อมูลในเครื่อง', true);
-      updateGasStatus('ดึง Sheet ไม่สำเร็จ — ไม่แสดงข้อมูลในเครื่อง', true);
+      // มี snapshot จาก Sheet ครั้งก่อน — แสดงได้ พร้อมปุ่มดึงใหม่
+      if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
+        return api('bootstrap').then(function (b) {
+          return paint(b).then(function () {
+            setStatus('ใช้ข้อมูล Sheet ล่าสุดในเครื่อง — กดปุ่มเพื่อดึงจาก Google (กรณี Edge ล็อกอินหลายบัญชี)', true);
+            showGasConnectButton_();
+            updateGasStatus('ดึง Sheet ไม่สำเร็จ — แสดง snapshot ในเครื่อง', true);
+            toast(msg);
+            if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+          });
+        });
+      }
+      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — กดปุ่มด้านล่างเพื่อเปิดหน้าต่างเชื่อมต่อ', true);
+      updateGasStatus('ดึง Sheet ไม่สำเร็จ', true);
+      showGasConnectButton_();
       toast(msg);
     });
   }
@@ -405,6 +418,41 @@ function loadBootstrap() {
     setStatus('โหลดข้อมูลไม่สำเร็จ: ' + msg, true);
     toast(msg);
   });
+}
+
+function showGasConnectButton_() {
+  var el = document.getElementById('bootStatus');
+  if (!el) return;
+  if (document.getElementById('btnGasConnect')) return;
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'btnGasConnect';
+  btn.className = 'btn';
+  btn.style.marginTop = '10px';
+  btn.textContent = 'เชื่อมต่อ Google Sheets';
+  btn.onclick = function () {
+    btn.disabled = true;
+    btn.textContent = 'กำลังเปิดหน้าต่าง Google…';
+    setStatus('รอหน้าต่าง Google Sheets… ถ้ามีให้เลือกบัญชีที่ deploy Web App');
+    RemoteDB.pullWithPopup().then(function () {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b) {
+        applyBoot(b);
+        setStatus('');
+        updateSyncIndicator('');
+        updateGasStatus('แสดงจาก Google Sheets');
+        toast('ดึงจาก Google Sheets แล้ว');
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+      });
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'เชื่อมต่อ Google Sheets';
+      var m = (err && err.message) ? err.message : String(err);
+      setStatus(m, true);
+      toast(m);
+    });
+  };
+  el.appendChild(btn);
 }
 
 function applyRemoteSyncToasts_() {
@@ -443,17 +491,17 @@ function syncGoogleInBackground_() {
 
 function ensureSeedLoaded_() {
   if (typeof getSeedMedicine === 'function') return Promise.resolve();
-  return loadScriptOnce_('js/seed.js?v=96');
+  return loadScriptOnce_('js/seed.js?v=97');
 }
 
 function ensureOcrLoaded_() {
   if (typeof BillOcr !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/ocr.js?v=96');
+  return loadScriptOnce_('js/ocr.js?v=97');
 }
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=96');
+  return loadScriptOnce_('js/climate.js?v=97');
 }
 
 function fillSelect(id, arr, withBlank) {

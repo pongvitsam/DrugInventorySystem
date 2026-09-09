@@ -255,10 +255,18 @@ var RemoteDB = (function () {
       var q = '';
       var qi = url.indexOf('?');
       if (qi >= 0) q = url.slice(qi + 1).replace(/&?t=\d+/g, '').replace(/^&/, '');
-      return jsonpGet_(q);
+      return jsonpGet_(q).catch(function (err) {
+        // Edge/หลายบัญชี Google มัก 404 ที่ /macros/u/N — ใช้ป๊อปอัปบนโดเมน Google
+        if (allowRelayPopup_) return relayGet_(q);
+        err = err || new Error('โหลดจาก Google Sheets ไม่สำเร็จ');
+        err.code = 'NEED_RELAY';
+        throw err;
+      });
     }
     return postJsonViaChunks_(options.body);
   }
+
+  var allowRelayPopup_ = false;
 
   /**
    * GET ผ่าน JSONP (script tag) — ไม่ใช้ HtmlService iframe
@@ -294,10 +302,68 @@ var RemoteDB = (function () {
         reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ (เครือข่าย)'));
       };
       var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
+      // authuser=0 ลดโอกาสถูกพาไป /macros/u/1/ เมื่อล็อกอินหลายบัญชี
       script.src = baseUrl() + '?' + q +
-        (q ? '&' : '') + 'callback=' + encodeURIComponent(cb) + '&t=' + Date.now();
+        (q ? '&' : '') + 'callback=' + encodeURIComponent(cb) +
+        '&authuser=0&t=' + Date.now();
       document.head.appendChild(script);
     });
+  }
+
+  /** ป๊อปอัปบน script.google.com — google.script.run ได้แม้ Edge บล็อก iframe/JSONP */
+  function relayGet_(query) {
+    return new Promise(function (resolve, reject) {
+      var reqId = 'gas' + String(Date.now()) + Math.floor(Math.random() * 10000);
+      var settled = false;
+      var ms = /action=export/.test(query) ? 120000 : 60000;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('เชื่อมต่อ Google ไม่สำเร็จ (หมดเวลา)'));
+      }, ms);
+      function onMsg(ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== 'DrugInventoryGAS') return;
+        if (d.reqId && d.reqId !== reqId) return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(d.payload);
+      }
+      function cleanup() {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+      }
+      window.addEventListener('message', onMsg);
+      var q = String(query || '')
+        .replace(/&?relay=[^&]*/g, '')
+        .replace(/&?reqId=[^&]*/g, '')
+        .replace(/&?callback=[^&]*/g, '')
+        .replace(/^&/, '');
+      var url = baseUrl() + '?' + q +
+        (q ? '&' : '') + 'relay=1&reqId=' + encodeURIComponent(reqId) + '&t=' + Date.now();
+      var w = window.open(url, 'pharmaGasRelay', 'popup=yes,width=520,height=420');
+      if (!w) {
+        settled = true;
+        cleanup();
+        reject(new Error('เบราว์เซอร์บล็อกป๊อปอัป — อนุญาตป๊อปอัปแล้วกดเชื่อมต่ออีกครั้ง'));
+      }
+    });
+  }
+
+  function pullWithPopup() {
+    if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
+    allowRelayPopup_ = true;
+    loaded = false;
+    loadPromise = null;
+    return ensureLoaded({ force: true }).finally(function () {
+      allowRelayPopup_ = false;
+    });
+  }
+
+  function hasSheetSnapshot() {
+    return localRevision > 0 && hasLocalData_();
   }
 
   function formPost_(fields) {
@@ -709,7 +775,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 94,
+    build: 97,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
@@ -717,6 +783,8 @@ var RemoteDB = (function () {
     ping: ping,
     pushLocal: pushLocal,
     pullRemote: pullRemote,
+    pullWithPopup: pullWithPopup,
+    hasSheetSnapshot: hasSheetSnapshot,
     startPolling: startPolling,
     stopPolling: stopPolling,
     getRevision: getRevision,

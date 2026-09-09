@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เชื่อมต่อคลังยา</title>
+  <style>
+    body { font-family: Sarabun, Segoe UI, sans-serif; margin: 0; padding: 28px; text-align: center; background: #f3faf8; color: #12352f; }
+    h1 { font-size: 1.15rem; margin: 0 0 8px; }
+    p { margin: 0; line-height: 1.5; color: #3d5c56; }
+    .ok { color: #0a7a66; font-weight: 600; margin-top: 14px; }
+    .err { color: #b42318; font-weight: 600; margin-top: 14px; }
+  </style>
+</head>
+<body>
+  <h1>เชื่อมต่อ Google Sheets</h1>
+  <p id="msg">กำลังดึงข้อมูล… หน้าต่างนี้จะปิดเองเมื่อเสร็จ</p>
+  <script>
+(function () {
+  var reqId = <?!= reqIdJson ?>;
+  var action = <?!= actionJson ?>;
+  var slim = <?!= slimJson ?>;
+  var msg = document.getElementById('msg');
+  function send(p) {
+    var payload = p || { ok: false, error: 'ไม่มีข้อมูล' };
+    var message = { source: 'DrugInventoryGAS', reqId: reqId, payload: payload };
+    try { if (window.opener) window.opener.postMessage(message, '*'); } catch (e) {}
+    try { if (window.parent && window.parent !== window) window.parent.postMessage(message, '*'); } catch (e2) {}
+    if (payload.ok) {
+      msg.className = 'ok';
+      msg.textContent = 'เชื่อมต่อสำเร็จ — ปิดหน้าต่างนี้ได้';
+      setTimeout(function () { try { window.close(); } catch (e3) {} }, 700);
+    } else {
+      msg.className = 'err';
+      msg.textContent = 'ไม่สำเร็จ: ' + String(payload.error || 'unknown');
+    }
+  }
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    send({ ok: false, error: 'เปิดหน้านี้จาก Web App ของ Google ไม่ได้' });
+    return;
+  }
+  var runner = google.script.run
+    .withSuccessHandler(send)
+    .withFailureHandler(function (err) {
+      send({ ok: false, error: String(err && err.message ? err.message : err) });
+    });
+  if (action === 'export') runner.gasExport({ slim: !!slim });
+  else if (action === 'meta') runner.gasMeta();
+  else runner.gasPing();
+})();
+  </script>
+</body>
+</html>
