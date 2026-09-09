@@ -27,50 +27,75 @@ var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'Tr
 function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
+    // ป๊อปอัปบนโดเมน Google — Edge ใช้เมื่อ JSONP/iframe โดนบล็อก
+    if (String(p.relay || '') === '1') {
+      return relayPage_(p);
+    }
     if (String(p.bridge || '') === '1') {
       return serveBridge_(p);
     }
     var action = String(p.action || 'ping').toLowerCase();
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 3 });
+      return jsonpOrJson_({ ok: true, service: 'DrugInventoryGAS', version: 4 }, p.callback);
     }
     if (action === 'meta') {
-      return json_(getMeta_());
+      return jsonpOrJson_(getMeta_(), p.callback);
     }
     if (action === 'export') {
       var slim = String(p.slim || '') === '1';
-      return json_(exportAll_({ slim: slim }));
+      return jsonpOrJson_(exportAll_({ slim: slim }), p.callback);
     }
-    return json_({ ok: false, error: 'Unknown action: ' + action });
+    return jsonpOrJson_({ ok: false, error: 'Unknown action: ' + action }, p.callback);
   } catch (err) {
-    return json_({ ok: false, error: String(err.message || err) });
+    var cb = e && e.parameter && e.parameter.callback;
+    return jsonpOrJson_({ ok: false, error: String(err.message || err) }, cb);
   }
+}
+
+function relayPage_(p) {
+  var action = String((p && p.action) || 'meta').toLowerCase();
+  var slim = String((p && p.slim) || '') === '1';
+  var t = HtmlService.createTemplateFromFile('Relay');
+  t.reqIdJson = JSON.stringify(String((p && p.reqId) || ''));
+  t.actionJson = JSON.stringify(action);
+  t.slimJson = JSON.stringify(slim);
+  return t.evaluate()
+    .setTitle('เชื่อมต่อคลังยา')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /** iframe bridge สำหรับ GitHub Pages (ไม่มี CORS) — ส่งผลผ่าน postMessage */
 function serveBridge_(p) {
   var action = String(p.action || 'ping').toLowerCase();
   var slim = String(p.slim || '') === '1';
-  var payload;
-  try {
-    if (action === 'meta') payload = getMeta_();
-    else if (action === 'export') payload = exportAll_({ slim: slim });
-    else payload = { ok: true, service: 'DrugInventoryGAS', version: 3 };
-  } catch (err) {
-    payload = { ok: false, error: String(err && err.message ? err.message : err) };
-  }
   var t = HtmlService.createTemplateFromFile('Bridge');
-  t.payloadJson = JSON.stringify(payload);
   t.reqIdJson = JSON.stringify(String(p.reqId || ''));
   t.actionJson = JSON.stringify(action);
+  t.slimJson = JSON.stringify(slim);
+  // export ใหญ่ — อย่าฝังใน HTML (Edge/หลายบัญชี 404) ให้เรียกผ่าน google.script.run
+  if (action === 'export') {
+    t.payloadJson = 'null';
+  } else {
+    var payload;
+    try {
+      if (action === 'meta') payload = getMeta_();
+      else payload = { ok: true, service: 'DrugInventoryGAS', version: 4 };
+    } catch (err) {
+      payload = { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+    t.payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+  }
   return t.evaluate()
     .setTitle('DrugInventory bridge')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function gasExport() { return exportAll_({ slim: true }); }
+function gasExport(opts) {
+  opts = opts || {};
+  return exportAll_({ slim: opts.slim !== false });
+}
 function gasMeta() { return getMeta_(); }
-function gasPing() { return { ok: true, service: 'DrugInventoryGAS', version: 3 }; }
+function gasPing() { return { ok: true, service: 'DrugInventoryGAS', version: 4 }; }
 
 function doPost(e) {
   try {
@@ -91,6 +116,17 @@ function doPost(e) {
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** JSONP สำหรับ GitHub Pages — Edge/Chrome เรียกผ่าน <script> ไม่ติด CORS */
+function jsonpOrJson_(obj, callback) {
+  var text = JSON.stringify(obj);
+  if (callback && /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(callback))) {
+    return ContentService.createTextOutput(String(callback) + '(' + text + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(text)
     .setMimeType(ContentService.MimeType.JSON);
 }
 

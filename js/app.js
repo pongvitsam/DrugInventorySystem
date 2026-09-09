@@ -403,7 +403,7 @@ function loadBootstrap() {
           });
         });
       }
-      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — กดปุ่มด้านล่างเพื่อเปิดหน้าต่างเชื่อมต่อ', true);
+      setStatus('ดึงจาก Google Sheets ไม่สำเร็จ — กดปุ่มด้านล่างเพื่อเปิดหน้าต่างเชื่อมต่อ (Edge ต้องกดครั้งหนึ่ง)', true);
       updateGasStatus('ดึง Sheet ไม่สำเร็จ', true);
       showGasConnectButton_();
       toast(msg);
@@ -429,11 +429,13 @@ function showGasConnectButton_() {
   btn.id = 'btnGasConnect';
   btn.className = 'btn';
   btn.style.marginTop = '10px';
-  btn.textContent = 'เชื่อมต่อ Google Sheets';
+  btn.textContent = /Edg\//.test(navigator.userAgent || '')
+    ? 'เชื่อมต่อ Google Sheets (สำหรับ Edge)'
+    : 'เชื่อมต่อ Google Sheets';
   btn.onclick = function () {
     btn.disabled = true;
     btn.textContent = 'กำลังเปิดหน้าต่าง Google…';
-    setStatus('รอหน้าต่าง Google Sheets… ถ้ามีให้เลือกบัญชีที่ deploy Web App');
+    setStatus('รอหน้าต่าง Google Sheets… ถ้ามีหลายบัญชี ให้เลือกบัญชีที่ deploy Web App — แล้วอนุญาตป๊อปอัปของ Edge');
     RemoteDB.pullWithPopup().then(function () {
       applyRemoteSyncToasts_();
       return api('bootstrap').then(function (b) {
@@ -446,7 +448,9 @@ function showGasConnectButton_() {
       });
     }).catch(function (err) {
       btn.disabled = false;
-      btn.textContent = 'เชื่อมต่อ Google Sheets';
+      btn.textContent = /Edg\//.test(navigator.userAgent || '')
+        ? 'เชื่อมต่อ Google Sheets (สำหรับ Edge)'
+        : 'เชื่อมต่อ Google Sheets';
       var m = (err && err.message) ? err.message : String(err);
       setStatus(m, true);
       toast(m);

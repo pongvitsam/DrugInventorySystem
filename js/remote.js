@@ -268,6 +268,11 @@ var RemoteDB = (function () {
 
   var allowRelayPopup_ = false;
 
+  function isEdgeBrowser_() {
+    var ua = String(navigator.userAgent || '');
+    return /Edg\//.test(ua) || /Edge\//.test(ua);
+  }
+
   /**
    * GET ผ่าน JSONP (script tag) — ไม่ใช้ HtmlService iframe
    * เพราะ Edge/Chrome + หลายบัญชี Google มัก 404 ที่ /macros/u/N/s/...
@@ -276,13 +281,15 @@ var RemoteDB = (function () {
     return new Promise(function (resolve, reject) {
       var cb = 'pharmaGasCb_' + String(Date.now()) + '_' + Math.floor(Math.random() * 1e6);
       var settled = false;
-      var ms = /action=export/.test(query) ? 90000 : 45000;
+      var ms = /action=export/.test(query) ? (isEdgeBrowser_() ? 25000 : 90000) : (isEdgeBrowser_() ? 12000 : 45000);
       var script = document.createElement('script');
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
         cleanup();
-        reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ'));
+        reject(new Error(isEdgeBrowser_()
+          ? 'Edge โหลดไม่สำเร็จ — กดปุ่มเชื่อมต่อ Google Sheets'
+          : 'โหลดจาก Google Sheets ไม่สำเร็จ'));
       }, ms);
       function cleanup() {
         clearTimeout(timer);
@@ -299,7 +306,9 @@ var RemoteDB = (function () {
         if (settled) return;
         settled = true;
         cleanup();
-        reject(new Error('โหลดจาก Google Sheets ไม่สำเร็จ (เครือข่าย)'));
+        reject(new Error(isEdgeBrowser_()
+          ? 'Edge ต้องกดปุ่มเชื่อมต่อ Google Sheets ครั้งหนึ่ง'
+          : 'โหลดจาก Google Sheets ไม่สำเร็จ (เครือข่าย)'));
       };
       var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
       // authuser=0 ลดโอกาสถูกพาไป /macros/u/1/ เมื่อล็อกอินหลายบัญชี
