@@ -1575,6 +1575,7 @@ function apiSaveClimateLog_(p) {
   var temp = Number(p && p.temperature);
   var hum = Number(p && p.humidity);
   if (!date) throw new Error('กรุณาเลือกวันที่');
+  if (date > todayIsoDate_()) throw new Error('บันทึกวันล่วงหน้าไม่ได้ — เลือกวันนี้หรือวันที่ย้อนหลัง');
   if (isNaN(temp) || temp < -20 || temp > 60) throw new Error('อุณหภูมิไม่ถูกต้อง (°C)');
   if (isNaN(hum) || hum < 0 || hum > 100) throw new Error('ความชื้นไม่ถูกต้อง (%RH)');
   var rows = readObjects_('ClimateLogs');

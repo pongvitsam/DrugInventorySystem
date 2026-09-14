@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=100">
+  <link rel="stylesheet" href="css/styles.css?v=101">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -291,20 +291,29 @@
         <div class="top">
           <div>
             <h2>ความชื้น / อุณหภูมิห้อง</h2>
-            <div class="sub">บันทึกวันละ 2 รอบ · แก้ไข/ลบได้ · กราฟรายวัน/เดือน/ปี · Export PDF</div>
+            <div class="sub">บันทึกวันละ 2 รอบ · ลงย้อนหลังได้ · แก้ไข/ลบได้ · กราฟรายวัน/เดือน/ปี · Export PDF</div>
           </div>
           <button type="button" class="btn" onclick="ClimateUI.exportPdf()">Export PDF</button>
         </div>
 
         <div class="card" style="margin-bottom:14px">
           <h3>บันทึกรายวัน</h3>
-          <div class="row" style="align-items:flex-end;margin-bottom:12px">
-            <div class="field th-date-field" style="max-width:260px">
-              <label>วันที่บันทึก</label>
+          <div class="row cl-entry-toolbar" style="align-items:flex-end;margin-bottom:10px">
+            <div class="field th-date-field" style="max-width:280px">
+              <label>วันที่บันทึก (ย้อนหลังได้)</label>
               <input id="clEntryDate" type="hidden">
               <button type="button" class="th-date-btn" data-for="clEntryDate">เลือกวันที่</button>
             </div>
-            <p class="muted" style="margin:0 0 8px">บันทึกแล้วสถานะอัปเดตทันที · เปลี่ยนวันที่แล้วโหลดให้อัตโนมัติ</p>
+            <div class="cl-date-nav">
+              <button type="button" class="btn ghost" id="clDatePrev" onclick="ClimateUI.shiftDate(-1)">‹ วันก่อน</button>
+              <button type="button" class="btn ghost" onclick="ClimateUI.jumpToday()">วันนี้</button>
+              <button type="button" class="btn ghost" id="clDateNext" onclick="ClimateUI.shiftDate(1)">วันถัดไป ›</button>
+            </div>
+          </div>
+          <p id="clBackdateHint" class="muted">ลืมลงวันก่อนหน้า — กด «วันก่อน» หรือเลือกวันที่จากปฏิทิน แล้วบันทึกได้เลย</p>
+          <div id="clMissingWrap" class="cl-missing-wrap" style="display:none">
+            <div class="cl-missing-label">วันที่ยังไม่ครบ — คลิกเพื่อลงย้อนหลัง</div>
+            <div id="clMissingDays" class="cl-missing"></div>
           </div>
           <div class="cl-slot-grid">
             <div class="cl-slot-card">
@@ -361,7 +370,7 @@
         </div>
 
         <div class="card" style="margin-bottom:14px">
-          <h3>รายการ 30 วันล่าสุด</h3>
+          <h3>รายการที่บันทึกแล้ว</h3>
           <div class="table-wrap"><table id="clRecentTable"></table></div>
         </div>
 
@@ -567,13 +576,13 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=100"></script>
-  <script src="js/remote.js?v=100"></script>
-  <script src="js/api.js?v=100"></script>
-  <script src="js/options.js?v=100"></script>
-  <script src="js/thdate.js?v=100"></script>
-  <script src="js/app.js?v=100"></script>
-  <script src="js/auth.js?v=100"></script>
+  <script src="js/db.js?v=101"></script>
+  <script src="js/remote.js?v=101"></script>
+  <script src="js/api.js?v=101"></script>
+  <script src="js/options.js?v=101"></script>
+  <script src="js/thdate.js?v=101"></script>
+  <script src="js/app.js?v=101"></script>
+  <script src="js/auth.js?v=101"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->
 </body>
 </html>

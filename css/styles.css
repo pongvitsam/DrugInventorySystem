@@ -1467,6 +1467,66 @@ select option[value="__add__"] {
   margin-top: 10px;
 }
 .cl-slot-actions .btn { flex: 1; }
+.cl-date-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.cl-date-nav .btn[disabled] {
+  opacity: .45;
+  pointer-events: none;
+}
+#clBackdateHint {
+  margin: 0 0 10px;
+}
+.cl-backdate-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff6e5;
+  color: #8a5a00;
+  font-size: 13px;
+  font-weight: 500;
+}
+.cl-missing-wrap {
+  margin: 0 0 14px;
+}
+.cl-missing-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.cl-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cl-missing-chip {
+  border: 1px dashed #d9a24a;
+  background: #fffaf0;
+  color: #8a5a00;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cl-missing-chip:hover {
+  background: #fff0d4;
+}
+.cl-back-tag {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a5a00;
+  background: #fff3d6;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
 .cl-row-actions {
   white-space: nowrap;
   text-align: right;
@@ -1559,6 +1619,8 @@ select option[value="__add__"] {
   .cl-slot-grid { grid-template-columns: 1fr; }
   .cl-print-kpis { grid-template-columns: 1fr 1fr; }
   .cl-chart-wrap { height: 260px; }
+  .cl-date-nav { width: 100%; }
+  .cl-date-nav .btn { flex: 1; }
 }
 @media print {
   html.print-climate .sidebar,

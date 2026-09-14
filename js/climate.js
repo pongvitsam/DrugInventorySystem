@@ -11,6 +11,68 @@ var ClimateUI = (function () {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  function isoAddDays_(iso, days) {
+    var dt = new Date((iso || todayIso()) + 'T12:00:00+07:00');
+    dt.setDate(dt.getDate() + days);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  }
+
+  function selectedEntryDate_() {
+    return (typeof ThDate !== 'undefined' && ThDate.get('clEntryDate')) || todayIso();
+  }
+
+  function formatShortDate_(iso) {
+    var p = String(iso || '').split('-');
+    if (p.length !== 3) return iso || '';
+    return Number(p[2]) + '/' + Number(p[1]) + '/' + (Number(p[0]) + 543);
+  }
+
+  function formatLongDate_(iso) {
+    if (typeof ThDate !== 'undefined' && ThDate.formatDateBtn) {
+      var label = ThDate.formatDateBtn(iso);
+      if (label && label !== 'เลือกวันที่') return label;
+    }
+    return formatShortDate_(iso);
+  }
+
+  function setEntryDate_(iso) {
+    if (typeof ThDate !== 'undefined' && ThDate.set) ThDate.set('clEntryDate', iso, true);
+    loadTodaySlots();
+  }
+
+  function shiftDate(delta) {
+    var next = isoAddDays_(selectedEntryDate_(), delta);
+    if (next > todayIso()) next = todayIso();
+    setEntryDate_(next);
+  }
+
+  function jumpToday() {
+    setEntryDate_(todayIso());
+  }
+
+  function updateBackdateUi_(date) {
+    date = date || selectedEntryDate_();
+    var today = todayIso();
+    var hint = document.getElementById('clBackdateHint');
+    var nextBtn = document.getElementById('clDateNext');
+    if (nextBtn) nextBtn.disabled = date >= today;
+    if (!hint) return;
+    if (date && date > today) {
+      hint.className = 'cl-backdate-banner';
+      hint.removeAttribute('style');
+      hint.textContent = 'บันทึกวันล่วงหน้าไม่ได้ — เลือกวันนี้หรือวันที่ย้อนหลัง';
+    } else if (date && date < today) {
+      hint.className = 'cl-backdate-banner';
+      hint.removeAttribute('style');
+      hint.innerHTML = '<b>กำลังบันทึกย้อนหลัง</b> · ' + esc(formatLongDate_(date)) +
+        ' — กรอกอุณหภูมิ/ความชื้น แล้วกดบันทึกได้ตามปกติ';
+    } else {
+      hint.className = 'muted';
+      hint.removeAttribute('style');
+      hint.textContent = 'ลืมลงวันก่อนหน้า — กด «วันก่อน» หรือเลือกวันที่จากปฏิทิน แล้วบันทึกได้เลย';
+    }
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -70,7 +132,8 @@ var ClimateUI = (function () {
   }
 
   function loadTodaySlots() {
-    var date = (typeof ThDate !== 'undefined' && ThDate.get('clEntryDate')) || todayIso();
+    var date = selectedEntryDate_();
+    updateBackdateUi_(date);
     api('listClimateLogs', { from: date, to: date }).then(function (r) {
       var am = null;
       var pm = null;
@@ -99,7 +162,7 @@ var ClimateUI = (function () {
         st.textContent = 'บันทึกแล้ว' + (row.recordedBy ? ' · ' + row.recordedBy : '') + ' · แก้ได้';
         st.className = 'cl-slot-status ok';
       } else {
-        st.textContent = 'ยังไม่บันทึก';
+        st.textContent = (selectedEntryDate_() < todayIso()) ? 'ยังไม่บันทึก · ลงย้อนหลังได้' : 'ยังไม่บันทึก';
         st.className = 'cl-slot-status pending';
       }
     }
@@ -109,7 +172,16 @@ var ClimateUI = (function () {
 
   function saveSlot(slot) {
     slot = slot === 'pm' ? 'pm' : 'am';
-    var date = (typeof ThDate !== 'undefined' && ThDate.get('clEntryDate')) || todayIso();
+    var date = selectedEntryDate_();
+    var today = todayIso();
+    if (!date) {
+      if (typeof toast === 'function') toast('กรุณาเลือกวันที่');
+      return;
+    }
+    if (date > today) {
+      if (typeof toast === 'function') toast('บันทึกวันล่วงหน้าไม่ได้ — เลือกวันนี้หรือวันที่ย้อนหลัง');
+      return;
+    }
     var tempEl = document.getElementById(slot === 'pm' ? 'clTempPm' : 'clTempAm');
     var humEl = document.getElementById(slot === 'pm' ? 'clHumPm' : 'clHumAm');
     var temperature = tempEl ? tempEl.value : '';
@@ -118,6 +190,7 @@ var ClimateUI = (function () {
     var statusEl = document.getElementById(slot === 'pm' ? 'clStatusPm' : 'clStatusAm');
     var wasEdit = !!(statusEl && statusEl.classList.contains('ok'));
     var saveBtn = document.getElementById(slot === 'pm' ? 'clSavePm' : 'clSaveAm');
+    var isBackdate = date < today;
     var preview = {
       temperature: temperature,
       humidity: humidity,
@@ -135,11 +208,14 @@ var ClimateUI = (function () {
       slot: slot,
       temperature: temperature,
       humidity: humidity,
-      recordedBy: recordedBy
+      recordedBy: recordedBy,
+      notes: isBackdate ? 'บันทึกย้อนหลัง' : ''
     }).then(function (r) {
       fillSlotForm_(slot, (r && r.log) || preview);
       if (typeof toast === 'function') {
-        toast((wasEdit ? 'แก้ไข' : 'บันทึก') + ' ' + (slot === 'pm' ? '16:00' : '08:30') + ' แล้ว');
+        var slotLabel = slot === 'pm' ? '16:00' : '08:30';
+        toast((isBackdate ? 'บันทึกย้อนหลัง ' : (wasEdit ? 'แก้ไข ' : 'บันทึก ')) +
+          slotLabel + (isBackdate ? ' · ' + formatShortDate_(date) : '') + ' แล้ว');
       }
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       renderRecentTable_();
@@ -161,14 +237,15 @@ var ClimateUI = (function () {
     var el = document.getElementById('clRecentTable');
     if (!el) return;
     var to = todayIso();
-    var fromDt = new Date(to + 'T12:00:00+07:00');
-    fromDt.setDate(fromDt.getDate() - 30);
-    var from = fromDt.getFullYear() + '-' + String(fromDt.getMonth() + 1).padStart(2, '0') + '-' + String(fromDt.getDate()).padStart(2, '0');
+    var selected = selectedEntryDate_();
+    var from = isoAddDays_(to, -45);
+    if (selected && selected < from) from = selected;
     api('listClimateLogs', { from: from, to: to }).then(function (r) {
       var rows = r.logs || [];
       RECENT_ROWS_ = rows;
+      renderMissingDays_(rows, to);
       if (!rows.length) {
-        el.innerHTML = '<tr><td class="muted">ยังไม่มีข้อมูล 30 วันล่าสุด</td></tr>';
+        el.innerHTML = '<tr><td class="muted">ยังไม่มีข้อมูลในช่วงนี้ — เลือกวันที่ย้อนหลังแล้วบันทึกได้เลย</td></tr>';
         return;
       }
       var html = '<tr><th>วันที่</th><th>รอบ</th><th class="right">°C</th><th class="right">%RH</th><th>ผู้บันทึก</th><th></th></tr>';
@@ -176,8 +253,9 @@ var ClimateUI = (function () {
         var label = (typeof ThDate !== 'undefined' && ThDate.formatDateLong)
           ? ThDate.formatDateLong(row.date)
           : row.date;
+        var back = row.notes && String(row.notes).indexOf('ย้อนหลัง') >= 0;
         return '<tr>' +
-          '<td>' + esc(label) + '</td>' +
+          '<td>' + esc(label) + (back ? ' <span class="cl-back-tag">ย้อนหลัง</span>' : '') + '</td>' +
           '<td>' + (row.slot === 'pm' ? '16:00' : '08:30') + '</td>' +
           '<td class="right">' + esc(row.temperature) + '</td>' +
           '<td class="right">' + esc(row.humidity) + '</td>' +
@@ -204,6 +282,48 @@ var ClimateUI = (function () {
     }).catch(function () {});
   }
 
+  function renderMissingDays_(rows, today) {
+    var wrap = document.getElementById('clMissingWrap');
+    var box = document.getElementById('clMissingDays');
+    if (!wrap || !box) return;
+    var byDay = {};
+    (rows || []).forEach(function (row) {
+      var d = row.date;
+      if (!byDay[d]) byDay[d] = { am: false, pm: false };
+      if (row.slot === 'pm') byDay[d].pm = true;
+      else byDay[d].am = true;
+    });
+    var chips = [];
+    for (var i = 0; i < 14; i++) {
+      var iso = isoAddDays_(today, -i);
+      var pair = byDay[iso] || { am: false, pm: false };
+      if (pair.am && pair.pm) continue;
+      var miss = [];
+      if (!pair.am) miss.push('08:30');
+      if (!pair.pm) miss.push('16:00');
+      chips.push({ date: iso, miss: miss, isToday: iso === today });
+    }
+    if (!chips.length) {
+      wrap.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    wrap.style.display = '';
+    box.innerHTML = chips.map(function (c) {
+      var when = c.isToday ? 'วันนี้' : formatShortDate_(c.date);
+      var gap = c.miss.length === 2 ? 'ขาดทั้งวัน' : ('ขาด ' + c.miss.join(' / '));
+      return '<button type="button" class="cl-missing-chip" data-cl-miss="' + esc(c.date) + '">' +
+        esc(when) + ' · ' + esc(gap) + '</button>';
+    }).join('');
+    box.querySelectorAll('[data-cl-miss]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setEntryDate_(btn.getAttribute('data-cl-miss'));
+        var card = document.querySelector('#page-climate .cl-slot-grid');
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }
+
   function editLog(row) {
     if (!row) return;
     if (typeof ThDate !== 'undefined' && ThDate.set) {
@@ -221,7 +341,7 @@ var ClimateUI = (function () {
 
   function clearSlot(slot) {
     slot = slot === 'pm' ? 'pm' : 'am';
-    var date = (typeof ThDate !== 'undefined' && ThDate.get('clEntryDate')) || todayIso();
+    var date = selectedEntryDate_();
     api('listClimateLogs', { from: date, to: date }).then(function (r) {
       var found = (r.logs || []).filter(function (row) {
         return row.slot === slot;
@@ -467,6 +587,8 @@ var ClimateUI = (function () {
     loadReport: loadReport,
     removeLog: removeLog,
     editLog: editLog,
+    shiftDate: shiftDate,
+    jumpToday: jumpToday,
     exportPdf: exportPdf
   };
 })();
