@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=107">
+  <link rel="stylesheet" href="css/styles.css?v=108">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -384,18 +384,20 @@
 
         <div class="card cl-print-card" id="clPrintCard">
           <div class="toolbar rp-toolbar cl-export-toolbar">
-            <div>
-              <h3 style="margin:0 0 4px">รายงานประจำเดือน</h3>
-              <p class="muted" style="margin:0;font-size:13px">เลือกเดือนแล้วพิมพ์ / บันทึก PDF — แบบเดียวกับสรุปรายเดือน</p>
+            <div class="cl-export-title">
+              <h3>รายงานประจำเดือน</h3>
+              <p class="muted">เลือกเดือนแล้วพิมพ์ / บันทึก PDF — แบบเดียวกับสรุปรายเดือน</p>
             </div>
-            <div id="clExportMonthWrap" class="field th-date-field" style="max-width:220px">
-              <label>เดือน</label>
-              <input id="clExportMonth" type="hidden">
-              <button type="button" class="th-date-btn" data-for="clExportMonth">เลือกเดือน</button>
+            <div class="cl-export-actions">
+              <div id="clExportMonthWrap" class="field th-date-field">
+                <label>เดือน</label>
+                <input id="clExportMonth" type="hidden">
+                <button type="button" class="th-date-btn" data-for="clExportMonth">เลือกเดือน</button>
+              </div>
+              <button type="button" class="btn" onclick="ClimateUI.exportMonthPdf()">พิมพ์ / บันทึก PDF</button>
             </div>
-            <button type="button" class="btn" onclick="ClimateUI.exportMonthPdf()">พิมพ์ / บันทึก PDF</button>
           </div>
-          <div id="clPrintOut" class="print-sheet cl-print-sheet" style="margin-top:12px">เลือกเดือนแล้วกดพิมพ์</div>
+          <div id="clPrintOut" class="print-sheet cl-print-sheet">เลือกเดือนแล้วกดพิมพ์</div>
         </div>
       </section>
 
@@ -602,7 +604,7 @@
   <script src="js/api.js?v=107"></script>
   <script src="js/options.js?v=105"></script>
   <script src="js/thdate.js?v=105"></script>
-  <script src="js/app.js?v=107"></script>
+  <script src="js/app.js?v=108"></script>
   <script src="js/auth.js?v=105"></script>
   <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->

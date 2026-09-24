@@ -602,20 +602,22 @@ var ClimateUI = (function () {
       if (rep.mode === 'year') {
         return '<tr><td>' + esc(r.label) + '</td><td class="right">' + moneyNum(r.avgTemp) + '</td><td class="right">' + moneyNum(r.avgHum) + '</td><td class="right">' + (r.count || 0) + '</td></tr>';
       }
-      return '<tr><td>' + esc(r.label) + '</td>' +
+      return '<tr><td class="cl-print-date">' + esc(r.label) + '</td>' +
         '<td class="right">' + esc(r.amTemp) + '</td><td class="right">' + esc(r.amHum) + '</td>' +
         '<td class="right">' + esc(r.pmTemp) + '</td><td class="right">' + esc(r.pmHum) + '</td>' +
         '<td class="right">' + moneyNum(r.avgTemp) + '</td><td class="right">' + moneyNum(r.avgHum) + '</td></tr>';
     }).join('');
     var thead = rep.mode === 'year'
       ? '<tr><th>เดือน</th><th class="right">°C เฉลี่ย</th><th class="right">%RH เฉลี่ย</th><th class="right">ครั้ง</th></tr>'
-      : '<tr><th>วันที่</th><th class="right">08:30 °C</th><th class="right">08:30 %RH</th><th class="right">16:00 °C</th><th class="right">16:00 %RH</th><th class="right">°C เฉลี่ย</th><th class="right">%RH เฉลี่ย</th></tr>';
+      : '<tr><th class="cl-print-date">วันที่</th><th class="right">08:30 °C</th><th class="right">08:30 %RH</th><th class="right">16:00 °C</th><th class="right">16:00 %RH</th><th class="right">°C เฉลี่ย</th><th class="right">%RH เฉลี่ย</th></tr>';
     out.innerHTML =
       '<div class="cl-print-head">' + logo +
-      '<div><h2>รายงานความชื้น / อุณหภูมิห้อง</h2>' +
+      '<div class="cl-print-head-text">' +
+      '<h2>รายงานความชื้น / อุณหภูมิห้อง</h2>' +
       '<p class="cl-print-unit">' + esc(rep.unitName || '') + '</p>' +
       '<p class="cl-print-sub">' + esc(rep.unitSub || '') + '</p>' +
-      '<p class="cl-print-period">' + esc(rep.title || '') + '</p></div></div>' +
+      '<p class="cl-print-period">' + esc(rep.title || '') + '</p></div>' +
+      '<div class="cl-print-head-spacer" aria-hidden="true"></div></div>' +
       '<div class="cl-print-kpis">' +
       '<div><b>' + moneyNum(st.avgTemp) + ' °C</b><span>อุณหภูมิเฉลี่ย</span></div>' +
       '<div><b>' + moneyNum(st.minTemp) + ' – ' + moneyNum(st.maxTemp) + '</b><span>อุณหภูมิต่ำ–สูง</span></div>' +
@@ -676,16 +678,33 @@ var ClimateUI = (function () {
         animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { labels: { font: { family: fontFamily, size: 11 }, color: '#5a736b' } },
+          legend: {
+            position: 'top',
+            align: 'center',
+            labels: {
+              font: { family: fontFamily, size: 11 },
+              color: '#5a736b',
+              boxWidth: 12,
+              padding: 12
+            }
+          },
           title: {
             display: true,
             text: rep.title || '',
             font: { family: fontFamily, size: 14, weight: '600' },
-            color: '#065649'
+            color: '#065649',
+            padding: { top: 4, bottom: 10 }
           }
         },
+        layout: {
+          padding: { left: 4, right: 4, top: 0, bottom: 0 }
+        },
         scales: {
-          x: { ticks: { font: { family: fontFamily, size: 10 }, color: '#5a736b' }, grid: { display: false } },
+          x: {
+            offset: true,
+            ticks: { font: { family: fontFamily, size: 10 }, color: '#5a736b', maxRotation: 0 },
+            grid: { display: false }
+          },
           y: {
             type: 'linear',
             position: 'left',
