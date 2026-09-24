@@ -1646,7 +1646,8 @@ select option[value="__add__"] {
     padding: 0;
     margin: 0;
   }
-  html.print-climate .cl-print-card > .row { display: none !important; }
+  html.print-climate .cl-print-card > .row,
+  html.print-climate .cl-export-toolbar { display: none !important; }
   html.print-climate .cl-print-sheet {
     border: none;
     max-width: none;

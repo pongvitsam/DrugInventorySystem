@@ -98,28 +98,61 @@ var ClimateUI = (function () {
     loadReport();
   }
 
+  function currentMonthIso_() {
+    var now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  }
+
+  function selectedExportMonth_() {
+    return (typeof ThDate !== 'undefined' && ThDate.get('clExportMonth')) ||
+      (typeof ThDate !== 'undefined' && ThDate.get('clMonth')) ||
+      currentMonthIso_();
+  }
+
+  function syncExportMonth_(iso) {
+    iso = iso || selectedExportMonth_();
+    if (typeof ThDate === 'undefined' || !ThDate.set) return iso;
+    if (ThDate.get('clExportMonth') !== iso) ThDate.set('clExportMonth', iso, true);
+    if (ThDate.get('clMonth') !== iso) ThDate.set('clMonth', iso, true);
+    return iso;
+  }
+
   function initPage() {
     if (typeof ThDate !== 'undefined') {
       if (ThDate.initDateField) {
         ThDate.initDateField('clEntryDate');
         ThDate.initDateField('clDayDate');
       }
-      if (ThDate.initMonthField) ThDate.initMonthField('clMonth');
+      if (ThDate.initMonthField) {
+        ThDate.initMonthField('clMonth');
+        ThDate.initMonthField('clExportMonth');
+      }
       if (!ThDate.get('clEntryDate')) ThDate.set('clEntryDate', todayIso());
       if (!ThDate.get('clDayDate')) ThDate.set('clDayDate', todayIso());
-      var now = new Date();
-      var mk = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+      var mk = currentMonthIso_();
       if (!ThDate.get('clMonth')) ThDate.set('clMonth', mk);
+      if (!ThDate.get('clExportMonth')) ThDate.set('clExportMonth', ThDate.get('clMonth') || mk);
       var yEl = document.getElementById('clYear');
-      if (yEl && !yEl.value) yEl.value = String(now.getFullYear() + 543);
+      if (yEl && !yEl.value) yEl.value = String(new Date().getFullYear() + 543);
     }
-    ['clEntryDate', 'clDayDate', 'clMonth'].forEach(function (id) {
+    ['clEntryDate', 'clDayDate', 'clMonth', 'clExportMonth'].forEach(function (id) {
       var el = document.getElementById(id);
       if (!el || el._clBound) return;
       el._clBound = true;
       el.addEventListener('change', function () {
-        if (id === 'clEntryDate') loadTodaySlots();
-        else loadReport();
+        if (id === 'clEntryDate') {
+          loadTodaySlots();
+          return;
+        }
+        if (id === 'clExportMonth') {
+          syncExportMonth_(ThDate.get('clExportMonth'));
+          loadMonthPreview_();
+          return;
+        }
+        if (id === 'clMonth') {
+          syncExportMonth_(ThDate.get('clMonth'));
+        }
+        loadReport();
       });
     });
     var yEl2 = document.getElementById('clYear');
@@ -129,6 +162,7 @@ var ClimateUI = (function () {
     }
     loadTodaySlots();
     setMode(MODE_ || 'day');
+    loadMonthPreview_();
   }
 
   function loadTodaySlots() {
@@ -221,7 +255,10 @@ var ClimateUI = (function () {
       renderRecentTable_();
       // กราฟ/รายงานอัปเดตทีหลัง — ไม่บล็อกการแสดงสถานะ
       clearTimeout(saveSlot._repTimer);
-      saveSlot._repTimer = setTimeout(loadReport, 400);
+      saveSlot._repTimer = setTimeout(function () {
+        loadReport();
+        loadMonthPreview_();
+      }, 400);
     }).catch(function (e) {
       // ถ้าบันทึกไม่สำเร็จ โหลดสถานะจริงกลับ
       loadTodaySlots();
@@ -365,6 +402,7 @@ var ClimateUI = (function () {
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       loadTodaySlots();
       loadReport();
+      loadMonthPreview_();
       renderRecentTable_();
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
@@ -374,7 +412,7 @@ var ClimateUI = (function () {
   function loadReport() {
     var payload = { mode: MODE_ };
     if (MODE_ === 'month') {
-      payload.month = (typeof ThDate !== 'undefined' && ThDate.get('clMonth')) || '';
+      payload.month = syncExportMonth_() || '';
     } else if (MODE_ === 'year') {
       var be = Number((document.getElementById('clYear') || {}).value || 0);
       payload.year = be > 2400 ? String(be - 543) : String(be || new Date().getFullYear());
@@ -382,14 +420,29 @@ var ClimateUI = (function () {
       payload.date = (typeof ThDate !== 'undefined' && ThDate.get('clDayDate')) || todayIso();
     }
     api('climateReport', payload).then(function (rep) {
-      LAST_REPORT_ = rep;
       renderStats_(rep.stats);
-      renderPrint_(rep);
       ensureChartJs_().then(function () {
         paintChart_(rep);
       }).catch(function () {});
+      // กราฟโหมดรายเดือน — sync ตัวอย่างรายงานด้วย; โหมดอื่นคง preview รายเดือนไว้
+      if (MODE_ === 'month') {
+        LAST_REPORT_ = rep;
+        renderPrint_(rep);
+      }
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
+    });
+  }
+
+  function loadMonthPreview_() {
+    var month = syncExportMonth_();
+    return api('climateReport', { mode: 'month', month: month }).then(function (rep) {
+      LAST_REPORT_ = rep;
+      renderPrint_(rep);
+      return rep;
+    }).catch(function (e) {
+      if (typeof toast === 'function') toast(e.message || String(e));
+      return null;
     });
   }
 
@@ -551,31 +604,95 @@ var ClimateUI = (function () {
       '</tbody></table>' +
       '<p class="cl-print-foot">พิมพ์จากระบบคลังยา · ' + esc(new Date().toLocaleString('th-TH')) + '</p>';
 
-    // Clone chart into print canvas after a tick
-    setTimeout(function () {
-      var src = document.getElementById('clChart');
-      var dest = document.getElementById('clPrintChart');
-      if (!src || !dest || !CHART_) return;
-      try {
-        dest.width = src.width;
-        dest.height = src.height;
-        var ctx = dest.getContext('2d');
-        ctx.drawImage(src, 0, 0);
-      } catch (e) { /* ignore */ }
-    }, 200);
+    ensureChartJs_().then(function () {
+      paintPrintChart_(rep);
+    }).catch(function () {});
   }
 
-  function exportPdf() {
-    if (!LAST_REPORT_) {
-      loadReport();
-      setTimeout(exportPdf, 600);
-      return;
+  var PRINT_CHART_ = null;
+
+  function paintPrintChart_(rep) {
+    var canvas = document.getElementById('clPrintChart');
+    if (!canvas || typeof Chart === 'undefined' || !rep) return;
+    if (PRINT_CHART_) {
+      try { PRINT_CHART_.destroy(); } catch (e) { /* ignore */ }
+      PRINT_CHART_ = null;
     }
+    var points = rep.points || [];
+    var labels = points.map(function (p) { return p.label; });
+    var fontFamily = "'Prompt', 'Sarabun', sans-serif";
+    var hasAmPm = points.some(function (p) { return p.tempAm != null || p.tempPm != null; });
+    var datasets;
+    if (hasAmPm && rep.mode !== 'year') {
+      datasets = [
+        { label: 'อุณหภูมิ 08:30 (°C)', data: points.map(function (p) { return p.tempAm; }), borderColor: '#0a7a66', backgroundColor: 'rgba(10,122,102,.12)', tension: 0.25, yAxisID: 'y', spanGaps: true },
+        { label: 'อุณหภูมิ 16:00 (°C)', data: points.map(function (p) { return p.tempPm; }), borderColor: '#1d7a9c', backgroundColor: 'rgba(29,122,156,.12)', tension: 0.25, yAxisID: 'y', spanGaps: true },
+        { label: 'ความชื้น 08:30 (%RH)', data: points.map(function (p) { return p.humAm; }), borderColor: '#c47a1a', borderDash: [5, 4], tension: 0.25, yAxisID: 'y1', spanGaps: true },
+        { label: 'ความชื้น 16:00 (%RH)', data: points.map(function (p) { return p.humPm; }), borderColor: '#b54708', borderDash: [5, 4], tension: 0.25, yAxisID: 'y1', spanGaps: true }
+      ];
+    } else {
+      datasets = [
+        { label: 'อุณหภูมิเฉลี่ย (°C)', data: points.map(function (p) { return p.temperature; }), borderColor: '#0a7a66', backgroundColor: 'rgba(10,122,102,.15)', tension: 0.3, fill: true, yAxisID: 'y', spanGaps: true },
+        { label: 'ความชื้นเฉลี่ย (%RH)', data: points.map(function (p) { return p.humidity; }), borderColor: '#c47a1a', backgroundColor: 'rgba(196,122,26,.12)', tension: 0.3, yAxisID: 'y1', spanGaps: true }
+      ];
+    }
+    PRINT_CHART_ = new Chart(canvas, {
+      type: 'line',
+      data: { labels: labels, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { font: { family: fontFamily, size: 11 }, color: '#5a736b' } },
+          title: {
+            display: true,
+            text: rep.title || '',
+            font: { family: fontFamily, size: 14, weight: '600' },
+            color: '#065649'
+          }
+        },
+        scales: {
+          x: { ticks: { font: { family: fontFamily, size: 10 }, color: '#5a736b' }, grid: { display: false } },
+          y: {
+            type: 'linear',
+            position: 'left',
+            title: { display: true, text: '°C', font: { family: fontFamily } },
+            ticks: { font: { family: fontFamily, size: 10 }, color: '#0a7a66' },
+            grid: { color: 'rgba(10,122,102,0.08)' }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            title: { display: true, text: '%RH', font: { family: fontFamily } },
+            ticks: { font: { family: fontFamily, size: 10 }, color: '#c47a1a' },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+  }
+
+  function printClimateSheet_() {
     document.documentElement.classList.add('print-climate');
     window.print();
     setTimeout(function () {
       document.documentElement.classList.remove('print-climate');
     }, 500);
+  }
+
+  function exportMonthPdf() {
+    loadMonthPreview_().then(function (rep) {
+      if (!rep) return;
+      // รอ Chart.js วาดบน canvas ตัวอย่างก่อนพิมพ์
+      setTimeout(printClimateSheet_, 450);
+    });
+  }
+
+  /** @deprecated ใช้ exportMonthPdf — คงชื่อเดิมไว้ให้ปุ่มเก่า/แคช */
+  function exportPdf() {
+    exportMonthPdf();
   }
 
   return {
@@ -589,6 +706,7 @@ var ClimateUI = (function () {
     editLog: editLog,
     shiftDate: shiftDate,
     jumpToday: jumpToday,
-    exportPdf: exportPdf
+    exportPdf: exportPdf,
+    exportMonthPdf: exportMonthPdf
   };
 })();

@@ -11,7 +11,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=101">
+  <link rel="stylesheet" href="css/styles.css?v=102">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -291,9 +291,9 @@
         <div class="top">
           <div>
             <h2>ความชื้น / อุณหภูมิห้อง</h2>
-            <div class="sub">บันทึกวันละ 2 รอบ · ลงย้อนหลังได้ · แก้ไข/ลบได้ · กราฟรายวัน/เดือน/ปี · Export PDF</div>
+            <div class="sub">บันทึกวันละ 2 รอบ · ลงย้อนหลังได้ · กราฟรายวัน/เดือน/ปี · พิมพ์รายงานประจำเดือน</div>
           </div>
-          <button type="button" class="btn" onclick="ClimateUI.exportPdf()">Export PDF</button>
+          <button type="button" class="btn" onclick="ClimateUI.exportMonthPdf()">พิมพ์รายงานเดือน</button>
         </div>
 
         <div class="card" style="margin-bottom:14px">
@@ -375,11 +375,19 @@
         </div>
 
         <div class="card cl-print-card" id="clPrintCard">
-          <div class="row" style="justify-content:space-between;align-items:center">
-            <h3 style="margin:0">ตัวอย่างรายงาน PDF</h3>
-            <button type="button" class="btn" onclick="ClimateUI.exportPdf()">พิมพ์ / บันทึก PDF</button>
+          <div class="toolbar rp-toolbar cl-export-toolbar">
+            <div>
+              <h3 style="margin:0 0 4px">รายงานประจำเดือน</h3>
+              <p class="muted" style="margin:0;font-size:13px">เลือกเดือนแล้วพิมพ์ / บันทึก PDF — แบบเดียวกับสรุปรายเดือน</p>
+            </div>
+            <div id="clExportMonthWrap" class="field th-date-field" style="max-width:220px">
+              <label>เดือน</label>
+              <input id="clExportMonth" type="hidden">
+              <button type="button" class="th-date-btn" data-for="clExportMonth">เลือกเดือน</button>
+            </div>
+            <button type="button" class="btn" onclick="ClimateUI.exportMonthPdf()">พิมพ์ / บันทึก PDF</button>
           </div>
-          <div id="clPrintOut" class="print-sheet cl-print-sheet" style="margin-top:12px"></div>
+          <div id="clPrintOut" class="print-sheet cl-print-sheet" style="margin-top:12px">เลือกเดือนแล้วกดพิมพ์</div>
         </div>
       </section>
 
@@ -578,10 +586,10 @@
   <div class="toast" id="toast"></div>
   <script src="js/db.js?v=101"></script>
   <script src="js/remote.js?v=101"></script>
-  <script src="js/api.js?v=101"></script>
+  <script src="js/api.js?v=102"></script>
   <script src="js/options.js?v=101"></script>
   <script src="js/thdate.js?v=101"></script>
-  <script src="js/app.js?v=101"></script>
+  <script src="js/app.js?v=102"></script>
   <script src="js/auth.js?v=101"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->
 </body>

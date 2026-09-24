@@ -1687,7 +1687,7 @@ function apiClimateReport_(p) {
     }
     var y = Number(monthKey.slice(0, 4));
     var mo = Number(monthKey.slice(5, 7));
-    title = 'เดือน ' + mo + ' พ.ศ. ' + (y + 543);
+    title = 'เดือน ' + (['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'][mo] || mo) + ' พ.ศ. ' + (y + 543);
     var daysInMonth = new Date(y, mo, 0).getDate();
     var byDay = {};
     logs.forEach(function (r) {
@@ -1790,7 +1790,11 @@ function apiClimateReport_(p) {
     rangeLogs = logs.filter(function (r) { return String(r.date || '').slice(0, 4) === yr; });
   } else if (mode === 'month') {
     var mk3 = String((p && p.month) || '').slice(0, 7);
-    rangeLogs = logs.filter(function (r) { return String(r.date || '').slice(0, 7) === mk3; });
+    if (!/^\d{4}-\d{2}$/.test(mk3)) {
+      var nowMk = new Date();
+      mk3 = nowMk.getFullYear() + '-' + String(nowMk.getMonth() + 1).padStart(2, '0');
+    }
+    rangeLogs = logs.filter(function (r) { return String(toIsoDate_(r.date) || '').slice(0, 7) === mk3; });
   } else {
     var end2 = toIsoDate_(p && p.date) || todayIsoDate_();
     var endDt2 = new Date(end2 + 'T12:00:00+07:00');
