@@ -2023,9 +2023,44 @@ function apiItemTrendReport_(p) {
   var stock = readObjects_('Stock');
   var stockById = indexById_(stock);
   var moves = readObjects_('Movements');
+  var packMap = {};
   var months = monthKeys.map(function (mk) {
     var mr = monthRange_(mk);
-    var stats = computeItemPeriodStats_(itemId, mr.start, mr.end, packFilter, itemMap, stock, stockById, moves);
+    // คำนวณครั้งเดียวต่อเดือน (เดิมยิง 2 รอบ: กรองแพ็ก + ทุกแพ็ก)
+    var statsAll = computeItemPeriodStats_(itemId, mr.start, mr.end, '', itemMap, stock, stockById, moves);
+    statsAll.packs.forEach(function (pk) {
+      var key = packKey_(pk.item.packSize) + '|' + round2_(pk.item.unitPrice);
+      if (!packMap[key]) {
+        packMap[key] = {
+          packSize: pk.item.packSize,
+          unitPrice: pk.item.unitPrice,
+          issued: 0,
+          received: 0,
+          remain: 0,
+          issuedValue: 0
+        };
+      }
+      packMap[key].issued += pk.issued;
+      packMap[key].received += pk.received;
+      packMap[key].issuedValue += pk.issuedValue;
+      packMap[key].remain = pk.remain;
+    });
+    var stats = statsAll;
+    if (packFilter) {
+      var matched = statsAll.packs.filter(function (pk) {
+        return packKey_(pk.item.packSize) === packKey_(packFilter);
+      });
+      stats = {
+        issued: round4_(matched.reduce(function (s, r) { return s + r.issued; }, 0)),
+        received: round4_(matched.reduce(function (s, r) { return s + r.received; }, 0)),
+        adjusted: round4_(matched.reduce(function (s, r) { return s + r.adjusted; }, 0)),
+        opening: round4_(matched.reduce(function (s, r) { return s + r.opening; }, 0)),
+        remain: round4_(matched.reduce(function (s, r) { return s + r.remain; }, 0)),
+        issuedValue: round2_(matched.reduce(function (s, r) { return s + r.issuedValue; }, 0)),
+        receivedValue: round2_(matched.reduce(function (s, r) { return s + r.receivedValue; }, 0)),
+        remainValue: round2_(matched.reduce(function (s, r) { return s + r.remainValue; }, 0))
+      };
+    }
     return {
       monthKey: mk,
       label: monthLabel_(mk),
@@ -2056,28 +2091,6 @@ function apiItemTrendReport_(p) {
   });
   var monthsWithIssue = months.filter(function (m) { return m.issued > 0; }).length;
   var monthsSupplyLeft = avgIssued > 0 ? round2_(currentRemain / avgIssued) : null;
-  var packMap = {};
-  monthKeys.forEach(function (mk) {
-    var mr = monthRange_(mk);
-    var stats = computeItemPeriodStats_(itemId, mr.start, mr.end, '', itemMap, stock, stockById, moves);
-    stats.packs.forEach(function (pk) {
-      var key = packKey_(pk.item.packSize) + '|' + round2_(pk.item.unitPrice);
-      if (!packMap[key]) {
-        packMap[key] = {
-          packSize: pk.item.packSize,
-          unitPrice: pk.item.unitPrice,
-          issued: 0,
-          received: 0,
-          remain: 0,
-          issuedValue: 0
-        };
-      }
-      packMap[key].issued += pk.issued;
-      packMap[key].received += pk.received;
-      packMap[key].issuedValue += pk.issuedValue;
-      packMap[key].remain = pk.remain;
-    });
-  });
   var packs = Object.keys(packMap).map(function (k) {
     var pk = packMap[k];
     pk.issued = round4_(pk.issued);
@@ -2161,17 +2174,7 @@ return {
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
-          // ความชื้น/อุณหภูมิ: พยายามซิงก์ชีทให้จบ แต่ถ้าซิงก์ล้มเหลว ยังคืนผลบันทึกในเครื่อง
-          if (name === 'saveClimateLog' || name === 'deleteClimateLog') {
-            return RemoteDB.sync(syncOpts).then(function () { return result; }).catch(function (err) {
-              if (typeof toast === 'function') {
-                toast((err && err.message)
-                  ? ('บันทึกในเครื่องแล้ว · ซิงก์ Google ไม่สำเร็จ: ' + err.message)
-                  : 'บันทึกในเครื่องแล้ว · ซิงก์ Google ไม่สำเร็จ');
-              }
-              return result;
-            });
-          }
+          // ซิงก์พื้นหลังทุก mutation (รวมความชื้น) — ไม่บล็อก UI รออัปโหลดทั้งชุด
           RemoteDB.sync(syncOpts).catch(function (err) {
             if (typeof toast === 'function') {
               toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');

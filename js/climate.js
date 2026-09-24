@@ -162,25 +162,42 @@ var ClimateUI = (function () {
     }
     loadTodaySlots();
     setMode(MODE_ || 'day');
-    loadMonthPreview_();
+    // ตัวอย่าง PDF โหลดเมื่อเลือกเดือนส่งออกหรือกดพิมพ์ — ไม่ยิง climateReport ซ้ำตอนเปิดหน้า
+  }
+
+  function refreshPage() {
+    loadTodaySlots();
+    loadReport();
+    if (MODE_ === 'month') loadMonthPreview_();
   }
 
   function loadTodaySlots() {
     var date = selectedEntryDate_();
     updateBackdateUi_(date);
-    api('listClimateLogs', { from: date, to: date }).then(function (r) {
+    var to = todayIso();
+    var from = isoAddDays_(to, -45);
+    if (date && date < from) from = date;
+    // ดึงช่วงเดียวทั้งช่องบันทึก + ตารางล่าสุด (เดิมยิง 2 ครั้ง)
+    api('listClimateLogs', { from: from, to: to }).then(function (r) {
+      var logs = r.logs || [];
       var am = null;
       var pm = null;
-      (r.logs || []).forEach(function (row) {
-        if (row.slot === 'pm') pm = row;
-        else am = row;
+      logs.forEach(function (row) {
+        if (toIsoEqual_(row.date, date)) {
+          if (row.slot === 'pm') pm = row;
+          else am = row;
+        }
       });
       fillSlotForm_('am', am);
       fillSlotForm_('pm', pm);
-      renderRecentTable_();
+      paintRecentFromLogs_(logs, to);
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
     });
+  }
+
+  function toIsoEqual_(a, b) {
+    return String(a || '').slice(0, 10) === String(b || '').slice(0, 10);
   }
 
   function fillSlotForm_(slot, row) {
@@ -252,13 +269,8 @@ var ClimateUI = (function () {
           slotLabel + (isBackdate ? ' · ' + formatShortDate_(date) : '') + ' แล้ว');
       }
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
-      renderRecentTable_();
-      // กราฟ/รายงานอัปเดตทีหลัง — ไม่บล็อกการแสดงสถานะ
-      clearTimeout(saveSlot._repTimer);
-      saveSlot._repTimer = setTimeout(function () {
-        loadReport();
-        loadMonthPreview_();
-      }, 400);
+      // กราฟ/ตารางอัปเดตทีหลังครั้งเดียว — ไม่บล็อกปุ่ม
+      scheduleClimateRefresh_();
     }).catch(function (e) {
       // ถ้าบันทึกไม่สำเร็จ โหลดสถานะจริงกลับ
       loadTodaySlots();
@@ -268,54 +280,66 @@ var ClimateUI = (function () {
     });
   }
 
+  function scheduleClimateRefresh_() {
+    clearTimeout(scheduleClimateRefresh_._t);
+    scheduleClimateRefresh_._t = setTimeout(function () {
+      loadTodaySlots();
+      loadReport();
+      if (MODE_ === 'month') loadMonthPreview_();
+    }, 350);
+  }
+
   var RECENT_ROWS_ = [];
 
-  function renderRecentTable_() {
+  function paintRecentFromLogs_(rows, today) {
     var el = document.getElementById('clRecentTable');
     if (!el) return;
+    RECENT_ROWS_ = rows || [];
+    renderMissingDays_(RECENT_ROWS_, today || todayIso());
+    if (!RECENT_ROWS_.length) {
+      el.innerHTML = '<tr><td class="muted">ยังไม่มีข้อมูลในช่วงนี้ — เลือกวันที่ย้อนหลังแล้วบันทึกได้เลย</td></tr>';
+      return;
+    }
+    var html = '<tr><th>วันที่</th><th>รอบ</th><th class="right">°C</th><th class="right">%RH</th><th>ผู้บันทึก</th><th></th></tr>';
+    html += RECENT_ROWS_.map(function (row, idx) {
+      var label = (typeof ThDate !== 'undefined' && ThDate.formatDateLong)
+        ? ThDate.formatDateLong(row.date)
+        : row.date;
+      var back = row.notes && String(row.notes).indexOf('ย้อนหลัง') >= 0;
+      return '<tr>' +
+        '<td>' + esc(label) + (back ? ' <span class="cl-back-tag">ย้อนหลัง</span>' : '') + '</td>' +
+        '<td>' + (row.slot === 'pm' ? '16:00' : '08:30') + '</td>' +
+        '<td class="right">' + esc(row.temperature) + '</td>' +
+        '<td class="right">' + esc(row.humidity) + '</td>' +
+        '<td>' + esc(row.recordedBy || '—') + '</td>' +
+        '<td class="cl-row-actions">' +
+        '<button type="button" class="btn ghost" style="padding:4px 8px;font-size:12px" data-cl-edit="' + idx + '">แก้ไข</button> ' +
+        '<button type="button" class="btn ghost danger" style="padding:4px 8px;font-size:12px" data-cl-del="' + idx + '">ลบ</button>' +
+        '</td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = html;
+    el.querySelectorAll('[data-cl-edit]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var i = Number(btn.getAttribute('data-cl-edit'));
+        if (!isNaN(i) && RECENT_ROWS_[i]) editLog(RECENT_ROWS_[i]);
+      });
+    });
+    el.querySelectorAll('[data-cl-del]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var i = Number(btn.getAttribute('data-cl-del'));
+        if (!isNaN(i) && RECENT_ROWS_[i]) removeLog(RECENT_ROWS_[i].id);
+      });
+    });
+  }
+
+  function renderRecentTable_() {
     var to = todayIso();
     var selected = selectedEntryDate_();
     var from = isoAddDays_(to, -45);
     if (selected && selected < from) from = selected;
     api('listClimateLogs', { from: from, to: to }).then(function (r) {
-      var rows = r.logs || [];
-      RECENT_ROWS_ = rows;
-      renderMissingDays_(rows, to);
-      if (!rows.length) {
-        el.innerHTML = '<tr><td class="muted">ยังไม่มีข้อมูลในช่วงนี้ — เลือกวันที่ย้อนหลังแล้วบันทึกได้เลย</td></tr>';
-        return;
-      }
-      var html = '<tr><th>วันที่</th><th>รอบ</th><th class="right">°C</th><th class="right">%RH</th><th>ผู้บันทึก</th><th></th></tr>';
-      html += rows.map(function (row, idx) {
-        var label = (typeof ThDate !== 'undefined' && ThDate.formatDateLong)
-          ? ThDate.formatDateLong(row.date)
-          : row.date;
-        var back = row.notes && String(row.notes).indexOf('ย้อนหลัง') >= 0;
-        return '<tr>' +
-          '<td>' + esc(label) + (back ? ' <span class="cl-back-tag">ย้อนหลัง</span>' : '') + '</td>' +
-          '<td>' + (row.slot === 'pm' ? '16:00' : '08:30') + '</td>' +
-          '<td class="right">' + esc(row.temperature) + '</td>' +
-          '<td class="right">' + esc(row.humidity) + '</td>' +
-          '<td>' + esc(row.recordedBy || '—') + '</td>' +
-          '<td class="cl-row-actions">' +
-          '<button type="button" class="btn ghost" style="padding:4px 8px;font-size:12px" data-cl-edit="' + idx + '">แก้ไข</button> ' +
-          '<button type="button" class="btn ghost danger" style="padding:4px 8px;font-size:12px" data-cl-del="' + idx + '">ลบ</button>' +
-          '</td>' +
-          '</tr>';
-      }).join('');
-      el.innerHTML = html;
-      el.querySelectorAll('[data-cl-edit]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var i = Number(btn.getAttribute('data-cl-edit'));
-          if (!isNaN(i) && RECENT_ROWS_[i]) editLog(RECENT_ROWS_[i]);
-        });
-      });
-      el.querySelectorAll('[data-cl-del]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var i = Number(btn.getAttribute('data-cl-del'));
-          if (!isNaN(i) && RECENT_ROWS_[i]) removeLog(RECENT_ROWS_[i].id);
-        });
-      });
+      paintRecentFromLogs_(r.logs || [], to);
     }).catch(function () {});
   }
 
@@ -325,7 +349,8 @@ var ClimateUI = (function () {
     if (!wrap || !box) return;
     var byDay = {};
     (rows || []).forEach(function (row) {
-      var d = row.date;
+      var d = String(row.date || '').slice(0, 10);
+      if (!d) return;
       if (!byDay[d]) byDay[d] = { am: false, pm: false };
       if (row.slot === 'pm') byDay[d].pm = true;
       else byDay[d].am = true;
@@ -401,9 +426,7 @@ var ClimateUI = (function () {
       if (typeof toast === 'function') toast('ลบแล้ว');
       if (typeof refreshAfterMutation === 'function') refreshAfterMutation();
       loadTodaySlots();
-      loadReport();
-      loadMonthPreview_();
-      renderRecentTable_();
+      scheduleClimateRefresh_();
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
     });
@@ -424,10 +447,10 @@ var ClimateUI = (function () {
       ensureChartJs_().then(function () {
         paintChart_(rep);
       }).catch(function () {});
-      // กราฟโหมดรายเดือน — sync ตัวอย่างรายงานด้วย; โหมดอื่นคง preview รายเดือนไว้
+      // กราฟโหมดรายเดือน — sync ตัวอย่างรายงานตารางด้วย (ยังไม่วาดกราฟพิมพ์)
       if (MODE_ === 'month') {
         LAST_REPORT_ = rep;
-        renderPrint_(rep);
+        renderPrint_(rep, false);
       }
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
@@ -438,7 +461,7 @@ var ClimateUI = (function () {
     var month = syncExportMonth_();
     return api('climateReport', { mode: 'month', month: month }).then(function (rep) {
       LAST_REPORT_ = rep;
-      renderPrint_(rep);
+      renderPrint_(rep, false);
       return rep;
     }).catch(function (e) {
       if (typeof toast === 'function') toast(e.message || String(e));
@@ -536,6 +559,7 @@ var ClimateUI = (function () {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { labels: { font: { family: fontFamily, size: 12 }, color: '#5a736b' } },
@@ -567,7 +591,7 @@ var ClimateUI = (function () {
     });
   }
 
-  function renderPrint_(rep) {
+  function renderPrint_(rep, withChart) {
     var out = document.getElementById('clPrintOut');
     if (!out) return;
     var st = rep.stats || {};
@@ -604,9 +628,16 @@ var ClimateUI = (function () {
       '</tbody></table>' +
       '<p class="cl-print-foot">พิมพ์จากระบบคลังยา · ' + esc(new Date().toLocaleString('th-TH')) + '</p>';
 
-    ensureChartJs_().then(function () {
-      paintPrintChart_(rep);
-    }).catch(function () {});
+    if (withChart) {
+      return ensureChartJs_().then(function () {
+        paintPrintChart_(rep);
+      }).catch(function () {});
+    }
+    if (PRINT_CHART_) {
+      try { PRINT_CHART_.destroy(); } catch (e) { /* ignore */ }
+      PRINT_CHART_ = null;
+    }
+    return Promise.resolve();
   }
 
   var PRINT_CHART_ = null;
@@ -685,8 +716,9 @@ var ClimateUI = (function () {
   function exportMonthPdf() {
     loadMonthPreview_().then(function (rep) {
       if (!rep) return;
-      // รอ Chart.js วาดบน canvas ตัวอย่างก่อนพิมพ์
-      setTimeout(printClimateSheet_, 450);
+      return renderPrint_(rep, true).then(function () {
+        setTimeout(printClimateSheet_, 200);
+      });
     });
   }
 
@@ -697,6 +729,7 @@ var ClimateUI = (function () {
 
   return {
     initPage: initPage,
+    refreshPage: refreshPage,
     setMode: setMode,
     saveSlot: saveSlot,
     clearSlot: clearSlot,

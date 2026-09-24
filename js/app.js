@@ -555,7 +555,7 @@ function ensureOcrLoaded_() {
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=102');
+  return loadScriptOnce_('js/climate.js?v=104');
 }
 
 function fillSelect(id, arr, withBlank) {
@@ -2684,7 +2684,9 @@ function refreshActivePageViews_() {
   }
   if (active.id === 'page-climate') {
     ensureClimateLoaded_().then(function () {
-      if (typeof ClimateUI !== 'undefined') ClimateUI.initPage();
+      if (typeof ClimateUI === 'undefined') return;
+      if (ClimateUI.refreshPage) ClimateUI.refreshPage();
+      else ClimateUI.initPage();
     }).catch(function () {});
   }
 }
@@ -2699,7 +2701,7 @@ function reloadFromRemote(silent) {
     }
     if (!silent) toast('มีข้อมูลใหม่จากเครื่องอื่น — อัปเดตแล้ว');
     return api('bootstrap').then(function (b) {
-      applyBoot(b);
+      applyBootLight_(b);
       loadItems();
       return refreshStockCache().then(function () {
         refreshActivePageViews_();

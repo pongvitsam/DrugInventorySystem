@@ -7,7 +7,7 @@ var RemoteDB = (function () {
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var HISTORY_CUTOFF_ = '2026-09-01';
-  var POLL_MS = 20000;
+  var POLL_MS = 45000;
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
   var CHUNK_CHARS_ = 8000;
   var loaded = false;
@@ -19,6 +19,9 @@ var RemoteDB = (function () {
   var lastSyncAction = null;
   var loadPromise = null;
   var pollInFlight = false;
+  var syncChain_ = Promise.resolve();
+  var syncDebounceTimer_ = null;
+  var syncPendingOpts_ = null;
 
   function consumeSyncAction() {
     var action = lastSyncAction;
@@ -586,8 +589,8 @@ var RemoteDB = (function () {
 
   function handleImportResult_(res) {
     if (res && res.conflict) {
-      // Sheet ชนะเสมอ — ดึงจาก Google แล้วให้ทำรายการใหม่
-      return fetchJson(baseUrl() + '?action=export&t=' + Date.now()).then(function (ex) {
+      // Sheet ชนะเสมอ — ดึงจาก Google แล้วให้ทำรายการใหม่ (slim ข้ามรูปบิล)
+      return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (ex) {
         if (!ex || !ex.ok) throw new Error('ข้อมูลบน Google ใหม่กว่า และโหลดไม่สำเร็จ');
         applyRemotePayload_(ex, true);
         loaded = true;
@@ -600,26 +603,54 @@ var RemoteDB = (function () {
     applyRevision_(res.revision);
   }
 
-  var syncChain_ = Promise.resolve();
+  function mergeSyncOpts_(a, b) {
+    a = a || {};
+    b = b || {};
+    return {
+      force: !!(a.force || b.force),
+      includeImages: !!(a.includeImages || b.includeImages),
+      includeAllImages: !!(a.includeAllImages || b.includeAllImages),
+      skipImages: !(a.includeImages || b.includeImages || a.includeAllImages || b.includeAllImages)
+    };
+  }
+
+  function runSyncJob_(opts) {
+    opts = opts || {};
+    syncing = true;
+    var exportOpts = {};
+    if (opts.skipImages) exportOpts.skipImages = true;
+    if (opts.includeImages) exportOpts.includeImages = true;
+    if (opts.includeAllImages) exportOpts.includeAllImages = true;
+    if (!opts.includeImages && !opts.includeAllImages) exportOpts.skipImages = true;
+    return postImport_(!!opts.force, exportOpts).then(handleImportResult_).finally(function () {
+      syncing = false;
+    });
+  }
 
   function sync(opts) {
     opts = opts || {};
     if (!enabled()) return Promise.resolve();
-    // คิวซิงก์แทนการข้าม — กันบันทึกผู้ใช้/ความชื้นหายตอน sync ค้าง
-    var job = function () {
-      syncing = true;
-      var exportOpts = {};
-      if (opts.skipImages) exportOpts.skipImages = true;
-      if (opts.includeImages) exportOpts.includeImages = true;
-      if (opts.includeAllImages) exportOpts.includeAllImages = true;
-      // ค่าเริ่มต้น: ไม่ส่งรูปบิลทุกครั้ง (เร็ว) ยกเว้นเรียก includeImages
-      if (!opts.includeImages && !opts.includeAllImages) exportOpts.skipImages = true;
-      return postImport_(!!opts.force, exportOpts).then(handleImportResult_).finally(function () {
-        syncing = false;
-      });
-    };
-    syncChain_ = syncChain_.then(job, job);
-    return syncChain_;
+    // รวม sync หลายครั้งในช่วงสั้น ๆ เป็นครั้งเดียว (เช่น บันทึก AM+PM ติดกัน)
+    syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
+    if (opts.force || opts.includeImages || opts.includeAllImages) {
+      // force / มีรูป — รันทันทีหลังคิวปัจจุบัน
+      clearTimeout(syncDebounceTimer_);
+      syncDebounceTimer_ = null;
+      var immediate = syncPendingOpts_;
+      syncPendingOpts_ = null;
+      syncChain_ = syncChain_.then(function () { return runSyncJob_(immediate); }, function () { return runSyncJob_(immediate); });
+      return syncChain_;
+    }
+    clearTimeout(syncDebounceTimer_);
+    return new Promise(function (resolve, reject) {
+      syncDebounceTimer_ = setTimeout(function () {
+        syncDebounceTimer_ = null;
+        var pending = syncPendingOpts_;
+        syncPendingOpts_ = null;
+        syncChain_ = syncChain_.then(function () { return runSyncJob_(pending); }, function () { return runSyncJob_(pending); });
+        syncChain_.then(resolve, reject);
+      }, 450);
+    });
   }
 
   function fetchAndApplyExport_() {
@@ -700,7 +731,7 @@ var RemoteDB = (function () {
   function pullRemote() {
     if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
     loaded = false;
-    var url = baseUrl() + '?action=export&t=' + Date.now();
+    var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
       if (!res || !res.ok || !res.data) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
