@@ -169,6 +169,8 @@ h1, h2, h3, .brand h1, .login-card h1, .top h2 {
   background: #4ade80; margin-right: 6px; vertical-align: middle;
 }
 .sync-status.syncing::before { background: #fbbf24; }
+.sync-status.offline::before { background: #94a3b8; }
+.sync-status.offline { color: #c5d5cf; }
 .main { flex: 1; padding: 24px 28px 32px; max-width: none; min-width: 0; width: 100%; position: relative; }
 .watermark {
   position: fixed; top: 54%;

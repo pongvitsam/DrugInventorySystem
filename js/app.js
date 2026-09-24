@@ -385,15 +385,30 @@ function loadBootstrap() {
     });
   }
 
-  // โหมด Google Sheets: แสดง snapshot ของ Sheet ทันที แล้วยืนยัน revision พื้นหลัง
+  // โหมด Google Sheets: แสดงแคชทันที แล้วยืนยัน/ดึงเมื่อมีเน็ต
   if (gasOn) {
-    var canPaintNow = !!(RemoteDB.getRevision && RemoteDB.getRevision() > 0);
+    var canPaintNow = !!(RemoteDB.hasSheetSnapshot
+      ? RemoteDB.hasSheetSnapshot()
+      : (RemoteDB.getRevision && RemoteDB.getRevision() > 0));
+    var offlineNow = RemoteDB.isOnline && !RemoteDB.isOnline();
+
     if (canPaintNow) {
-      setStatus('กำลังยืนยันกับ Google Sheets...');
-      updateSyncIndicator('syncing');
-      updateGasStatus('แสดงข้อมูล Sheet ล่าสุด — กำลังยืนยัน...');
+      if (offlineNow) {
+        setStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
+        updateSyncIndicator('offline');
+        updateGasStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
+      } else {
+        setStatus('กำลังยืนยันกับ Google Sheets...');
+        updateSyncIndicator('syncing');
+        updateGasStatus('แสดงแคช — กำลังยืนยัน Sheet...');
+      }
       return api('bootstrap').then(function (b) {
         return paint(b).then(function () {
+          if (offlineNow) {
+            setStatus('');
+            if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+            return;
+          }
           // ยืนยัน/อัปเดตพื้นหลัง — ไม่บล็อกหน้าจอ
           return RemoteDB.ensureLoaded().then(function () {
             applyRemoteSyncToasts_();
@@ -406,9 +421,9 @@ function loadBootstrap() {
               if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
             });
           }).catch(function (e) {
-            updateSyncIndicator('');
+            updateSyncIndicator(RemoteDB.isOnline && !RemoteDB.isOnline() ? 'offline' : '');
             setStatus('');
-            updateGasStatus('ยืนยัน Sheet ไม่สำเร็จ — แสดงข้อมูล Sheet ล่าสุดในเครื่อง', true);
+            updateGasStatus('ใช้แคชในเครื่อง — ยังยืนยัน Sheet ไม่ได้', true);
             if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
           });
         });
@@ -417,6 +432,14 @@ function loadBootstrap() {
         setStatus('โหลดไม่สำเร็จ: ' + msg, true);
         toast(msg);
       });
+    }
+
+    if (offlineNow) {
+      setStatus('ไม่มีเน็ต และยังไม่มีแคชในเครื่อง — ต้องดึงจาก Google ครั้งแรกเมื่อมีเน็ต', true);
+      updateGasStatus('ออฟไลน์ · ยังไม่มีแคช', true);
+      updateSyncIndicator('offline');
+      showGasConnectButton_();
+      return Promise.resolve();
     }
 
     setStatus('กำลังดึงข้อมูลจาก Google Sheets...');
@@ -438,9 +461,9 @@ function loadBootstrap() {
       if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
         return api('bootstrap').then(function (b) {
           return paint(b).then(function () {
-            setStatus('ใช้ข้อมูล Sheet ล่าสุดในเครื่อง — กดปุ่มเพื่อดึงจาก Google (กรณี Edge ล็อกอินหลายบัญชี)', true);
+            setStatus('ใช้แคชในเครื่อง — กดรีเฟรชเมื่อมีเน็ตเพื่อดึง Sheet ใหม่', true);
             showGasConnectButton_();
-            updateGasStatus('ดึง Sheet ไม่สำเร็จ — แสดง snapshot ในเครื่อง', true);
+            updateGasStatus('ใช้แคชในเครื่อง', true);
             toast(msg);
             if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
           });
@@ -510,6 +533,9 @@ function applyRemoteSyncToasts_() {
     updateGasStatus('แสดงจาก Google Sheets');
   } else if (syncAction === 'sheet-fresh') {
     updateGasStatus('แสดงจาก Google Sheets (อัปเดตล่าสุด)');
+  } else if (syncAction === 'cache-offline') {
+    updateGasStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
+    updateSyncIndicator('offline');
   } else if (syncAction === 'imported-file') {
     toast('นำเข้าจากไฟล์สำรองแล้ว');
     updateGasStatus('นำเข้าจากไฟล์สำรองแล้ว');
@@ -2659,9 +2685,10 @@ function updateSyncIndicator(state) {
       el.style.display = 'none';
     } else {
       el.style.display = 'block';
-      el.className = 'sync-status' + (state === 'syncing' ? ' syncing' : '');
+      el.className = 'sync-status' + (state === 'syncing' ? ' syncing' : '') + (state === 'offline' ? ' offline' : '');
       if (state === 'syncing') el.textContent = 'กำลัง sync...';
       else if (state === 'updated') el.textContent = 'อัปเดตจากเครื่องอื่นแล้ว';
+      else if (state === 'offline') el.textContent = 'ออฟไลน์ · ใช้แคช';
       else el.textContent = 'หลายเครื่อง · อัปเดตอัตโนมัติ';
     }
   }
@@ -2889,5 +2916,34 @@ function startApp() {
     toast('กด Ctrl+Shift+R เพื่อโหลดเวอร์ชันที่ซิงก์ Google ได้');
   }
   ThDate.initAll();
+  // สถานะออฟไลน์/ออนไลน์ — ใช้แคชได้โดยไม่ต้องมีเน็ต
+  if (!window._pharmaNetBound) {
+    window._pharmaNetBound = true;
+    window.addEventListener('offline', function () {
+      if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
+        updateSyncIndicator('offline');
+        updateGasStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
+      }
+    });
+    window.addEventListener('online', function () {
+      if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return;
+      updateSyncIndicator('syncing');
+      updateGasStatus('กลับมามีเน็ต — กำลังซิงก์...');
+      RemoteDB.ensureLoaded().then(function () {
+        applyRemoteSyncToasts_();
+        return api('bootstrap').then(function (b) {
+          applyBootLight_(b);
+          refreshActivePageViews_();
+          updateSyncIndicator('');
+        });
+      }).catch(function () {
+        updateSyncIndicator('');
+        updateGasStatus('มีเน็ตแล้ว แต่ซิงก์ Sheet ยังไม่สำเร็จ', true);
+      });
+    });
+  }
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled() && RemoteDB.isOnline && !RemoteDB.isOnline()) {
+    updateSyncIndicator('offline');
+  }
   loadBootstrap();
 }

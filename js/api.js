@@ -2174,8 +2174,9 @@ return {
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
-          // ซิงก์พื้นหลังทุก mutation (รวมความชื้น) — ไม่บล็อก UI รออัปโหลดทั้งชุด
+          // ซิงก์พื้นหลังทุก mutation — ออฟไลน์จะค้างไว้ใน RemoteDB จนมีเน็ต
           RemoteDB.sync(syncOpts).catch(function (err) {
+            if (typeof RemoteDB !== 'undefined' && RemoteDB.isOnline && !RemoteDB.isOnline()) return;
             if (typeof toast === 'function') {
               toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
             }

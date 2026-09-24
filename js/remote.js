@@ -22,6 +22,29 @@ var RemoteDB = (function () {
   var syncChain_ = Promise.resolve();
   var syncDebounceTimer_ = null;
   var syncPendingOpts_ = null;
+  var syncDeferredWhileOffline_ = false;
+  var onlineBound_ = false;
+
+  function isOnline_() {
+    return typeof navigator === 'undefined' || navigator.onLine !== false;
+  }
+
+  function bindOnlineSync_() {
+    if (onlineBound_ || typeof window === 'undefined') return;
+    onlineBound_ = true;
+    window.addEventListener('online', function () {
+      if (!enabled()) return;
+      // มีแคชแล้ว — ยืนยัน Sheet เมื่อกลับมามีเน็ต; ถ้าค้างซิงก์ไว้ให้ดันขึ้น
+      if (hasSheetSnapshot()) {
+        loaded = false;
+        ensureLoaded().catch(function () {});
+      }
+      if (syncDeferredWhileOffline_) {
+        syncDeferredWhileOffline_ = false;
+        sync({ force: false, skipImages: true }).catch(function () {});
+      }
+    });
+  }
 
   function consumeSyncAction() {
     var action = lastSyncAction;
@@ -630,6 +653,13 @@ var RemoteDB = (function () {
   function sync(opts) {
     opts = opts || {};
     if (!enabled()) return Promise.resolve();
+    bindOnlineSync_();
+    // ออฟไลน์ — เก็บไว้ซิงก์ตอนมีเน็ต ไม่เรียก Google
+    if (!isOnline_()) {
+      syncDeferredWhileOffline_ = true;
+      syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
+      return Promise.resolve();
+    }
     // รวม sync หลายครั้งในช่วงสั้น ๆ เป็นครั้งเดียว (เช่น บันทึก AM+PM ติดกัน)
     syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
     if (opts.force || opts.includeImages || opts.includeAllImages) {
@@ -638,6 +668,7 @@ var RemoteDB = (function () {
       syncDebounceTimer_ = null;
       var immediate = syncPendingOpts_;
       syncPendingOpts_ = null;
+      syncDeferredWhileOffline_ = false;
       syncChain_ = syncChain_.then(function () { return runSyncJob_(immediate); }, function () { return runSyncJob_(immediate); });
       return syncChain_;
     }
@@ -645,8 +676,14 @@ var RemoteDB = (function () {
     return new Promise(function (resolve, reject) {
       syncDebounceTimer_ = setTimeout(function () {
         syncDebounceTimer_ = null;
+        if (!isOnline_()) {
+          syncDeferredWhileOffline_ = true;
+          resolve();
+          return;
+        }
         var pending = syncPendingOpts_;
         syncPendingOpts_ = null;
+        syncDeferredWhileOffline_ = false;
         syncChain_ = syncChain_.then(function () { return runSyncJob_(pending); }, function () { return runSyncJob_(pending); });
         syncChain_.then(resolve, reject);
       }, 450);
@@ -668,31 +705,46 @@ var RemoteDB = (function () {
     });
   }
 
+  function useLocalCache_(action) {
+    loaded = true;
+    lastSyncAction = action || 'cache-offline';
+    return true;
+  }
+
   function ensureLoaded(opts) {
     opts = opts || {};
     if (!enabled()) return Promise.resolve(false);
     if (loaded && !opts.force) return Promise.resolve(true);
     if (loadPromise) return loadPromise;
 
+    bindOnlineSync_();
+
+    // มีแคชในเครื่อง + ออฟไลน์ → ใช้แคชทันที ไม่ต้องรอเน็ต
+    if (!opts.force && hasSheetSnapshot() && !isOnline_()) {
+      return Promise.resolve(useLocalCache_('cache-offline'));
+    }
+
     // เร็ว: ถาม revision จาก Sheet ก่อน (เบา) — ถ้าตรงกับครั้งล่าสุดที่ดึง Sheet
     // แสดง snapshot ของ Sheet ได้ทันที ไม่ต้อง export ทั้งชุด
-    // ยังเป็นข้อมูลจาก Sheet (ไม่ใช่ข้อมูลเก่าแยกเครื่อง)
-    if (!opts.force && localRevision > 0 && hasLocalData_()) {
+    if (!opts.force && hasSheetSnapshot()) {
       loadPromise = fetchJson(baseUrl() + '?action=meta&t=' + Date.now()).then(function (meta) {
         if (meta && meta.ok && Number(meta.revision) === localRevision) {
-          loaded = true;
-          lastSyncAction = 'sheet-fresh';
-          return true;
+          return useLocalCache_('sheet-fresh');
         }
         // Sheet มี revision ใหม่ หรือยังไม่ตรง — ดึงทั้งชุด
         return fetchAndApplyExport_();
       }).catch(function () {
-        // meta ไม่สำเร็จ → ลอง export ทั้งชุด (ห้าม fallback ข้อมูลเครื่องโดยไม่ยืนยัน Sheet)
-        return fetchAndApplyExport_();
+        // เน็ตล่ม / ยืนยันไม่สำเร็จ — ใช้แคชในเครื่องต่อได้
+        return useLocalCache_('cache-offline');
       }).finally(function () {
         loadPromise = null;
       });
       return loadPromise;
+    }
+
+    // ยังไม่มีแคช — ต้องดึงจาก Google (ต้องมีเน็ต)
+    if (!isOnline_()) {
+      return Promise.reject(new Error('ไม่มีเน็ต และยังไม่มีแคชในเครื่อง — ต้องดึงจาก Google ครั้งแรก'));
     }
 
     loadPromise = fetchAndApplyExport_().finally(function () {
@@ -703,6 +755,7 @@ var RemoteDB = (function () {
 
   function refreshIfNewer() {
     if (!enabled()) return Promise.resolve({ changed: false });
+    if (!isOnline_()) return Promise.resolve({ changed: false, offline: true });
     var url = baseUrl() + '?action=meta&t=' + Date.now();
     return fetchJson(url).then(function (meta) {
       if (!meta || !meta.ok) return { changed: false };
@@ -755,10 +808,11 @@ var RemoteDB = (function () {
   function startPolling(onChange) {
     stopPolling();
     if (!enabled()) return;
+    bindOnlineSync_();
     pollCallback = onChange || null;
     bindVisibility_();
     pollTimer = setInterval(function () {
-      if (document.hidden || pollInFlight) return;
+      if (document.hidden || pollInFlight || !isOnline_()) return;
       pollInFlight = true;
       refreshIfNewer().then(function (r) {
         if (r.changed && pollCallback) pollCallback(r);
@@ -885,7 +939,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 101,
+    build: 106,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
@@ -897,6 +951,7 @@ var RemoteDB = (function () {
     needsRelayPopup: needsRelayPopup,
     isEdgeBrowser: isEdgeBrowser_,
     hasSheetSnapshot: hasSheetSnapshot,
+    isOnline: isOnline_,
     startPolling: startPolling,
     stopPolling: stopPolling,
     getRevision: getRevision,
