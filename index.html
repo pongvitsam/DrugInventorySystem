@@ -2,16 +2,24 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>คลังยา รพ.สต.บ้านทรายขาว</title>
+  <meta name="description" content="ระบบคลังยา รพ.สต.บ้านทรายขาว — รับเข้า เบิกออก ความชื้น/อุณหภูมิ">
+  <meta name="theme-color" content="#0a7a66">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="คลังยา">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=102">
+  <link rel="stylesheet" href="css/styles.css?v=105">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -398,6 +406,11 @@
             <div class="sub">ชื่อผู้เซ็นใบเบิก · ผู้ใช้ · นำเข้าข้อมูลเดิม</div>
           </div>
         </div>
+        <div class="card" id="pwaInstallCard" style="margin-bottom:14px;display:none">
+          <h3>ติดตั้งเป็นแอป (PWA)</h3>
+          <p id="pwaInstallTip" class="muted" style="margin:0 0 12px">ติดตั้งบนหน้าจอโฮม เปิดใช้งานแบบแอป</p>
+          <button type="button" class="btn" id="pwaInstallBtn" style="display:none">ติดตั้งแอป</button>
+        </div>
         <div class="card">
           <h3>ตั้งค่าหน่วยงาน</h3>
           <div class="row">
@@ -584,13 +597,14 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=101"></script>
-  <script src="js/remote.js?v=104"></script>
-  <script src="js/api.js?v=104"></script>
-  <script src="js/options.js?v=101"></script>
-  <script src="js/thdate.js?v=101"></script>
-  <script src="js/app.js?v=104"></script>
-  <script src="js/auth.js?v=101"></script>
+  <script src="js/db.js?v=105"></script>
+  <script src="js/remote.js?v=105"></script>
+  <script src="js/api.js?v=105"></script>
+  <script src="js/options.js?v=105"></script>
+  <script src="js/thdate.js?v=105"></script>
+  <script src="js/app.js?v=105"></script>
+  <script src="js/auth.js?v=105"></script>
+  <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->
 </body>
 </html>

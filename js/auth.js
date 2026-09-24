@@ -99,4 +99,5 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
   Auth.init();
+  if (typeof PharmaPWA !== 'undefined' && PharmaPWA.init) PharmaPWA.init();
 });

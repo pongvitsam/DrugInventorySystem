@@ -555,7 +555,7 @@ function ensureOcrLoaded_() {
 
 function ensureClimateLoaded_() {
   if (typeof ClimateUI !== 'undefined') return Promise.resolve();
-  return loadScriptOnce_('js/climate.js?v=104');
+  return loadScriptOnce_('js/climate.js?v=105');
 }
 
 function fillSelect(id, arr, withBlank) {

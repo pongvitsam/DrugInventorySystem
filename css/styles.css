@@ -1820,3 +1820,20 @@ select option[value="__add__"] {
   }
   html.print-items .items-print-table { font-size: 11px; }
 }
+
+/* PWA standalone — เว้น notch / home indicator */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    min-height: 100dvh;
+  }
+  .mob-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(60px + env(safe-area-inset-bottom));
+  }
+  .login-screen {
+    min-height: 100dvh;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}
