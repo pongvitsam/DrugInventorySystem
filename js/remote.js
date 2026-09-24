@@ -9,7 +9,7 @@ var RemoteDB = (function () {
   var HISTORY_CUTOFF_ = '2026-09-01';
   var POLL_MS = 45000;
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
-  var CHUNK_CHARS_ = 8000;
+  var CHUNK_CHARS_ = 32000;
   var loaded = false;
   var syncing = false;
   var localRevision = Number(localStorage.getItem(REV_KEY) || 0) || 0;
@@ -152,6 +152,7 @@ var RemoteDB = (function () {
   }
 
   function saveSafetyBackup_() {
+    // ไม่บล็อกการโหลด/ดึง Sheet — สำรองตอนเครื่องว่าง
     var run = function () {
       var data = DB.exportAll();
       var fp = fingerprint_(data);
@@ -176,7 +177,7 @@ var RemoteDB = (function () {
         } catch (e2) { /* ignore quota */ }
       }
     };
-    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 4000 });
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 8000 });
     else setTimeout(run, 0);
   }
 
@@ -336,7 +337,7 @@ var RemoteDB = (function () {
       }
       var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
       var url = baseUrl() + '?' + q + (q ? '&' : '') + 't=' + Date.now();
-      var ms = /action=export/.test(q) ? 90000 : 18000;
+      var ms = /action=export/.test(q) ? 90000 : (/action=meta/.test(q) ? 4000 : 12000);
       var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
       var timer = setTimeout(function () {
         if (ctrl) try { ctrl.abort(); } catch (e) {}
@@ -374,7 +375,11 @@ var RemoteDB = (function () {
     return new Promise(function (resolve, reject) {
       var cb = 'pharmaGasCb_' + String(Date.now()) + '_' + Math.floor(Math.random() * 1e6);
       var settled = false;
-      var ms = /action=export/.test(query) ? (isEdgeBrowser_() ? 20000 : 90000) : (isEdgeBrowser_() ? 10000 : 45000);
+      var ms = /action=export/.test(query)
+        ? (isEdgeBrowser_() ? 20000 : 90000)
+        : (/action=meta/.test(query)
+          ? (isEdgeBrowser_() ? 5000 : 6000)
+          : (isEdgeBrowser_() ? 10000 : 20000));
       var script = document.createElement('script');
       var timer = setTimeout(function () {
         if (settled) return;
@@ -701,20 +706,26 @@ var RemoteDB = (function () {
       applyRemotePayload_(res, true);
       loaded = true;
       lastSyncAction = 'pulled';
-      return true;
+      return { ok: true, action: 'pulled', changed: true };
     });
   }
 
   function useLocalCache_(action) {
     loaded = true;
     lastSyncAction = action || 'cache-offline';
-    return true;
+    return { ok: true, action: lastSyncAction, changed: false };
+  }
+
+  function markLoadedFromCache(action) {
+    return useLocalCache_(action || 'cache-offline');
   }
 
   function ensureLoaded(opts) {
     opts = opts || {};
-    if (!enabled()) return Promise.resolve(false);
-    if (loaded && !opts.force) return Promise.resolve(true);
+    if (!enabled()) return Promise.resolve({ ok: false, action: '', changed: false });
+    if (loaded && !opts.force) {
+      return Promise.resolve({ ok: true, action: 'already', changed: false });
+    }
     if (loadPromise) return loadPromise;
 
     bindOnlineSync_();
@@ -939,7 +950,7 @@ var RemoteDB = (function () {
     setUrl: setUrl,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 106,
+    build: 107,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
@@ -952,6 +963,7 @@ var RemoteDB = (function () {
     isEdgeBrowser: isEdgeBrowser_,
     hasSheetSnapshot: hasSheetSnapshot,
     isOnline: isOnline_,
+    markLoadedFromCache: markLoadedFromCache,
     startPolling: startPolling,
     stopPolling: stopPolling,
     getRevision: getRevision,

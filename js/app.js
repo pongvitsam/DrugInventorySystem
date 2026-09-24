@@ -385,47 +385,72 @@ function loadBootstrap() {
     });
   }
 
-  // โหมด Google Sheets: แสดงแคชทันที แล้วยืนยัน/ดึงเมื่อมีเน็ต
+  // โหมด Google Sheets: แสดงแคชทันที แล้วยืนยัน/ดึงเมื่อมีเน็ต (พื้นหลัง)
   if (gasOn) {
     var canPaintNow = !!(RemoteDB.hasSheetSnapshot
       ? RemoteDB.hasSheetSnapshot()
       : (RemoteDB.getRevision && RemoteDB.getRevision() > 0));
     var offlineNow = RemoteDB.isOnline && !RemoteDB.isOnline();
 
+    function afterPullRefresh_() {
+      return api('bootstrap').then(function (b2) {
+        applyBootLight_(b2);
+        refreshActivePageViews_();
+        refreshStockCache();
+        setStatus('');
+        updateSyncIndicator('');
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+      });
+    }
+
+    function verifySheetInBackground_() {
+      updateSyncIndicator('syncing');
+      updateGasStatus('แสดงแคช — กำลังเช็ค Sheet พื้นหลัง...');
+      RemoteDB.ensureLoaded().then(function (res) {
+        var action = (res && res.action) || '';
+        if (action === 'pulled') {
+          applyRemoteSyncToasts_();
+          return afterPullRefresh_();
+        }
+        if (action === 'sheet-fresh') {
+          updateGasStatus('แสดงจาก Google Sheets (อัปเดตล่าสุด)');
+        } else if (action === 'cache-offline') {
+          updateGasStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
+          updateSyncIndicator('offline');
+          if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+          return;
+        }
+        updateSyncIndicator('');
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+      }).catch(function () {
+        updateSyncIndicator(RemoteDB.isOnline && !RemoteDB.isOnline() ? 'offline' : '');
+        updateGasStatus('ใช้แคชในเครื่อง — ยังยืนยัน Sheet ไม่ได้', true);
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+      });
+    }
+
     if (canPaintNow) {
+      // ออฟไลน์เท่านั้นที่ mark loaded — ออนไลน์ให้ ensureLoaded เช็ค meta จริงในพื้นหลัง
+      if (offlineNow && RemoteDB.markLoadedFromCache) {
+        RemoteDB.markLoadedFromCache('cache-offline');
+      }
       if (offlineNow) {
         setStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
         updateSyncIndicator('offline');
         updateGasStatus('ออฟไลน์ · ใช้แคชในเครื่อง');
       } else {
-        setStatus('กำลังยืนยันกับ Google Sheets...');
+        setStatus('');
         updateSyncIndicator('syncing');
-        updateGasStatus('แสดงแคช — กำลังยืนยัน Sheet...');
+        updateGasStatus('แสดงแคช — กำลังเช็ค Sheet พื้นหลัง...');
       }
       return api('bootstrap').then(function (b) {
         return paint(b).then(function () {
+          setStatus('');
           if (offlineNow) {
-            setStatus('');
             if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
             return;
           }
-          // ยืนยัน/อัปเดตพื้นหลัง — ไม่บล็อกหน้าจอ
-          return RemoteDB.ensureLoaded().then(function () {
-            applyRemoteSyncToasts_();
-            return api('bootstrap').then(function (b2) {
-              applyBootLight_(b2);
-              refreshActivePageViews_();
-              refreshStockCache();
-              setStatus('');
-              updateSyncIndicator('');
-              if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
-            });
-          }).catch(function (e) {
-            updateSyncIndicator(RemoteDB.isOnline && !RemoteDB.isOnline() ? 'offline' : '');
-            setStatus('');
-            updateGasStatus('ใช้แคชในเครื่อง — ยังยืนยัน Sheet ไม่ได้', true);
-            if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
-          });
+          verifySheetInBackground_();
         });
       }).catch(function (e) {
         var msg = (e && e.message) ? e.message : String(e);
@@ -445,7 +470,7 @@ function loadBootstrap() {
     setStatus('กำลังดึงข้อมูลจาก Google Sheets...');
     updateSyncIndicator('syncing');
     updateGasStatus('กำลังดึงจาก Google Sheets...');
-    return RemoteDB.ensureLoaded().then(function () {
+    return RemoteDB.ensureLoaded().then(function (res) {
       applyRemoteSyncToasts_();
       return api('bootstrap').then(function (b) {
         return paint(b).then(function () {
@@ -545,16 +570,22 @@ function applyRemoteSyncToasts_() {
 function syncGoogleInBackground_() {
   if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return Promise.resolve();
   updateSyncIndicator('syncing');
-  return RemoteDB.ensureLoaded().then(function () {
+  return RemoteDB.ensureLoaded().then(function (res) {
+    if (res && res.action === 'pulled') {
+      applyRemoteSyncToasts_();
+      return api('bootstrap').then(function (b2) {
+        applyBootLight_(b2);
+        setStatus('');
+        refreshActivePageViews_();
+        refreshStockCache();
+        updateSyncIndicator('');
+        if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
+      });
+    }
     applyRemoteSyncToasts_();
-    return api('bootstrap').then(function (b2) {
-      applyBootLight_(b2);
-      setStatus('');
-      refreshActivePageViews_();
-      refreshStockCache();
-      updateSyncIndicator('');
-      if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
-    });
+    setStatus('');
+    updateSyncIndicator('');
+    if (typeof RemoteDB !== 'undefined') RemoteDB.startPolling(onRemoteDataChanged);
   }).catch(function () {
     updateSyncIndicator('');
     if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
@@ -2929,13 +2960,17 @@ function startApp() {
       if (typeof RemoteDB === 'undefined' || !RemoteDB.enabled()) return;
       updateSyncIndicator('syncing');
       updateGasStatus('กลับมามีเน็ต — กำลังซิงก์...');
-      RemoteDB.ensureLoaded().then(function () {
+      RemoteDB.ensureLoaded().then(function (res) {
+        if (res && res.action === 'pulled') {
+          applyRemoteSyncToasts_();
+          return api('bootstrap').then(function (b) {
+            applyBootLight_(b);
+            refreshActivePageViews_();
+            updateSyncIndicator('');
+          });
+        }
         applyRemoteSyncToasts_();
-        return api('bootstrap').then(function (b) {
-          applyBootLight_(b);
-          refreshActivePageViews_();
-          updateSyncIndicator('');
-        });
+        updateSyncIndicator('');
       }).catch(function () {
         updateSyncIndicator('');
         updateGasStatus('มีเน็ตแล้ว แต่ซิงก์ Sheet ยังไม่สำเร็จ', true);

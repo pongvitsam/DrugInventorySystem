@@ -2164,10 +2164,16 @@ return {
     };
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       if (MUTATION_APIS_[name]) {
-        // ไม่รอ refresh จาก Google ก่อนบันทึก — เขียนในเครื่องทันที แล้วซิงก์พื้นหลัง
-        var ready = (RemoteDB.isLoaded && RemoteDB.isLoaded())
-          ? Promise.resolve(true)
-          : RemoteDB.ensureLoaded().catch(function () { return false; });
+        var ready;
+        if (RemoteDB.isLoaded && RemoteDB.isLoaded()) {
+          ready = Promise.resolve(true);
+        } else if (RemoteDB.hasSheetSnapshot && RemoteDB.hasSheetSnapshot()) {
+          // มีแคชแล้ว — ไม่รอดึง Sheet ก่อนบันทึก
+          if (RemoteDB.markLoadedFromCache) RemoteDB.markLoadedFromCache('cache-offline');
+          ready = Promise.resolve(true);
+        } else {
+          ready = RemoteDB.ensureLoaded().catch(function () { return false; });
+        }
         return ready.then(function () {
           var result = run();
           // ซิงก์รูปบิลเฉพาะตอนบันทึกใบรับ — mutation อื่นข้ามรูปเพื่อให้เร็ว
