@@ -1476,10 +1476,17 @@ function nowIso_() {
   return d.getFullYear() + '-' + pad2_(d.getMonth() + 1) + '-' + pad2_(d.getDate()) + ' ' + pad2_(d.getHours()) + ':' + pad2_(d.getMinutes()) + ':' + pad2_(d.getSeconds());
 }
 
+/** ปฏิทินวันในโซนไทย (+07) — กันวันที่จาก Sheets (UTC ISO) เลื่อนถอย 1 วัน */
+function thaiCalendarIsoFromMs_(ms) {
+  var t = Number(ms) + (7 * 60 * 60 * 1000);
+  var u = new Date(t);
+  return u.getUTCFullYear() + '-' + pad2_(u.getUTCMonth() + 1) + '-' + pad2_(u.getUTCDate());
+}
+
 function toIsoDate_(v) {
   if (!v) return '';
   if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
-    return v.getFullYear() + '-' + pad2_(v.getMonth() + 1) + '-' + pad2_(v.getDate());
+    return thaiCalendarIsoFromMs_(v.getTime());
   }
   var s = String(v).trim();
   var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
@@ -1488,6 +1495,13 @@ function toIsoDate_(v) {
     if (y > 2400) y -= 543;
     if (y < 100) y += 2500 - 543;
     return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  }
+  // วันที่อย่างเดียว YYYY-MM-DD — ใช้ตามที่พิมพ์ (ไม่แปลง timezone)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // จาก Google Sheets / JSON: "2026-09-22T17:00:00.000Z" = เที่ยงคืนไทยของวันถัดไป
+  if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(s)) {
+    var dt = new Date(s);
+    if (!isNaN(dt.getTime())) return thaiCalendarIsoFromMs_(dt.getTime());
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   return s;
@@ -2147,9 +2161,16 @@ return {
           var syncOpts = (name === 'saveReceipt')
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
-          // ความชื้น/อุณหภูมิ: รอซิงก์ชีทให้จบ เพื่อยืนยันว่าขึ้น Sheet จริง
+          // ความชื้น/อุณหภูมิ: พยายามซิงก์ชีทให้จบ แต่ถ้าซิงก์ล้มเหลว ยังคืนผลบันทึกในเครื่อง
           if (name === 'saveClimateLog' || name === 'deleteClimateLog') {
-            return RemoteDB.sync(syncOpts).then(function () { return result; });
+            return RemoteDB.sync(syncOpts).then(function () { return result; }).catch(function (err) {
+              if (typeof toast === 'function') {
+                toast((err && err.message)
+                  ? ('บันทึกในเครื่องแล้ว · ซิงก์ Google ไม่สำเร็จ: ' + err.message)
+                  : 'บันทึกในเครื่องแล้ว · ซิงก์ Google ไม่สำเร็จ');
+              }
+              return result;
+            });
           }
           RemoteDB.sync(syncOpts).catch(function (err) {
             if (typeof toast === 'function') {

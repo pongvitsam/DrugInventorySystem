@@ -120,6 +120,34 @@ function getSheet_(ss, name) {
   return ss.getSheetByName(name);
 }
 
+var DATE_ONLY_COLS_ = { date: 1, expiry: 1 };
+
+function cellToExport_(col, val) {
+  if (val == null || val === '') return '';
+  // Sheets มักแปลง YYYY-MM-DD เป็น Date → JSON ได้เป็น UTC แล้ววันเลื่อน
+  if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
+    if (DATE_ONLY_COLS_[col]) {
+      return Utilities.formatDate(val, 'Asia/Bangkok', 'yyyy-MM-dd');
+    }
+    return Utilities.formatDate(val, 'Asia/Bangkok', "yyyy-MM-dd'T'HH:mm:ssXXX");
+  }
+  var s = String(val);
+  if (DATE_ONLY_COLS_[col] && /^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    return Utilities.formatDate(new Date(s), 'Asia/Bangkok', 'yyyy-MM-dd');
+  }
+  if (DATE_ONLY_COLS_[col] && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return val;
+}
+
+function cellToWrite_(col, val) {
+  if (val == null || val === '') return '';
+  if (DATE_ONLY_COLS_[col]) {
+    var s = String(val).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  }
+  return val;
+}
+
 function readSheetObjects_(sheet, columns) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -127,7 +155,7 @@ function readSheetObjects_(sheet, columns) {
   return values.map(function (row) {
     var o = {};
     columns.forEach(function (col, i) {
-      o[col] = row[i] != null ? row[i] : '';
+      o[col] = cellToExport_(col, row[i]);
     });
     return o;
   });
@@ -141,10 +169,16 @@ function writeSheetObjects_(sheet, columns, objects) {
   if (!objects || !objects.length) return;
   var rows = objects.map(function (obj) {
     return columns.map(function (col) {
-      return obj[col] != null ? obj[col] : '';
+      return cellToWrite_(col, obj[col]);
     });
   });
-  sheet.getRange(2, 1, rows.length, columns.length).setValues(rows);
+  var range = sheet.getRange(2, 1, rows.length, columns.length);
+  range.setValues(rows);
+  // บังคับคอลัมน์วันที่เป็นข้อความ — กัน Sheets แปลงเป็น Date แล้วเลื่อนวันตอน export
+  columns.forEach(function (col, i) {
+    if (!DATE_ONLY_COLS_[col]) return;
+    sheet.getRange(2, i + 1, rows.length, 1).setNumberFormat('@');
+  });
 }
 
 var LOGO_PROP_KEY_ = 'LOGO_DATA_URL';
