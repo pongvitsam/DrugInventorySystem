@@ -2341,44 +2341,33 @@ function rpTableHead() {
     '<th class="col-val right">มูลค่า</th>' +
     '</tr></thead>';
 }
+function issueGroupTable_(g) {
+  var html = '<h3>เบิกวันที่ ' + esc(g.label) + '</h3><div class="rp-table-wrap"><table class="rp-table rp-print-table"><thead><tr>' +
+    '<th class="col-item">รายการ</th><th class="col-pack">บรรจุ</th>' +
+    '<th class="col-num right">จำนวนเบิก</th><th class="col-val right">มูลค่า (บาท)</th>' +
+    '</tr></thead><tbody>';
+  (g.rows || []).forEach(function (r) {
+    html += '<tr><td class="col-item">' + esc(r.name) + '</td><td class="col-pack">' + esc(r.packSize) +
+      '</td><td class="col-num right">' + r.issued + '</td><td class="col-val right">' + money(r.issuedValue) + '</td></tr>';
+  });
+  html += '<tr class="rp-total-row"><td colspan="3" class="right"><b>รวมวันที่ ' + esc(g.label) + '</b></td>' +
+    '<td class="col-val right"><b>' + money(g.totalValue) + '</b></td></tr></tbody></table></div>';
+  return html;
+}
 function renderMonthIssueBrief(d) {
   var sm = d.summary || {};
   var period = d.label || '';
-  var rows = [];
-  (d.groups || []).forEach(function (g) {
-    g.rows.forEach(function (r) {
-      if (Number(r.issued) > 0) {
-        rows.push({
-          name: r.item.name,
-          packSize: r.item.packSize,
-          issued: r.issued,
-          issuedValue: Number(r.issuedValue || 0) || round2_(Number(r.issued) * Number(r.item.unitPrice || 0))
-        });
-      }
-    });
-  });
-  rows.sort(function (a, b) {
-    return String(a.name).localeCompare(String(b.name), 'th') ||
-      String(a.packSize).localeCompare(String(b.packSize), 'th');
-  });
+  var groups = d.issueGroups || [];
   var html = '<div class="rp-print-brief print-only">';
   var locName = d.locationLabel || 'คลังหลัก';
   html += hdr(d.settings, 'สรุปเบิกออกจาก' + locName, period);
   html += '<div class="rp-print-total">' +
     '<p class="rp-print-big"><b>' + money(sm.issuedValue) + ' บาท</b></p>' +
-    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจาก' + locName + 'ในช่วงที่เลือก</p>' +
+    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจาก' + locName + ' · ' + esc(period) + '</p>' +
     '</div>';
-  if (rows.length) {
-    html += '<table class="rp-table rp-print-table"><thead><tr>' +
-      '<th class="col-item">รายการ</th><th class="col-pack">บรรจุ</th>' +
-      '<th class="col-num right">จำนวนเบิก</th><th class="col-val right">มูลค่า (บาท)</th>' +
-      '</tr></thead><tbody>';
-    rows.forEach(function (r) {
-      html += '<tr><td class="col-item">' + esc(r.name) + '</td><td class="col-pack">' + esc(r.packSize) +
-        '</td><td class="col-num right">' + r.issued + '</td><td class="col-val right">' + money(r.issuedValue) + '</td></tr>';
-    });
-    html += '<tr class="rp-total-row"><td colspan="3" class="right"><b>รวมเบิกออก</b></td>' +
-      '<td class="col-val right"><b>' + money(sm.issuedValue) + '</b></td></tr></tbody></table>';
+  if (groups.length) {
+    groups.forEach(function (g) { html += issueGroupTable_(g); });
+    html += '<p class="right"><b>รวมเบิกออกทั้งช่วง ' + money(sm.issuedValue) + ' บาท</b></p>';
   } else {
     html += '<p class="rp-print-empty" style="text-align:center;margin:28px 0">ไม่มีรายการเบิกออกจาก' + locName + 'ในช่วงที่เลือก</p>';
   }
@@ -2403,6 +2392,12 @@ function renderMonth(d) {
     kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจาก' + locName + 'ในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' แพ็ก · แยกตามบรรจุ', 'teal') +
     '</div>';
+  var issueGroups = d.issueGroups || [];
+  if (issueGroups.length) {
+    html += '<h3>เบิกออกตามวันที่</h3>';
+    issueGroups.forEach(function (g) { html += issueGroupTable_(g); });
+    html += '<p class="right"><b>รวมเบิกออกทั้งช่วง ' + money(sm.issuedValue) + ' บาท</b></p>';
+  }
   (d.groups || []).forEach(function (g) {
     html += '<h3>' + esc(g.category) + '</h3><div class="rp-table-wrap"><table class="rp-table">' + rpTableHead() + '<tbody>';
     g.rows.forEach(function (r) {

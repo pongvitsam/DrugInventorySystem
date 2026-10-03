@@ -1269,6 +1269,50 @@ function reportPeriodIssue_(m, ch) {
   return m.type === 'ISSUE' && ch < 0 ? -ch : 0;
 }
 
+function reportIssueGroups_(moves, itemMap, stockById, loc, range) {
+  var byDate = {};
+  (moves || []).forEach(function (m) {
+    if (!m || m.location !== loc || !itemMap[m.itemId]) return;
+    if (!shouldCountMovement_(m)) return;
+    var d = toIsoDate_(m.date);
+    if (!d || d < range.start || d > range.end) return;
+    var qty = reportPeriodIssue_(m, num_(m.qtyChange));
+    if (!(qty > 0)) return;
+    var lot = moveReportLot_(m, stockById, itemMap);
+    var price = num_(m.unitPrice);
+    if (!byDate[d]) byDate[d] = {};
+    var rowKey = reportRowKey_(m.itemId, lot.packSize, price);
+    var row = byDate[d][rowKey];
+    if (!row) {
+      var it = itemMap[m.itemId];
+      row = byDate[d][rowKey] = {
+        name: it.name || '',
+        packSize: reportLotPack_(lot.packSize, it),
+        unitPrice: price,
+        issued: 0,
+        issuedValue: 0
+      };
+    }
+    row.issued = round4_(row.issued + qty);
+    row.issuedValue = round2_(row.issuedValue + qty * price);
+  });
+  return Object.keys(byDate).sort().map(function (d) {
+    var rows = Object.keys(byDate[d]).map(function (k) { return byDate[d][k]; });
+    rows.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name), 'th') ||
+        String(a.packSize).localeCompare(String(b.packSize), 'th') ||
+        num_(a.unitPrice) - num_(b.unitPrice);
+    });
+    return {
+      date: d,
+      label: formatDate_(d),
+      rows: rows,
+      totalQty: round4_(rows.reduce(function (s, r) { return s + r.issued; }, 0)),
+      totalValue: round2_(rows.reduce(function (s, r) { return s + r.issuedValue; }, 0))
+    };
+  });
+}
+
 function reportRowKey_(itemId, packSize, unitPrice) {
   return String(itemId) + '|' + packKey_(packSize) + '|' + round2_(num_(unitPrice));
 }
@@ -1402,6 +1446,7 @@ function apiMonthReport_(p) {
         issuedValue: round2_(extra.reduce(function (s, r) { return s + r.issuedValue; }, 0))
       });
   }
+  var issueGroups = reportIssueGroups_(moves, itemMap, stockById, loc, range);
   var summary = {
     openingValue: round2_(allRows.reduce(function (s, r) { return s + r.openingValue; }, 0)),
     openingQty: round4_(allRows.reduce(function (s, r) { return s + r.opening; }, 0)),
@@ -1421,6 +1466,7 @@ function apiMonthReport_(p) {
     settings: readSettings_(),
     summary: summary,
     groups: groups,
+    issueGroups: issueGroups,
     grandTotal: summary.remainValue
   };
 }
