@@ -74,6 +74,7 @@ function enrichStockRow_(s, items, settings) {
   return Object.assign({}, s, {
     name: it.name || '',
     category: it.category || '',
+    form: it.form || '',
     packSize: preferSpacedPack_(String(s.packSize || it.packSize || '')),
     amount: round2_(num_(s.qty) * num_(s.unitPrice)),
     locationLabel: LOC_LABEL[s.location] || s.location,
@@ -975,14 +976,33 @@ function apiGetTransfer_(p) {
 }
 
 function unitsPerPack_(pack) {
-  var s = String(pack || '').replace(/\s+/g, '').replace(/[’′]/g, "'");
-  var m = s.match(/(\d+(?:\.\d+)?)'s/i);
-  if (m) return Number(m[1]);
-  m = s.match(/(\d+(?:\.\d+)?)(เม็ด|แคปซูล|ชิ้น|tablets?|tabs?)/i);
-  if (m) return Number(m[1]);
-  m = s.match(/(\d+(?:\.\d+)?)s$/i);
-  if (m) return Number(m[1]);
-  return 1;
+  var spec = withdrawSpec_(pack, '');
+  return spec.split ? spec.units : 1;
+}
+
+function withdrawSpec_(pack, form) {
+  var compact = String(pack || '').replace(/\s+/g, '').replace(/[’′]/g, "'");
+  var formU = String(form || '').toUpperCase();
+  var counted = compact.match(/(\d+(?:\.\d+)?)'s/i) ||
+    compact.match(/(\d+(?:\.\d+)?)(เม็ด|แคปซูล|tablets?|tabs?)/i) ||
+    compact.match(/(\d+(?:\.\d+)?)s$/i);
+  var bulkForm = /CREAM|OINT|GEL|LOTION|SYR|SUSP|DROP|INJ|SPRAY|SOL/.test(formU);
+  var bulkPack = /หลอด|ขวด|แกลอน/.test(compact) || /ml$/i.test(compact) || /มล|กรัม/.test(compact) || /^\d+(?:\.\d+)?g$/i.test(compact);
+  var split = !!(counted && !bulkForm && !bulkPack && Number(counted[1]) > 1);
+  var unit = 'หน่วย';
+  if (split) unit = 'เม็ด';
+  else if (/หลอด/.test(compact)) unit = 'หลอด';
+  else if (/ขวด|แกลอน/.test(compact) || /ml$/i.test(compact) || /มล/.test(compact)) unit = 'ขวด';
+  else if (/ซอง/.test(compact)) unit = 'ซอง';
+  else if (/ถุง/.test(compact)) unit = 'ถุง';
+  else if (/กล่อง/.test(compact)) unit = 'กล่อง';
+  else if (/แพค|แพ็ค/.test(compact)) unit = 'แพค';
+  else if (/ม้วน/.test(compact)) unit = 'ม้วน';
+  else if (/ชิ้น/.test(compact)) unit = 'ชิ้น';
+  else if (/ก้อน/.test(compact)) unit = 'ก้อน';
+  else if (/CREAM|OINT|GEL|LOTION/.test(formU)) unit = 'หลอด';
+  else if (bulkForm) unit = 'ขวด';
+  return { unit: unit, units: split ? Number(counted[1]) : 1, split: split };
 }
 
 function splitTabletMove_(tablets, packPrice, units) {
@@ -1035,25 +1055,29 @@ function applyExtReceiptLines_(rec, lines, stock, items, eLines, moves) {
     seen[line.stockId] = 1;
     var from = findById_(stock, line.stockId);
     if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
-    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
-    var units = unitsPerPack_(pack);
-    var name = (items[from.itemId] || {}).name || from.itemId;
-    if (units > 1 && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
+    var item = items[from.itemId] || {};
+    var pack = preferSpacedPack_(String(from.packSize || item.packSize || ''));
+    var spec = withdrawSpec_(pack, item.form);
+    var units = spec.units;
+    var name = item.name || from.itemId;
+    if (spec.split && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
       throw new Error('จำนวนเม็ดต้องเป็นจำนวนเต็ม: ' + name);
     }
     var split = splitTabletMove_(line.qty, from.unitPrice, units);
     if (split.packQty > num_(from.qty) + 1e-9) {
       var maxT = tabletsAvailable_(from.qty, units);
-      throw new Error((units > 1 ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + maxT + ' เม็ด): ' : 'จำนวนเกินคงเหลือ: ') + name);
+      throw new Error((spec.split ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + maxT + ' เม็ด): ' : 'จำนวน' + spec.unit + 'เกินคงเหลือ (สูงสุด ' + maxT + ' ' + spec.unit + '): ') + name);
     }
   });
   lines.forEach(function (line) {
     var from = findById_(stock, line.stockId);
     var price = num_(from.unitPrice);
-    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
-    var units = unitsPerPack_(pack);
+    var item = items[from.itemId] || {};
+    var pack = preferSpacedPack_(String(from.packSize || item.packSize || ''));
+    var spec = withdrawSpec_(pack, item.form);
+    var units = spec.units;
     var split = splitTabletMove_(line.qty, price, units);
-    var asTablets = units > 1;
+    var asTablets = spec.split;
     var extQty = asTablets ? split.tablets : split.packQty;
     var extPrice = asTablets ? split.tabletPrice : price;
     var extPack = asTablets ? 'เม็ด' : pack;
@@ -1109,15 +1133,18 @@ function apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves) {
     var from = findById_(stock, line.stockId);
     var have = (from && from.location === LOC_MAIN ? num_(from.qty) : 0) + (giveBack[line.stockId] || 0);
     if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
-    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
-    var units = unitsPerPack_(pack);
-    var name = (items[from.itemId] || {}).name || from.itemId;
-    if (units > 1 && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
+    var item = items[from.itemId] || {};
+    var pack = preferSpacedPack_(String(from.packSize || item.packSize || ''));
+    var spec = withdrawSpec_(pack, item.form);
+    var units = spec.units;
+    var name = item.name || from.itemId;
+    if (spec.split && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
       throw new Error('จำนวนเม็ดต้องเป็นจำนวนเต็ม: ' + name);
     }
     var split = splitTabletMove_(line.qty, from.unitPrice, units);
     if (split.packQty > have + 1e-9) {
-      throw new Error((units > 1 ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + tabletsAvailable_(have, units) + ' เม็ด): ' : 'จำนวนเกินคงเหลือ: ') + name);
+      var maxT = tabletsAvailable_(have, units);
+      throw new Error((spec.split ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + maxT + ' เม็ด): ' : 'จำนวน' + spec.unit + 'เกินคงเหลือ (สูงสุด ' + maxT + ' ' + spec.unit + '): ') + name);
     }
   });
   oldLines.forEach(function (old) {
