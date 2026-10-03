@@ -112,6 +112,13 @@ h1, h2, h3, .brand h1, .login-card h1, .top h2 {
 }
 .brand h1 { margin: 0; font-size: 17px; color: #fff; }
 .brand p { margin: 4px 0 0; font-size: 12px; opacity: .78; line-height: 1.4; }
+.nav-label {
+  margin: 16px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: rgba(237,248,244,.55);
+}
 .nav-btn {
   appearance: none; border: 0; background: transparent; color: rgba(237,248,244,.9);
   text-align: left; padding: 11px 12px; border-radius: 12px; cursor: pointer;
@@ -358,7 +365,8 @@ textarea { min-height: 70px; }
   .page.active .card:has(.print-sheet) > .row,
   .page.active .card:has(.print-sheet) > h3,
   .page.active .card:has(.print-sheet) > p.muted { display: none !important; }
-  #wdPrintOut.print-sheet {
+  #wdPrintOut.print-sheet,
+  #exOutPrintOut.print-sheet {
     min-height: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -1830,7 +1838,8 @@ select option[value="__add__"] {
 }
 
 /* Preview ใบเบิกบนจอให้ใกล้เคียง A4 แนวตั้ง */
-#wdPrintOut.print-sheet {
+#wdPrintOut.print-sheet,
+#exOutPrintOut.print-sheet {
   max-width: 210mm;
   min-height: 297mm;
   margin: 12px auto 0;

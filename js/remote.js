@@ -87,16 +87,17 @@ var RemoteDB = (function () {
     });
     moves.forEach(function (m) {
       if (m.type === 'OPENING' || String(m.refId || '') === 'SEED') return;
-      if (m.type === 'RECEIVE' || m.type === 'ISSUE' || m.type === 'COUNT' || m.type === 'RETURN') {
+      if (m.type === 'RECEIVE' || m.type === 'ISSUE' || m.type === 'COUNT' || m.type === 'RETURN' || m.type === 'TRANSFER_IN' || m.type === 'TRANSFER_OUT') {
         histMoves++;
         noteTime(m.date || '');
         var d = String(m.date || '').slice(0, 10);
         if (d >= HISTORY_CUTOFF_) histDocs++;
       }
     });
+    var extReceipts = data.ExtReceipts || [];
     var settings = data.SettingsObj || {};
-    var score = receipts.length * 100 + transfers.length * 100 +
-      receiptLines.length + transferLines.length + histMoves;
+    var score = receipts.length * 100 + transfers.length * 100 + extReceipts.length * 100 +
+      receiptLines.length + transferLines.length + (data.ExtReceiptLines || []).length + histMoves;
     return {
       score: score,
       histDocs: histDocs,
@@ -170,6 +171,8 @@ var RemoteDB = (function () {
             ReceiptLines: data.ReceiptLines,
             Transfers: data.Transfers,
             TransferLines: data.TransferLines,
+            ExtReceipts: data.ExtReceipts,
+            ExtReceiptLines: data.ExtReceiptLines,
             Movements: data.Movements
           };
           payload.slim = true;

@@ -90,7 +90,7 @@ var DB = {
   },
   exportAll: function (opts) {
     opts = opts || {};
-    var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
+    var keys = ['SettingsObj', 'SeqObj', 'Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines', 'ExtReceipts', 'ExtReceiptLines', 'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
     var out = {};
     var imgs = opts.skipImages ? {} : DB.readReceiptImages();
     keys.forEach(function (k) {
@@ -159,8 +159,21 @@ var DB = {
     });
     DB.writeReceiptImages(imgs);
     ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
+      'ExtReceipts', 'ExtReceiptLines',
       'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'].forEach(function (k) {
-      DB.writeObjects(k, DB.dedupeRows(k, d[k] || []));
+      if ((k === 'ExtReceipts' || k === 'ExtReceiptLines') && d[k] == null) return;
+      var rows = d[k] || [];
+      if (k === 'Transfers') {
+        var moves = (d.Movements && d.Movements.length) ? d.Movements : DB.readObjects('Movements');
+        var extRefs = {};
+        (moves || []).forEach(function (m) {
+          if (m && m.type === 'ISSUE' && m.location === 'EXT' && m.refId) extRefs[m.refId] = 1;
+        });
+        rows.forEach(function (t) {
+          if (t && !t.location && extRefs[t.id]) t.location = 'EXT';
+        });
+      }
+      DB.writeObjects(k, DB.dedupeRows(k, rows));
     });
   }
 };

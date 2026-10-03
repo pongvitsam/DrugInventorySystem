@@ -2,9 +2,20 @@ var STATE = {
   boot: null,
   items: [],
   stock: [],
-  stockCache: { MAIN: null },
+  exStock: [],
+  stockCache: { MAIN: null, EXT: null },
   loc: 'MAIN',
   stockFilter: 'all',
+  exStockFilter: 'all',
+  exInPick: [],
+  exInCart: [],
+  editingExInId: null,
+  editExInOrig: {},
+  exOutPick: [],
+  exOutCart: [],
+  editingExOutId: null,
+  editExOutOrig: {},
+  reportLocation: 'MAIN',
   receive: { item: null, lines: [] },
   editingReceiptId: null,
   ocrReview: [],
@@ -66,6 +77,15 @@ function showPage(id) {
     loadWithdrawPick();
     loadWithdrawHistory();
   }
+  if (id === 'exstock') showExStock();
+  if (id === 'exreceive') {
+    loadExInPick();
+    loadExInHistory();
+  }
+  if (id === 'exwithdraw') {
+    loadExOutPick();
+    loadExOutHistory();
+  }
   if (id === 'import') {
     loadLoginUsers();
     loadLowStockSettings();
@@ -109,6 +129,8 @@ function applyBoot(b) {
   }
   fillSelect('itemCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   fillSelect('wdCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
+  fillSelect('exInCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
+  fillSelect('exOutCatFilter', ['ทั้งหมด'].concat(b.categories || []), true);
   refreshOptionLists();
   bindItemModalOptionSelects();
   document.getElementById('stUnit').value = s.unitName || '';
@@ -144,6 +166,8 @@ function applyBoot(b) {
   renderDash(b);
   ThDate.set('rcDate', todayInput());
   ThDate.set('wdDate', todayInput());
+  ThDate.set('exInDate', todayInput());
+  ThDate.set('exOutDate', todayInput());
   var now = new Date();
   ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
   ThDate.set('rpFrom', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01');
@@ -236,13 +260,26 @@ function onLogoFileSelected(input) {
 function refreshStockCache(cb) {
   return api('listStockAll').then(function (r) {
     STATE.stockCache.MAIN = r.MAIN || [];
+    STATE.stockCache.EXT = r.EXT || [];
     if (document.getElementById('page-stock').classList.contains('active')) {
       STATE.stock = STATE.stockCache.MAIN || [];
       renderStock();
     }
+    if (document.getElementById('page-exstock').classList.contains('active')) {
+      STATE.exStock = STATE.stockCache.EXT || [];
+      renderExStock();
+    }
     if (document.getElementById('page-withdraw').classList.contains('active')) {
       STATE.pickStock = STATE.stockCache.MAIN || [];
       filterWithdrawStock();
+    }
+    if (document.getElementById('page-exreceive').classList.contains('active')) {
+      STATE.exInPick = STATE.stockCache.MAIN || [];
+      filterExInStock();
+    }
+    if (document.getElementById('page-exwithdraw').classList.contains('active')) {
+      STATE.exOutPick = STATE.stockCache.EXT || [];
+      filterExOutStock();
     }
     if (cb) cb();
   }).catch(function (e) {
@@ -766,18 +803,18 @@ function renderDash(b) {
   var hint = 'ยอดคงเหลือปัจจุบัน';
   if (changed && prev) hint += ' · อัปเดตเมื่อ ' + formatDashTime(STATE.dashSnapshot.updatedAt);
   document.getElementById('kpis').innerHTML =
-    kpi('มูลค่าคลังหลัก', money(total) + ' ฿', hint, 'teal') +
-    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลคลองท่อม', 'sky') +
-    kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก', 'sand') +
-    kpi('รายการในทะเบียน', String(b.itemCount || 0), 'ยาและเวชภัณฑ์', 'leaf');
+    kpi('มูลค่าคลังหลัก', money(d.mainValue != null ? d.mainValue : total) + ' ฿', hint, 'teal') +
+    kpi('มูลค่าคลังภายนอก', money(d.extValue || 0) + ' ฿', 'ยอดคงเหลือปัจจุบัน', 'sky') +
+    kpi('ใบรับเข้า', String(d.receiptCount || 0), 'จากโรงพยาบาลคลองท่อม', 'sand') +
+    kpi('ใบเบิก', String(d.transferCount || 0), 'ออกจากคลังหลัก', 'leaf');
   document.getElementById('valueCats').innerHTML = '<h3>มูลค่าแยกหมวด</h3>' + ((d.byValue || []).length
     ? d.byValue.map(function (x) {
       return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>' + esc(x.category) + '</span><b>' + money(x.value) + '</b></div>';
     }).join('')
     : '<div class="muted">ยังไม่มีข้อมูล</div>');
   document.getElementById('dashExpiry').innerHTML = (d.expiry || []).length
-    ? '<table><tr><th>รายการ</th><th>หมดอายุ</th><th class="right">คงเหลือ</th></tr>' + d.expiry.map(function (x) {
-      return '<tr><td>' + esc(x.name) + '</td><td><span class="pill warn">' + esc(x.expiry) + '</span></td><td class="right">' + x.qty + '</td></tr>';
+    ? '<table><tr><th>รายการ</th><th>คลัง</th><th>หมดอายุ</th><th class="right">คงเหลือ</th></tr>' + d.expiry.map(function (x) {
+      return '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.location || 'คลังหลัก') + '</td><td><span class="pill warn">' + esc(x.expiry) + '</span></td><td class="right">' + x.qty + '</td></tr>';
     }).join('') + '</table>'
     : 'ไม่มีรายการใกล้หมดอายุ';
   var rec = (b.recentReceipts || []).map(function (r) { return 'รับเข้า ' + (r.number || r.id) + ' · ' + money(r.totalValue) + ' ฿'; });
@@ -1140,12 +1177,16 @@ function isLowStockCritical(s, itemTotals) {
   return total > 0 && total <= critical;
 }
 
-function setStockFilter(kind) {
-  STATE.stockFilter = kind || 'all';
-  document.querySelectorAll('#stockFilters .chip').forEach(function (b) {
-    b.classList.toggle('active', b.dataset.sf === STATE.stockFilter);
+function setStockFilter(kind, which) {
+  which = which === 'EXT' ? 'EXT' : 'MAIN';
+  if (which === 'EXT') STATE.exStockFilter = kind || 'all';
+  else STATE.stockFilter = kind || 'all';
+  var active = which === 'EXT' ? STATE.exStockFilter : STATE.stockFilter;
+  var root = which === 'EXT' ? '#exStockFilters' : '#stockFilters';
+  document.querySelectorAll(root + ' .chip').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.sf === active);
   });
-  renderStock();
+  renderStockView(which);
 }
 
 function showStock() {
@@ -1161,8 +1202,20 @@ function showStock() {
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
-function renderStockAlert(allRows) {
-  var box = document.getElementById('stockAlert');
+function showExStock() {
+  if (STATE.stockCache.EXT) {
+    STATE.exStock = STATE.stockCache.EXT;
+    renderExStock();
+  }
+  api('listStock', { location: 'EXT' }).then(function (r) {
+    STATE.stockCache.EXT = r.stock || [];
+    STATE.exStock = STATE.stockCache.EXT;
+    renderExStock();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function renderStockAlert(allRows, alertId, which) {
+  var box = document.getElementById(alertId || 'stockAlert');
   if (!box) return;
   var totals = buildItemStockTotals(allRows);
   var byItem = {};
@@ -1199,17 +1252,23 @@ function renderStockAlert(allRows) {
   box.innerHTML =
     '<div class="stock-alert-head">' +
     '<div><strong>เตือนใกล้หมด</strong> พบ <b>' + lows.length + '</b> รายการ ต่ำกว่าเกณฑ์ที่ตั้งไว้</div>' +
-    '<button type="button" class="btn secondary" onclick="setStockFilter(\'low\')">ดูเฉพาะใกล้หมด</button>' +
+    '<button type="button" class="btn secondary" onclick="setStockFilter(\'low\'' + (which === 'EXT' ? ',\'EXT\'' : '') + ')">ดูเฉพาะใกล้หมด</button>' +
     '</div>' +
     '<div class="stock-alert-list">' + chips + more + '</div>';
 }
 
-function renderStock() {
-  var q = (document.getElementById('stockQ').value || '').toLowerCase();
-  var filter = STATE.stockFilter || 'all';
-  var all = STATE.stock || [];
+function renderStock() { renderStockView('MAIN'); }
+function renderExStock() { renderStockView('EXT'); }
+function renderStockView(which) {
+  var ext = which === 'EXT';
+  var qEl = document.getElementById(ext ? 'exStockQ' : 'stockQ');
+  var table = document.getElementById(ext ? 'exStockTable' : 'stockTable');
+  if (!qEl || !table) return;
+  var q = (qEl.value || '').toLowerCase();
+  var filter = (ext ? STATE.exStockFilter : STATE.stockFilter) || 'all';
+  var all = (ext ? STATE.exStock : STATE.stock) || [];
   var totals = buildItemStockTotals(all);
-  renderStockAlert(all);
+  renderStockAlert(all, ext ? 'exStockAlert' : 'stockAlert', ext ? 'EXT' : 'MAIN');
 
   var rows = all.filter(function (s) {
     if (q && String(s.name).toLowerCase().indexOf(q) < 0) return false;
@@ -1264,7 +1323,7 @@ function renderStock() {
         (s.nearExpiry ? '</span>' : '') + '</td></tr>';
     }).join('');
   }
-  document.getElementById('stockTable').innerHTML = html;
+  table.innerHTML = html;
 }
 
 var searchTimer = 0;
@@ -2041,6 +2100,7 @@ function saveWithdraw() {
   var payload = {
     date: document.getElementById('wdDate').value,
     notes: document.getElementById('wdNotes').value,
+    location: 'MAIN',
     lines: lines
   };
   if (STATE.editingWithdrawId) payload.id = STATE.editingWithdrawId;
@@ -2067,7 +2127,7 @@ function withdrawHistoryTime(x) {
   return ThDate.formatTimeShort(x.createdAt || '') || '';
 }
 function loadWithdrawHistory() {
-  api('listTransfers').then(function (r) {
+  api('listTransfers', { location: 'MAIN' }).then(function (r) {
     document.getElementById('wdHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
       var time = withdrawHistoryTime(x);
       return '<div class="user-row wd-history-row">' +
@@ -2117,7 +2177,7 @@ function showWithdrawPrint(id) {
     var t = data.transfer;
     var s = data.settings || {};
     var html = '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div>' +
-      '<h2 style="margin:8px 0 4px">ใบเบิกยาและเวชภัณฑ์จากคลังหลัก</h2>' +
+      '<h2 style="margin:8px 0 4px">ใบเบิกยาและเวชภัณฑ์จาก' + (t.location === 'EXT' ? 'คลังยาภายนอก' : 'คลังหลัก') + '</h2>' +
       '<div>วันที่ ' + esc(ThDate.formatDateLong(t.date)) + (t.notes ? ' · ' + esc(t.notes) : '') + '</div></div>';
     html += '<table><tr><th>ลำดับ</th><th>รายการ</th><th class="right">ราคา/หน่วย</th><th class="right">จำนวนที่เบิก</th><th class="right">จำนวนที่อนุมัติ</th><th class="right">มูลค่า</th><th>วันหมดอายุ</th><th>หมายเหตุ</th></tr>';
     (data.lines || []).forEach(function (l) {
@@ -2186,17 +2246,25 @@ function setReportRangeMode(mode, silent) {
   }
   setReportTab(STATE.reportKind || 'month');
 }
+function setReportLocation(loc) {
+  STATE.reportLocation = loc === 'EXT' ? 'EXT' : 'MAIN';
+  document.querySelectorAll('#rpLocMode .chip').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.loc === STATE.reportLocation);
+  });
+  if (STATE.reportReady) runReport();
+}
 function getReportParams() {
+  var location = STATE.reportLocation === 'EXT' ? 'EXT' : 'MAIN';
   if (STATE.reportRangeMode === 'range') {
     var start = ThDate.get('rpFrom');
     var end = ThDate.get('rpTo');
     if (!start || !end) throw new Error('เลือกวันที่เริ่มและสิ้นสุด');
     if (start > end) throw new Error('วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด');
-    return { rangeStart: start, rangeEnd: end };
+    return { rangeStart: start, rangeEnd: end, location: location };
   }
   var iso = ThDate.get('rpMonth') || document.getElementById('rpMonth').value;
   if (!iso) throw new Error('เลือกเดือน');
-  return { monthKey: beMonthKey(iso) };
+  return { monthKey: beMonthKey(iso), location: location };
 }
 function runReport(kind) {
   if (kind) setReportTab(kind);
@@ -2208,7 +2276,7 @@ function runReport(kind) {
       return;
     }
     document.getElementById('reportOut').textContent = 'กำลังวิเคราะห์...';
-    var drugParams = { itemId: STATE.reportDrugItem.id };
+    var drugParams = { itemId: STATE.reportDrugItem.id, location: STATE.reportLocation === 'EXT' ? 'EXT' : 'MAIN' };
     var lb = STATE.reportLookback != null ? Number(STATE.reportLookback) : 12;
     if (lb > 0) {
       drugParams.lookbackMonths = lb;
@@ -2225,6 +2293,7 @@ function runReport(kind) {
       }
     }
     api('itemTrendReport', drugParams).then(function (data) {
+      STATE.reportReady = true;
       renderDrugTrend(data);
     }).catch(function (e) {
       document.getElementById('reportOut').textContent = e.message || String(e);
@@ -2242,6 +2311,7 @@ function runReport(kind) {
   }
   var fn = kind === 'money' ? 'moneyReport' : 'monthReport';
   api(fn, params).then(function (data) {
+    STATE.reportReady = true;
     if (kind === 'money') renderMoney(data);
     else renderMonth(data);
   }).catch(function (e) {
@@ -2292,10 +2362,11 @@ function renderMonthIssueBrief(d) {
       String(a.packSize).localeCompare(String(b.packSize), 'th');
   });
   var html = '<div class="rp-print-brief print-only">';
-  html += hdr(d.settings, 'สรุปเบิกออกจากคลังหลัก', period);
+  var locName = d.locationLabel || 'คลังหลัก';
+  html += hdr(d.settings, 'สรุปเบิกออกจาก' + locName, period);
   html += '<div class="rp-print-total">' +
     '<p class="rp-print-big"><b>' + money(sm.issuedValue) + ' บาท</b></p>' +
-    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจากคลังหลักในช่วงที่เลือก</p>' +
+    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจาก' + locName + 'ในช่วงที่เลือก</p>' +
     '</div>';
   if (rows.length) {
     html += '<table class="rp-table rp-print-table"><thead><tr>' +
@@ -2309,7 +2380,7 @@ function renderMonthIssueBrief(d) {
     html += '<tr class="rp-total-row"><td colspan="3" class="right"><b>รวมเบิกออก</b></td>' +
       '<td class="col-val right"><b>' + money(sm.issuedValue) + '</b></td></tr></tbody></table>';
   } else {
-    html += '<p class="rp-print-empty" style="text-align:center;margin:28px 0">ไม่มีรายการเบิกออกจากคลังหลักในช่วงที่เลือก</p>';
+    html += '<p class="rp-print-empty" style="text-align:center;margin:28px 0">ไม่มีรายการเบิกออกจาก' + locName + 'ในช่วงที่เลือก</p>';
   }
   html += signBlock4(d.settings);
   html += '</div>';
@@ -2321,13 +2392,15 @@ function round2(n) {
 function renderMonth(d) {
   var sm = d.summary || {};
   var period = d.label || '';
+  var locName = d.locationLabel || 'คลังหลัก';
+  var recvHint = d.location === 'EXT' ? 'โอนจากคลังหลักในช่วงที่เลือก' : 'จากใบรับเข้าในช่วงที่เลือก';
   var html = renderMonthIssueBrief(d);
   html += '<div class="rp-screen-only">';
-  html += hdr(d.settings, 'สรุปคลังหลัก', period);
+  html += hdr(d.settings, 'สรุป' + locName, period);
   html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
     kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
-    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · จากใบรับเข้าในช่วงที่เลือก', 'sky') +
-    kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
+    kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · ' + recvHint, 'sky') +
+    kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจาก' + locName + 'ในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' แพ็ก · แยกตามบรรจุ', 'teal') +
     '</div>';
   (d.groups || []).forEach(function (g) {
@@ -2462,7 +2535,7 @@ function renderDrugTrend(d) {
   html += '<div class="rp-drug-hero-text">';
   html += '<p class="rp-drug-eyebrow">' + esc(d.item.category || '') + (d.item.code ? ' · ' + esc(d.item.code) : '') + '</p>';
   html += '<h2 class="rp-drug-title">' + esc(d.item.name) + '</h2>';
-  html += '<p class="muted rp-drug-period">' + esc(d.label) + ' · บรรจุ ' + esc(d.item.packSize || '-') + '</p>';
+  html += '<p class="muted rp-drug-period">' + esc(d.locationLabel || 'คลังหลัก') + ' · ' + esc(d.label) + ' · บรรจุ ' + esc(d.item.packSize || '-') + '</p>';
   html += '</div>';
   html += '<div class="rp-drug-hero-stat">';
   html += '<div class="rp-drug-hero-num">' + sm.avgIssuedPerMonth + '</div>';
@@ -2509,11 +2582,13 @@ function renderDrugTrend(d) {
 }
 function renderMoney(d) {
   var t = d.totals || {};
-  var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด', d.label || '');
+  var locName = d.locationLabel || 'คลังหลัก';
+  var recvHint = d.location === 'EXT' ? 'โอนจากคลังหลักในช่วงที่เลือก' : 'จากใบรับเข้าในช่วงที่เลือก';
+  var html = hdr(d.settings, 'สรุปมูลค่ารายหมวด · ' + locName, d.label || '');
   html += '<div class="cards rp-summary-cards" style="margin-bottom:14px">' +
     kpi('ยอดคงเหลือเดิม', money(t.opening) + ' ฿', 'ต้นช่วงที่เลือก', 'leaf') +
-    kpi('รับเข้า', money(t.receive) + ' ฿', 'จากใบรับเข้าในช่วงที่เลือก', 'sky') +
-    kpi('เบิกออก', money(t.used) + ' ฿', 'เบิกจากคลังหลักในช่วงที่เลือก', 'sand') +
+    kpi('รับเข้า', money(t.receive) + ' ฿', recvHint, 'sky') +
+    kpi('เบิกออก', money(t.used) + ' ฿', 'เบิกจาก' + locName + 'ในช่วงที่เลือก', 'sand') +
     kpi('คงเหลือ', money(t.remain) + ' ฿', 'ณ สิ้นช่วง', 'teal') +
     '</div>';
   html += '<div class="rp-table-wrap"><table class="rp-table rp-table-money"><thead><tr><th>หมวด</th><th class="right">ยอดคงเหลือเดิม</th><th class="right">รับเข้า</th><th class="right">เบิกออก</th><th class="right">คงเหลือ</th></tr></thead><tbody>';
@@ -2567,10 +2642,10 @@ function isoToThaiSignParts(iso) {
   };
 }
 
-function initWithdrawSignDates(isoDate) {
+function initWithdrawSignDates(isoDate, rootId) {
   var parts = isoToThaiSignParts(isoDate);
   if (!parts) return;
-  document.querySelectorAll('#wdPrintOut .sign-box').forEach(function (box) {
+  document.querySelectorAll('#' + (rootId || 'wdPrintOut') + ' .sign-box').forEach(function (box) {
     var d = box.querySelector('.sign-date-day');
     var m = box.querySelector('.sign-date-month');
     var y = box.querySelector('.sign-date-year');
@@ -2735,6 +2810,15 @@ function refreshActivePageViews_() {
   if (active.id === 'page-withdraw') {
     loadWithdrawPick();
     loadWithdrawHistory();
+  }
+  if (active.id === 'page-exstock') showExStock();
+  if (active.id === 'page-exreceive') {
+    loadExInPick();
+    loadExInHistory();
+  }
+  if (active.id === 'page-exwithdraw') {
+    loadExOutPick();
+    loadExOutHistory();
   }
   if (active.id === 'page-import') {
     loadLoginUsers();
@@ -2981,4 +3065,385 @@ function startApp() {
     updateSyncIndicator('offline');
   }
   loadBootstrap();
+}
+
+function exLotMax(stockId, stockQty, editingId, orig) {
+  var max = Number(stockQty || 0);
+  if (editingId && orig) max += Number(orig[stockId] || 0);
+  return max;
+}
+function renderLotPick(cfg) {
+  var q = (document.getElementById(cfg.searchId).value || '').toLowerCase().trim();
+  var catEl = document.getElementById(cfg.catId);
+  var cat = catEl ? catEl.value : '';
+  var rows = (cfg.pick() || []).filter(function (s) {
+    if (cat && s.category !== cat) return false;
+    if (!q) return true;
+    return (String(s.name) + ' ' + String(s.packSize) + ' ' + String(s.category)).toLowerCase().indexOf(q) >= 0;
+  });
+  var html = '<tr><th></th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">จำนวน</th><th></th></tr>';
+  if (!rows.length) html += '<tr><td colspan="9" class="muted">ไม่พบรายการที่ตรงเงื่อนไข</td></tr>';
+  else {
+    html += rows.map(function (s) {
+      var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำ</span>' : '';
+      var inCart = (cfg.cart() || []).filter(function (c) { return c.stockId === s.id; })[0];
+      var maxQ = exLotMax(s.id, s.qty, cfg.editing(), cfg.orig());
+      return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '">' +
+        '<td>' + tip + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td>' +
+        '<td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td>' +
+        '<td class="right"><input id="' + cfg.qtyPrefix + s.id + '" type="number" min="1" step="1" max="' + maxQ + '" value="' + (inCart ? inCart.qty : '') + '" style="width:80px"></td>' +
+        '<td><button type="button" class="btn" onclick="' + cfg.addFn + '(\'' + s.id + '\')">' + (inCart ? 'อัปเดต' : 'เพิ่ม') + '</button></td></tr>';
+    }).join('');
+  }
+  document.getElementById(cfg.pickTableId).innerHTML = html;
+}
+function renderLotSummary(cfg) {
+  var cart = cfg.cart() || [];
+  var html = '<tr><th>ลำดับ</th><th>รายการ</th><th>บรรจุ</th><th>หมดอายุ</th><th class="right">ราคา</th><th class="right">จำนวน</th><th class="right">มูลค่า</th><th></th></tr>';
+  if (!cart.length) html += '<tr><td colspan="8" class="muted">ยังไม่มีรายการ — ค้นหาด้านบนแล้วกดเพิ่ม</td></tr>';
+  else {
+    html += cart.map(function (l, i) {
+      return '<tr class="' + (l.fefoRecommend ? 'fefo-row' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(l.name) +
+        (l.fefoRecommend ? ' <span class="pill warn">แนะนำ</span>' : '') + '</td><td>' + esc(l.packSize) + '</td><td>' + esc(l.expiryLabel) +
+        '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right"><input type="number" min="1" step="1" max="' + l.maxQty +
+        '" value="' + l.qty + '" style="width:80px" onchange="' + cfg.qtyFn + '(\'' + l.stockId + '\', this.value)"></td><td class="right"><b>' +
+        money(l.amount) + '</b></td><td><button type="button" class="btn ghost" onclick="' + cfg.removeFn + '(\'' + l.stockId + '\')">ลบ</button></td></tr>';
+    }).join('');
+  }
+  document.getElementById(cfg.summaryId).innerHTML = html;
+  var n = 0, v = 0;
+  cart.forEach(function (l) { n += Number(l.qty || 0); v += Number(l.amount || 0); });
+  document.getElementById(cfg.calcId).textContent = cart.length
+    ? ('สรุป ' + cart.length + ' รายการ · ' + n + ' หน่วย · ' + money(v) + ' บาท')
+    : 'ยังไม่ได้เลือก';
+}
+function addLotLine(cfg, stockId) {
+  var s = (cfg.pick() || []).filter(function (x) { return x.id === stockId; })[0];
+  if (!s) return toast('ไม่พบสต็อก');
+  var inp = document.getElementById(cfg.qtyPrefix + stockId);
+  var qty = Number(inp && inp.value ? inp.value : 0);
+  if (!qty || qty <= 0) return toast('ใส่จำนวนที่ต้องการ');
+  var maxAllowed = exLotMax(stockId, s.qty, cfg.editing(), cfg.orig());
+  if (qty > maxAllowed + 1e-9) return toast('จำนวนเกินคงเหลือ (' + maxAllowed + ')');
+  var cart = cfg.cart() || [];
+  var existing = cart.filter(function (c) { return c.stockId === stockId; })[0];
+  if (existing) {
+    existing.qty = qty;
+    existing.maxQty = maxAllowed;
+    existing.amount = qty * Number(s.unitPrice || 0);
+  } else {
+    cart.push({
+      stockId: s.id, itemId: s.itemId, name: s.name, category: s.category, packSize: s.packSize,
+      expiry: s.expiry || '', expiryLabel: s.expiryLabel || '-', unitPrice: Number(s.unitPrice || 0),
+      qty: qty, maxQty: maxAllowed, amount: qty * Number(s.unitPrice || 0), fefoRecommend: !!s.fefoRecommend
+    });
+  }
+  cfg.setCart(cart);
+  cfg.renderSummary();
+  cfg.renderPick();
+  toast('เพิ่ม ' + s.name + ' × ' + qty);
+}
+function updateLotQty(cfg, stockId, value) {
+  var line = (cfg.cart() || []).filter(function (c) { return c.stockId === stockId; })[0];
+  if (!line) return;
+  var qty = Number(value || 0);
+  if (qty <= 0) { cfg.remove(stockId); return; }
+  if (qty > line.maxQty + 1e-9) { toast('จำนวนเกินคงเหลือ (' + line.maxQty + ')'); qty = line.maxQty; }
+  line.qty = qty;
+  line.amount = qty * line.unitPrice;
+  cfg.renderSummary();
+}
+function removeLotLine(cfg, stockId) {
+  var removed = (cfg.cart() || []).filter(function (c) { return c.stockId === stockId; })[0];
+  cfg.setCart((cfg.cart() || []).filter(function (c) { return c.stockId !== stockId; }));
+  cfg.renderSummary();
+  cfg.renderPick();
+  if (cfg.editing() && removed) toast('ลบ ' + removed.name + ' — จะปรับยอดเมื่อบันทึก');
+}
+function confirmStockUser(label) {
+  var curUser = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
+  var typed = prompt('ใส่ Username เพื่อยืนยัน' + label);
+  if (typed == null) return false;
+  typed = String(typed).trim();
+  if (!curUser) { toast('กรุณาเข้าสู่ระบบก่อน'); return false; }
+  if (!typed) { toast('กรุณาใส่ Username'); return false; }
+  if (String(typed).toLowerCase() !== String(curUser).toLowerCase()) { toast('Username ไม่ถูกต้อง'); return false; }
+  return true;
+}
+
+var EX_IN = {
+  searchId: 'exInSearch', catId: 'exInCatFilter', pickTableId: 'exInPickTable', summaryId: 'exInSummaryTable', calcId: 'exInCalc', qtyPrefix: 'exInQty_',
+  pick: function () { return STATE.exInPick; },
+  cart: function () { return STATE.exInCart; },
+  setCart: function (c) { STATE.exInCart = c; },
+  editing: function () { return STATE.editingExInId; },
+  orig: function () { return STATE.editExInOrig; },
+  addFn: 'addExInLine', qtyFn: 'updateExInCartQty', removeFn: 'removeExInLine',
+  renderPick: function () { renderLotPick(EX_IN); },
+  renderSummary: function () { renderLotSummary(EX_IN); },
+  remove: function (id) { removeExInLine(id); }
+};
+var EX_OUT = {
+  searchId: 'exOutSearch', catId: 'exOutCatFilter', pickTableId: 'exOutPickTable', summaryId: 'exOutSummaryTable', calcId: 'exOutCalc', qtyPrefix: 'exOutQty_',
+  pick: function () { return STATE.exOutPick; },
+  cart: function () { return STATE.exOutCart; },
+  setCart: function (c) { STATE.exOutCart = c; },
+  editing: function () { return STATE.editingExOutId; },
+  orig: function () { return STATE.editExOutOrig; },
+  addFn: 'addExOutLine', qtyFn: 'updateExOutCartQty', removeFn: 'removeExOutLine',
+  renderPick: function () { renderLotPick(EX_OUT); },
+  renderSummary: function () { renderLotSummary(EX_OUT); },
+  remove: function (id) { removeExOutLine(id); }
+};
+
+function updateExInEditUI() {
+  var banner = document.getElementById('exInEditBanner');
+  var btn = document.getElementById('exInSaveBtn');
+  if (!banner || !btn) return;
+  if (STATE.editingExInId) {
+    banner.style.display = 'flex';
+    document.getElementById('exInEditBannerText').textContent = 'กำลังแก้ไขใบรับ ' + STATE.editingExInId;
+    btn.textContent = 'บันทึกการแก้ไข';
+  } else {
+    banner.style.display = 'none';
+    btn.textContent = 'บันทึกรับเข้าคลังภายนอก';
+  }
+}
+function loadExInPick() {
+  api('listStock', { location: 'MAIN' }).then(function (r) {
+    STATE.stockCache.MAIN = r.stock || [];
+    STATE.exInPick = STATE.stockCache.MAIN;
+    filterExInStock();
+  });
+  renderLotSummary(EX_IN);
+  updateExInEditUI();
+}
+function filterExInStock() { renderLotPick(EX_IN); }
+function addExInLine(id) { addLotLine(EX_IN, id); }
+function updateExInCartQty(id, value) { updateLotQty(EX_IN, id, value); }
+function removeExInLine(id) { removeLotLine(EX_IN, id); }
+function clearExInCart() {
+  STATE.exInCart = [];
+  STATE.editingExInId = null;
+  STATE.editExInOrig = {};
+  ThDate.set('exInDate', todayInput());
+  document.getElementById('exInNotes').value = '';
+  updateExInEditUI();
+  renderLotSummary(EX_IN);
+  filterExInStock();
+}
+function cancelExInEdit() { clearExInCart(); toast('ยกเลิกการแก้ไข'); }
+function saveExIn() {
+  var lines = (STATE.exInCart || []).filter(function (l) { return Number(l.qty) > 0; })
+    .map(function (l) { return { stockId: l.stockId, qty: l.qty }; });
+  if (!lines.length && !STATE.editingExInId) return toast('เพิ่มรายการที่ต้องการรับเข้าก่อน');
+  if (!lines.length && STATE.editingExInId) {
+    if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลังหลัก ต้องการบันทึก?')) return;
+  }
+  var payload = { date: document.getElementById('exInDate').value, notes: document.getElementById('exInNotes').value, lines: lines };
+  if (STATE.editingExInId) payload.id = STATE.editingExInId;
+  api('saveExtReceipt', payload).then(function (r) {
+    toast((STATE.editingExInId ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' · ' + money(r.receipt.totalValue) + ' บาท');
+    clearExInCart();
+    loadExInPick();
+    loadExInHistory();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function loadExInHistory() {
+  api('listExtReceipts').then(function (r) {
+    document.getElementById('exInHistory').innerHTML = (r.receipts || []).slice(0, 10).map(function (x) {
+      var time = ThDate.formatTimeShort(x.createdAt || '') || '';
+      return '<div class="user-row wd-history-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
+        (time ? ' · <span class="wd-history-time">' + esc(time) + '</span>' : '') + '</span>' +
+        '<span class="row" style="gap:6px;margin:0">' +
+        '<button type="button" class="btn ghost" onclick="editExIn(\'' + x.id + '\')">แก้ไข</button>' +
+        '<button type="button" class="btn ghost danger" onclick="deleteExIn(\'' + x.id + '\')">ลบ</button></span></div>';
+    }).join('') || 'ยังไม่มี';
+  });
+}
+function editExIn(id) {
+  Promise.all([api('getExtReceipt', { id: id }), api('listStock', { location: 'MAIN' })]).then(function (res) {
+    var data = res[0];
+    var stock = res[1].stock || [];
+    STATE.exInPick = stock;
+    var stockById = {};
+    stock.forEach(function (s) { stockById[s.id] = s; });
+    var orig = {};
+    STATE.exInCart = (data.lines || []).map(function (l) {
+      var s = stockById[l.stockId] || {};
+      var origQty = Number(l.qty || 0);
+      orig[l.stockId] = origQty;
+      return {
+        stockId: l.stockId, itemId: l.itemId, name: l.name || s.name || '', category: s.category || '',
+        packSize: l.packSize || s.packSize || '', expiry: l.expiry || s.expiry || '',
+        expiryLabel: l.expiryLabel || s.expiryLabel || '-', unitPrice: Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0),
+        qty: origQty, maxQty: exLotMax(l.stockId, s.qty, id, orig),
+        amount: origQty * Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0), fefoRecommend: !!s.fefoRecommend
+      };
+    });
+    STATE.editingExInId = id;
+    STATE.editExInOrig = orig;
+    ThDate.set('exInDate', data.receipt.date);
+    document.getElementById('exInNotes').value = data.receipt.notes || '';
+    showPage('exreceive');
+    updateExInEditUI();
+    renderLotSummary(EX_IN);
+    filterExInStock();
+    toast('โหลดใบรับ ' + id + ' เพื่อแก้ไข');
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function deleteExIn(id) {
+  if (!confirmStockUser('การลบใบรับ ' + id)) return;
+  if (!confirm('ลบใบรับ ' + id + ' และคืนยาเข้าคลังหลัก?')) return;
+  api('deleteExtReceipt', { id: id }).then(function () {
+    toast('ลบใบรับ ' + id + ' แล้ว');
+    if (STATE.editingExInId === id) clearExInCart();
+    loadExInHistory();
+    loadExInPick();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function updateExOutEditUI() {
+  var banner = document.getElementById('exOutEditBanner');
+  var btn = document.getElementById('exOutSaveBtn');
+  if (!banner || !btn) return;
+  if (STATE.editingExOutId) {
+    banner.style.display = 'flex';
+    document.getElementById('exOutEditBannerText').textContent = 'กำลังแก้ไขใบเบิก ' + STATE.editingExOutId;
+    btn.textContent = 'บันทึกการแก้ไข';
+  } else {
+    banner.style.display = 'none';
+    btn.textContent = 'บันทึกใบเบิก';
+  }
+}
+function loadExOutPick() {
+  api('listStock', { location: 'EXT' }).then(function (r) {
+    STATE.stockCache.EXT = r.stock || [];
+    STATE.exOutPick = STATE.stockCache.EXT;
+    filterExOutStock();
+  });
+  renderLotSummary(EX_OUT);
+  updateExOutEditUI();
+}
+function filterExOutStock() { renderLotPick(EX_OUT); }
+function addExOutLine(id) { addLotLine(EX_OUT, id); }
+function updateExOutCartQty(id, value) { updateLotQty(EX_OUT, id, value); }
+function removeExOutLine(id) { removeLotLine(EX_OUT, id); }
+function clearExOutCart() {
+  STATE.exOutCart = [];
+  STATE.editingExOutId = null;
+  STATE.editExOutOrig = {};
+  ThDate.set('exOutDate', todayInput());
+  var notes = document.getElementById('exOutNotes');
+  if (notes) notes.value = '';
+  updateExOutEditUI();
+  renderLotSummary(EX_OUT);
+  filterExOutStock();
+}
+function cancelExOutEdit() { clearExOutCart(); toast('ยกเลิกการแก้ไข'); }
+function saveExOut() {
+  var lines = (STATE.exOutCart || []).filter(function (l) { return Number(l.qty) > 0; })
+    .map(function (l) { return { stockId: l.stockId, qty: l.qty }; });
+  if (!lines.length && !STATE.editingExOutId) return toast('เพิ่มรายการที่ต้องการเบิกก่อน');
+  if (!lines.length && STATE.editingExOutId) {
+    if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลังภายนอก ต้องการบันทึก?')) return;
+  }
+  var payload = {
+    date: document.getElementById('exOutDate').value,
+    notes: document.getElementById('exOutNotes').value,
+    location: 'EXT',
+    lines: lines
+  };
+  if (STATE.editingExOutId) payload.id = STATE.editingExOutId;
+  api('saveTransfer', payload).then(function (r) {
+    var editing = !!STATE.editingExOutId;
+    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
+    STATE.lastWithdrawId = r.transfer.id;
+    clearExOutCart();
+    loadExOutPick();
+    loadExOutHistory();
+    showExOutPrint(r.transfer.id);
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function loadExOutHistory() {
+  api('listTransfers', { location: 'EXT' }).then(function (r) {
+    document.getElementById('exOutHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
+      var time = ThDate.formatTimeShort(x.createdAt || '') || '';
+      return '<div class="user-row wd-history-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
+        (time ? ' · <span class="wd-history-time">' + esc(time) + '</span>' : '') + '</span>' +
+        '<span class="row" style="gap:6px;margin:0">' +
+        '<button type="button" class="btn ghost" onclick="editExOut(\'' + x.id + '\')">แก้ไข</button>' +
+        '<button type="button" class="btn ghost" onclick="showExOutPrint(\'' + x.id + '\')">พิมพ์</button>' +
+        '<button type="button" class="btn ghost danger" onclick="deleteExOut(\'' + x.id + '\')">ลบ</button></span></div>';
+    }).join('') || 'ยังไม่มี';
+  });
+}
+function editExOut(id) {
+  Promise.all([api('getTransfer', { id: id }), api('listStock', { location: 'EXT' })]).then(function (res) {
+    var data = res[0];
+    var stock = res[1].stock || [];
+    STATE.exOutPick = stock;
+    var stockById = {};
+    stock.forEach(function (s) { stockById[s.id] = s; });
+    var orig = {};
+    STATE.exOutCart = (data.lines || []).map(function (l) {
+      var s = stockById[l.stockId] || {};
+      var origQty = Number(l.qty || 0);
+      orig[l.stockId] = origQty;
+      return {
+        stockId: l.stockId, itemId: l.itemId, name: l.name || s.name || '', category: s.category || '',
+        packSize: l.packSize || s.packSize || '', expiry: l.expiry || s.expiry || '',
+        expiryLabel: l.expiryLabel || s.expiryLabel || '-', unitPrice: Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0),
+        qty: origQty, maxQty: exLotMax(l.stockId, s.qty, id, orig),
+        amount: origQty * Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0), fefoRecommend: !!s.fefoRecommend
+      };
+    });
+    STATE.editingExOutId = id;
+    STATE.editExOutOrig = orig;
+    ThDate.set('exOutDate', data.transfer.date);
+    document.getElementById('exOutNotes').value = data.transfer.notes || '';
+    showPage('exwithdraw');
+    updateExOutEditUI();
+    renderLotSummary(EX_OUT);
+    filterExOutStock();
+    toast('โหลดใบเบิก ' + id + ' เพื่อแก้ไข');
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function deleteExOut(id) {
+  if (!confirmStockUser('การลบใบเบิก ' + id)) return;
+  if (!confirm('ลบใบเบิก ' + id + ' และคืนยาทั้งหมดเข้าคลังภายนอก?')) return;
+  api('deleteTransfer', { id: id }).then(function (r) {
+    var msg = 'ลบใบเบิก ' + id + ' แล้ว';
+    if (r.returnedCount > 0) msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
+    toast(msg);
+    if (STATE.editingExOutId === id) clearExOutCart();
+    var card = document.getElementById('exOutPrintCard');
+    if (card && STATE.lastWithdrawId === id) card.style.display = 'none';
+    loadExOutHistory();
+    loadExOutPick();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function showExOutPrint(id) {
+  api('getTransfer', { id: id }).then(function (data) {
+    var t = data.transfer;
+    var s = data.settings || {};
+    var html = '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div>' +
+      '<h2 style="margin:8px 0 4px">ใบเบิกยาและเวชภัณฑ์จากคลังยาภายนอก</h2>' +
+      '<div>วันที่ ' + esc(ThDate.formatDateLong(t.date)) + (t.notes ? ' · ' + esc(t.notes) : '') + '</div></div>';
+    html += '<table><tr><th>ลำดับ</th><th>รายการ</th><th class="right">ราคา/หน่วย</th><th class="right">จำนวนที่เบิก</th><th class="right">จำนวนที่อนุมัติ</th><th class="right">มูลค่า</th><th>วันหมดอายุ</th><th>หมายเหตุ</th></tr>';
+    (data.lines || []).forEach(function (l) {
+      html += '<tr><td>' + l.no + '</td><td>' + esc(l.name) + (l.packSize ? '<div class="muted">' + esc(l.packSize) + '</div>' : '') +
+        '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right">' + l.qty + '</td><td class="right">' + l.approvedQty +
+        '</td><td class="right">' + money(l.amount) + '</td><td>' + esc(l.expiryLabel || '-') + '</td><td></td></tr>';
+    });
+    html += '<tr><td colspan="5" class="right"><b>รวมทั้งสิ้น</b></td><td class="right"><b>' + money(t.totalValue) + '</b></td><td colspan="2"></td></tr></table>';
+    html += signBlock4(s, true);
+    document.getElementById('exOutPrintOut').innerHTML = html;
+    initWithdrawSignDates(t.date, 'exOutPrintOut');
+    document.getElementById('exOutPrintCard').style.display = 'block';
+  }).catch(function (e) { toast(e.message || String(e)); });
 }

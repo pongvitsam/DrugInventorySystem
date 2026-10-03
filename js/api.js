@@ -1,6 +1,8 @@
 var DrugAPI = (function () {
 var LOC_MAIN = 'MAIN';
-var LOC_LABEL = { MAIN: 'คลังหลัก' };
+var LOC_EXT = 'EXT';
+var LOC_LABEL = { MAIN: 'คลังหลัก', EXT: 'คลังยาภายนอก' };
+var EXT_EDIT_BLOCKED_ = 'เบิกออกจากคลังภายนอกไปแล้ว แก้ไขใบนี้ไม่ได้';
 var HISTORY_FROM_DATE_ = '2026-09-01';
 
 var CATEGORIES = [
@@ -23,8 +25,10 @@ var SHEET_DEFS = {
   Stock: ['id', 'itemId', 'location', 'qty', 'unitPrice', 'packSize', 'expiry', 'lotNote'],
   Receipts: ['id', 'number', 'date', 'source', 'kind', 'notes', 'totalValue', 'createdAt'],
   ReceiptLines: ['id', 'receiptId', 'itemId', 'qtyText', 'qty', 'unitPrice', 'amount', 'packSize', 'expiry', 'requestedQty', 'approvedQty', 'notes'],
-  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt', 'location'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
+  ExtReceipts: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
@@ -95,6 +99,33 @@ function migrateStockPackSizes_() {
   invalidateStockCaches_();
 }
 
+function normalizeLoc_(loc) {
+  return loc === LOC_EXT ? LOC_EXT : LOC_MAIN;
+}
+
+function stockMissMsg_(loc) {
+  return loc === LOC_EXT ? 'ไม่พบสต็อกคลังภายนอก' : 'ไม่พบสต็อกคลังหลัก';
+}
+
+function transferLocation_(tr) {
+  return normalizeLoc_(tr && tr.location);
+}
+
+function resolveTransferLocation_(tr, moves) {
+  if (tr && tr.location) return normalizeLoc_(tr.location);
+  if (tr && moves) {
+    for (var i = 0; i < moves.length; i++) {
+      var m = moves[i];
+      if (m.refId === tr.id && m.type === 'ISSUE' && m.location === LOC_EXT) return LOC_EXT;
+    }
+  }
+  return LOC_MAIN;
+}
+
+function reportLocation_(p) {
+  return p && p.location === LOC_EXT ? LOC_EXT : LOC_MAIN;
+}
+
 function calcMainStockValue_(stock) {
   var total = 0;
   (stock || []).forEach(function (s) {
@@ -151,6 +182,10 @@ function callApi(name, payload) {
     listTransfers: apiListTransfers_,
     getTransfer: apiGetTransfer_,
     deleteTransfer: apiDeleteTransfer_,
+    saveExtReceipt: apiSaveExtReceipt_,
+    listExtReceipts: apiListExtReceipts_,
+    getExtReceipt: apiGetExtReceipt_,
+    deleteExtReceipt: apiDeleteExtReceipt_,
     monthReport: apiMonthReport_,
     moneyReport: apiMoneyReport_,
     itemTrendReport: apiItemTrendReport_,
@@ -204,10 +239,13 @@ function apiBootstrap_() {
   var settings = readSettings_();
   var items = normalizeItemPacks_(readObjects_('Items'), false);
   var stock = readObjects_('Stock').filter(function (s) {
-    return s.location === LOC_MAIN && num_(s.qty) > 0;
+    return num_(s.qty) > 0 && (s.location === LOC_MAIN || s.location === LOC_EXT);
   });
   var receipts = filterHistoryDocs_(readObjects_('Receipts'));
-  var transfers = filterHistoryDocs_(readObjects_('Transfers'));
+  var allMoves = readObjects_('Movements');
+  var transfers = filterHistoryDocs_(readObjects_('Transfers')).filter(function (t) {
+    return resolveTransferLocation_(t, allMoves) === LOC_MAIN;
+  });
   var dash = buildDashboard_(items, stock, receipts, transfers);
   return {
     settings: settings,
@@ -381,7 +419,7 @@ function apiDeleteItem_(p) {
   var item = findById_(rows, id);
   if (!item) throw new Error('ไม่พบรายการ');
   var hasStock = readObjects_('Stock').some(function (s) {
-    return s.itemId === id && s.location === LOC_MAIN && num_(s.qty) > 0;
+    return s.itemId === id && num_(s.qty) > 0;
   });
   if (hasStock) {
     throw new Error('ไม่สามารถลบได้ — ยังมียอดคงเหลือในคลัง กรุณาเบิกหรือปรับยอดให้เป็น 0 ก่อน');
@@ -510,9 +548,10 @@ function apiListStock_(p) {
 }
 
 function apiListStockAll_() {
-  if (STOCK_VIEW_CACHE_.MAIN) return { MAIN: STOCK_VIEW_CACHE_.MAIN };
-  var r = apiListStock_({ location: LOC_MAIN });
-  return { MAIN: r.stock };
+  return {
+    MAIN: apiListStock_({ location: LOC_MAIN }).stock,
+    EXT: apiListStock_({ location: LOC_EXT }).stock
+  };
 }
 
 function receiptLinePricing_(line, item, qty) {
@@ -699,8 +738,9 @@ function apiGetReceipt_(p) {
 
 function apiSaveTransfer_(p) {
   if (!p.date) throw new Error('กรุณาใส่วันที่เบิก');
+  var loc = normalizeLoc_(p.location);
   var lines = (p.lines || []).filter(function (l) { return l.stockId && num_(l.qty) > 0; });
-  if (!lines.length && !p.id) throw new Error('กรุณาเลือกรายการจากคลังหลัก');
+  if (!lines.length && !p.id) throw new Error(loc === LOC_EXT ? 'กรุณาเลือกรายการจากคลังภายนอก' : 'กรุณาเลือกรายการจากคลังหลัก');
   var stock = readObjects_('Stock');
   var items = indexById_(readObjects_('Items'));
   var heads = readObjects_('Transfers');
@@ -722,6 +762,7 @@ function apiSaveTransfer_(p) {
     notes: String(p.notes || ''),
     totalQty: 0,
     totalValue: 0,
+    location: loc,
     createdAt: nowIso_()
   };
   applyTransferLines_(tr, lines, stock, items, tLines, moves);
@@ -733,7 +774,7 @@ function apiSaveTransfer_(p) {
   return { ok: true, transfer: tr };
 }
 
-function returnStockQty_(stock, line, qty) {
+function returnStockQty_(stock, line, qty, location) {
   qty = round4_(num_(qty));
   if (qty <= 0) return null;
   var st = findById_(stock, line.stockId);
@@ -744,7 +785,7 @@ function returnStockQty_(stock, line, qty) {
   st = {
     id: line.stockId || nextId_('S'),
     itemId: line.itemId,
-    location: LOC_MAIN,
+    location: normalizeLoc_(location),
     qty: qty,
     unitPrice: num_(line.unitPrice),
     packSize: preferSpacedPack_(String(line.packSize || '')),
@@ -757,7 +798,8 @@ function returnStockQty_(stock, line, qty) {
 
 function pushTransferLineRecord_(tr, line, stock, items, tLines) {
   var from = findById_(stock, line.stockId);
-  if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+  var loc = transferLocation_(tr);
+  if (!from || from.location !== loc) throw new Error(stockMissMsg_(loc));
   var qty = num_(line.qty);
   var price = num_(from.unitPrice);
   var amount = round2_(qty * price);
@@ -781,6 +823,8 @@ function pushTransferLineRecord_(tr, line, stock, items, tLines) {
 function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
   var tr = findById_(heads, p.id);
   if (!tr) throw new Error('ไม่พบใบเบิก');
+  var loc = resolveTransferLocation_(tr, moves);
+  tr.location = loc;
   var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
   var editDate = toIsoDate_(p.date);
   var returnedQty = 0;
@@ -793,10 +837,10 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
     var newQty = newLine ? num_(newLine.qty) : 0;
     var returnQty = round4_(oldQty - newQty);
     if (returnQty > 1e-9) {
-      returnStockQty_(stock, old, returnQty);
+      returnStockQty_(stock, old, returnQty, loc);
       returnedQty = round4_(returnedQty + returnQty);
       returnedCount += 1;
-      newMoves.push(movement_('RETURN', editDate, LOC_MAIN, old.itemId, old.stockId, returnQty,
+      newMoves.push(movement_('RETURN', editDate, loc, old.itemId, old.stockId, returnQty,
         num_(old.unitPrice), round2_(returnQty * num_(old.unitPrice)), tr.id, 'คืนจากแก้ไขใบเบิก'));
     }
   });
@@ -807,14 +851,14 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
     var issueQty = round4_(num_(line.qty) - oldQty);
     if (issueQty <= 1e-9) return;
     var from = findById_(stock, line.stockId);
-    if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+    if (!from || from.location !== loc) throw new Error(stockMissMsg_(loc));
     if (issueQty > num_(from.qty) + 1e-9) {
       throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
     }
     var price = num_(from.unitPrice);
     var amount = round2_(issueQty * price);
     from.qty = round4_(num_(from.qty) - issueQty);
-    newMoves.push(movement_('ISSUE', editDate, LOC_MAIN, from.itemId, from.id, -issueQty, price, amount, tr.id, ''));
+    newMoves.push(movement_('ISSUE', editDate, loc, from.itemId, from.id, -issueQty, price, amount, tr.id, ''));
   });
 
   tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
@@ -833,9 +877,10 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
 }
 
 function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
+  var loc = transferLocation_(tr);
   lines.forEach(function (line) {
     var from = findById_(stock, line.stockId);
-    if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+    if (!from || from.location !== loc) throw new Error(stockMissMsg_(loc));
     var qty = num_(line.qty);
     if (qty > num_(from.qty) + 1e-9) throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
     var price = num_(from.unitPrice);
@@ -854,15 +899,20 @@ function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
       packSize: preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || '')),
       name: (items[from.itemId] || {}).name || ''
     });
-    moves.push(movement_('ISSUE', tr.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, tr.id, ''));
+    moves.push(movement_('ISSUE', tr.date, loc, from.itemId, from.id, -qty, price, amount, tr.id, ''));
     tr.totalQty = round4_(num_(tr.totalQty) + qty);
     tr.totalValue = round2_(num_(tr.totalValue) + amount);
   });
 }
 
-function apiListTransfers_() {
+function apiListTransfers_(p) {
+  var want = p && p.location ? normalizeLoc_(p.location) : '';
+  var moves = want ? readObjects_('Movements') : null;
   return {
-    transfers: filterHistoryDocs_(readObjects_('Transfers')).slice().sort(function (a, b) {
+    transfers: filterHistoryDocs_(readObjects_('Transfers')).filter(function (t) {
+      if (!want) return true;
+      return resolveTransferLocation_(t, moves) === want;
+    }).slice().sort(function (a, b) {
       return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
     })
   };
@@ -876,6 +926,7 @@ function apiDeleteTransfer_(p) {
   var moves = readObjects_('Movements');
   var tr = findById_(heads, p.id);
   if (!tr) throw new Error('ไม่พบใบเบิก');
+  var loc = resolveTransferLocation_(tr, moves);
   var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
   var returnedQty = 0;
   var returnedCount = 0;
@@ -885,10 +936,10 @@ function apiDeleteTransfer_(p) {
   oldLines.forEach(function (old) {
     var qty = num_(old.qty);
     if (qty <= 1e-9) return;
-    returnStockQty_(stock, old, qty);
+    returnStockQty_(stock, old, qty, loc);
     returnedQty = round4_(returnedQty + qty);
     returnedCount += 1;
-    newMoves.push(movement_('RETURN', returnDate, LOC_MAIN, old.itemId, old.stockId, qty,
+    newMoves.push(movement_('RETURN', returnDate, loc, old.itemId, old.stockId, qty,
       num_(old.unitPrice), round2_(qty * num_(old.unitPrice)), tr.id, 'ลบใบเบิก'));
   });
 
@@ -908,6 +959,7 @@ function apiDeleteTransfer_(p) {
 function apiGetTransfer_(p) {
   var tr = findById_(readObjects_('Transfers'), p.id);
   if (!tr) throw new Error('ไม่พบใบเบิก');
+  tr = Object.assign({}, tr, { location: resolveTransferLocation_(tr, readObjects_('Movements')) });
   var items = indexById_(readObjects_('Items'));
   var lines = readObjects_('TransferLines').filter(function (l) { return l.transferId === tr.id; }).map(function (l, idx) {
     var it = items[l.itemId] || {};
@@ -922,7 +974,207 @@ function apiGetTransfer_(p) {
   return { transfer: tr, lines: lines, settings: readSettings_() };
 }
 
-function reportPeriodReceive_(m, ch) {
+function applyExtReceiptLines_(rec, lines, stock, items, eLines, moves) {
+  var seen = {};
+  lines.forEach(function (line) {
+    if (seen[line.stockId]) throw new Error('รายการซ้ำในใบเดียวกัน');
+    seen[line.stockId] = 1;
+    var from = findById_(stock, line.stockId);
+    if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+    var qty = num_(line.qty);
+    if (qty > num_(from.qty) + 1e-9) throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
+  });
+  lines.forEach(function (line) {
+    var from = findById_(stock, line.stockId);
+    var qty = num_(line.qty);
+    var price = num_(from.unitPrice);
+    var amount = round2_(qty * price);
+    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
+    from.qty = round4_(num_(from.qty) - qty);
+    var to = addStock_(stock, from.itemId, LOC_EXT, qty, price, from.expiry || '', 'โอนจากคลังหลัก', pack);
+    eLines.push({
+      id: nextId_('ERL'),
+      extReceiptId: rec.id,
+      itemId: from.itemId,
+      fromStockId: from.id,
+      toStockId: to.id,
+      qty: qty,
+      unitPrice: price,
+      amount: amount,
+      expiry: from.expiry || '',
+      packSize: pack,
+      name: (items[from.itemId] || {}).name || ''
+    });
+    moves.push(movement_('TRANSFER_OUT', rec.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, rec.id, ''));
+    moves.push(movement_('TRANSFER_IN', rec.date, LOC_EXT, from.itemId, to.id, qty, price, amount, rec.id, ''));
+    rec.totalQty = round4_(num_(rec.totalQty) + qty);
+    rec.totalValue = round2_(num_(rec.totalValue) + amount);
+  });
+}
+
+function apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves) {
+  var rec = findById_(heads, p.id);
+  if (!rec) throw new Error('ไม่พบใบรับคลังภายนอก');
+  var oldLines = eLines.filter(function (l) { return l.extReceiptId === rec.id; });
+  var needBack = {};
+  oldLines.forEach(function (old) {
+    var q = num_(old.qty);
+    if (q <= 0) return;
+    needBack[old.toStockId] = round4_((needBack[old.toStockId] || 0) + q);
+  });
+  Object.keys(needBack).forEach(function (id) {
+    var st = findById_(stock, id);
+    if (!st || st.location !== LOC_EXT || num_(st.qty) + 1e-9 < needBack[id]) {
+      throw new Error(EXT_EDIT_BLOCKED_);
+    }
+  });
+  var giveBack = {};
+  oldLines.forEach(function (old) {
+    giveBack[old.fromStockId] = round4_((giveBack[old.fromStockId] || 0) + num_(old.qty));
+  });
+  var seen = {};
+  lines.forEach(function (line) {
+    if (seen[line.stockId]) throw new Error('รายการซ้ำในใบเดียวกัน');
+    seen[line.stockId] = 1;
+    var from = findById_(stock, line.stockId);
+    var have = (from && from.location === LOC_MAIN ? num_(from.qty) : 0) + (giveBack[line.stockId] || 0);
+    if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
+    if (num_(line.qty) > have + 1e-9) {
+      throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
+    }
+  });
+  oldLines.forEach(function (old) {
+    var q = num_(old.qty);
+    if (q <= 0) return;
+    var to = findById_(stock, old.toStockId);
+    to.qty = round4_(num_(to.qty) - q);
+    returnStockQty_(stock, {
+      stockId: old.fromStockId,
+      itemId: old.itemId,
+      unitPrice: old.unitPrice,
+      packSize: old.packSize,
+      expiry: old.expiry
+    }, q, LOC_MAIN);
+  });
+  eLines = eLines.filter(function (l) { return l.extReceiptId !== rec.id; });
+  moves = moves.filter(function (m) {
+    return !(m.refId === rec.id && (m.type === 'TRANSFER_OUT' || m.type === 'TRANSFER_IN'));
+  });
+  rec.date = toIsoDate_(p.date);
+  rec.notes = String(p.notes || '');
+  rec.totalQty = 0;
+  rec.totalValue = 0;
+  if (lines.length) applyExtReceiptLines_(rec, lines, stock, items, eLines, moves);
+  return { receipt: rec, eLines: eLines, moves: moves };
+}
+
+function apiSaveExtReceipt_(p) {
+  if (!p.date) throw new Error('กรุณาใส่วันที่รับเข้า');
+  var lines = (p.lines || []).filter(function (l) { return l.stockId && num_(l.qty) > 0; });
+  if (!lines.length && !p.id) throw new Error('กรุณาเลือกรายการจากคลังหลัก');
+  var stock = readObjects_('Stock');
+  var items = indexById_(readObjects_('Items'));
+  var heads = readObjects_('ExtReceipts');
+  var eLines = readObjects_('ExtReceiptLines');
+  var moves = readObjects_('Movements');
+  if (p.id) {
+    var upd = apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves);
+    writeObjects_('Stock', stock);
+    writeObjects_('ExtReceipts', heads);
+    writeObjects_('ExtReceiptLines', upd.eLines);
+    writeObjects_('Movements', upd.moves);
+    return { ok: true, receipt: upd.receipt };
+  }
+  var rec = {
+    id: nextId_('ER'),
+    date: toIsoDate_(p.date),
+    notes: String(p.notes || ''),
+    totalQty: 0,
+    totalValue: 0,
+    createdAt: nowIso_()
+  };
+  applyExtReceiptLines_(rec, lines, stock, items, eLines, moves);
+  heads.push(rec);
+  writeObjects_('Stock', stock);
+  writeObjects_('ExtReceipts', heads);
+  writeObjects_('ExtReceiptLines', eLines);
+  writeObjects_('Movements', moves);
+  return { ok: true, receipt: rec };
+}
+
+function apiListExtReceipts_() {
+  return {
+    receipts: filterHistoryDocs_(readObjects_('ExtReceipts')).slice().sort(function (a, b) {
+      return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
+    })
+  };
+}
+
+function apiGetExtReceipt_(p) {
+  var rec = findById_(readObjects_('ExtReceipts'), p.id);
+  if (!rec) throw new Error('ไม่พบใบรับคลังภายนอก');
+  var items = indexById_(readObjects_('Items'));
+  var lines = readObjects_('ExtReceiptLines').filter(function (l) { return l.extReceiptId === rec.id; }).map(function (l, idx) {
+    var it = items[l.itemId] || {};
+    return Object.assign({}, l, {
+      no: idx + 1,
+      stockId: l.fromStockId,
+      name: l.name || it.name || '',
+      packSize: l.packSize || it.packSize || '',
+      expiryLabel: formatDate_(l.expiry)
+    });
+  });
+  return { receipt: rec, lines: lines, settings: readSettings_() };
+}
+
+function apiDeleteExtReceipt_(p) {
+  if (!p.id) throw new Error('ไม่พบใบรับคลังภายนอก');
+  var stock = readObjects_('Stock');
+  var heads = readObjects_('ExtReceipts');
+  var eLines = readObjects_('ExtReceiptLines');
+  var moves = readObjects_('Movements');
+  var rec = findById_(heads, p.id);
+  if (!rec) throw new Error('ไม่พบใบรับคลังภายนอก');
+  var oldLines = eLines.filter(function (l) { return l.extReceiptId === rec.id; });
+  var needBack = {};
+  oldLines.forEach(function (old) {
+    var q = num_(old.qty);
+    if (q <= 0) return;
+    needBack[old.toStockId] = round4_((needBack[old.toStockId] || 0) + q);
+  });
+  Object.keys(needBack).forEach(function (id) {
+    var st = findById_(stock, id);
+    if (!st || st.location !== LOC_EXT || num_(st.qty) + 1e-9 < needBack[id]) {
+      throw new Error(EXT_EDIT_BLOCKED_);
+    }
+  });
+  oldLines.forEach(function (old) {
+    var q = num_(old.qty);
+    if (q <= 0) return;
+    var to = findById_(stock, old.toStockId);
+    to.qty = round4_(num_(to.qty) - q);
+    returnStockQty_(stock, {
+      stockId: old.fromStockId,
+      itemId: old.itemId,
+      unitPrice: old.unitPrice,
+      packSize: old.packSize,
+      expiry: old.expiry
+    }, q, LOC_MAIN);
+  });
+  eLines = eLines.filter(function (l) { return l.extReceiptId !== rec.id; });
+  moves = moves.filter(function (m) {
+    return !(m.refId === rec.id && (m.type === 'TRANSFER_OUT' || m.type === 'TRANSFER_IN'));
+  });
+  heads = heads.filter(function (h) { return h.id !== rec.id; });
+  writeObjects_('Stock', stock);
+  writeObjects_('ExtReceipts', heads);
+  writeObjects_('ExtReceiptLines', eLines);
+  writeObjects_('Movements', moves);
+  return { ok: true, id: p.id };
+}
+
+function reportPeriodReceive_(m, ch, loc) {
+  if (loc === LOC_EXT) return m.type === 'TRANSFER_IN' && ch > 0 ? ch : 0;
   return m.type === 'RECEIVE' && ch > 0 ? ch : 0;
 }
 
@@ -974,6 +1226,7 @@ function ensureReportRow_(map, itemId, packSize, unitPrice, items) {
 }
 
 function apiMonthReport_(p) {
+  var loc = reportLocation_(p);
   var rr = reportRange_(p);
   var range = { start: rr.start, end: rr.end };
   var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
@@ -983,14 +1236,14 @@ function apiMonthReport_(p) {
   var moves = readObjects_('Movements');
   var byKey = {};
   stock.forEach(function (s) {
-    if (s.location !== LOC_MAIN || !itemMap[s.itemId]) return;
+    if (s.location !== loc || !itemMap[s.itemId]) return;
     var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
     if (!row) return;
     row.remain += num_(s.qty);
     row.remainValue += num_(s.qty) * num_(s.unitPrice);
   });
   moves.forEach(function (m) {
-    if (m.location !== LOC_MAIN || !itemMap[m.itemId]) return;
+    if (m.location !== loc || !itemMap[m.itemId]) return;
     if (!shouldCountMovement_(m)) return;
     var lot = moveReportLot_(m, stockById, itemMap);
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
@@ -1004,8 +1257,8 @@ function apiMonthReport_(p) {
       var price = num_(m.unitPrice);
       row.periodChange += ch;
       row.periodChangeValue += ch * price;
-      row.received += reportPeriodReceive_(m, ch);
-      row.receivedValue += reportPeriodReceive_(m, ch) * price;
+      row.received += reportPeriodReceive_(m, ch, loc);
+      row.receivedValue += reportPeriodReceive_(m, ch, loc) * price;
       row.issued += reportPeriodIssue_(m, ch);
       row.issuedValue += reportPeriodIssue_(m, ch) * price;
     }
@@ -1071,6 +1324,8 @@ function apiMonthReport_(p) {
   return {
     monthKey: rr.monthKey,
     label: rr.label,
+    location: loc,
+    locationLabel: LOC_LABEL[loc],
     range: range,
     settings: readSettings_(),
     summary: summary,
@@ -1080,6 +1335,7 @@ function apiMonthReport_(p) {
 }
 
 function apiMoneyReport_(p) {
+  var loc = reportLocation_(p);
   var rr = reportRange_(p);
   var range = { start: rr.start, end: rr.end };
   var items = indexById_(normalizeItemPacks_(readObjects_('Items'), false));
@@ -1090,14 +1346,14 @@ function apiMoneyReport_(p) {
     map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
   });
   stock.forEach(function (s) {
-    if (s.location !== LOC_MAIN) return;
+    if (s.location !== loc) return;
     var it = items[s.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
     if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0 };
     map[cat].remain += num_(s.qty) * num_(s.unitPrice);
   });
   moves.forEach(function (m) {
-    if (m.location !== LOC_MAIN) return;
+    if (m.location !== loc) return;
     if (!shouldCountMovement_(m)) return;
     var it = items[m.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
@@ -1110,7 +1366,7 @@ function apiMoneyReport_(p) {
     } else if (d >= range.start && d <= range.end) {
       var price = num_(m.unitPrice);
       map[cat].periodChange += ch * price;
-      map[cat].receive += reportPeriodReceive_(m, ch) * price;
+      map[cat].receive += reportPeriodReceive_(m, ch, loc) * price;
       map[cat].used += reportPeriodIssue_(m, ch) * price;
     }
   });
@@ -1125,6 +1381,8 @@ function apiMoneyReport_(p) {
   return {
     monthKey: rr.monthKey,
     label: rr.label,
+    location: loc,
+    locationLabel: LOC_LABEL[loc],
     range: range,
     settings: readSettings_(),
     rows: rows,
@@ -1200,6 +1458,8 @@ function apiImportSeed_(p) {
   writeObjects_('ReceiptLines', []);
   writeObjects_('Transfers', []);
   writeObjects_('TransferLines', []);
+  writeObjects_('ExtReceipts', []);
+  writeObjects_('ExtReceiptLines', []);
   writeObjects_('Adjustments', []);
   writeObjects_('AdjustmentLines', []);
   setSetting_('imported', '1');
@@ -1215,19 +1475,28 @@ function apiImportSeed_(p) {
 function buildDashboard_(items, stock, receipts, transfers) {
   var itemMap = indexById_(items);
   var mainVal = calcMainStockValue_(stock);
+  var extVal = 0;
   var byCat = {};
   CATEGORIES.forEach(function (c) { byCat[c] = 0; });
   var expiry = [];
+  var settings = readSettings_();
   stock.forEach(function (s) {
-    if (s.location !== LOC_MAIN) return;
     var q = num_(s.qty);
     if (q <= 0) return;
     var amt = round2_(q * num_(s.unitPrice));
     var it = itemMap[s.itemId] || {};
+    if (s.location === LOC_EXT) {
+      extVal += amt;
+      if (isNearExpiry_(s.expiry, settings)) {
+        expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: LOC_LABEL.EXT });
+      }
+      return;
+    }
+    if (s.location !== LOC_MAIN) return;
     var cat = it.category || 'อื่น ๆ';
     byCat[cat] = round2_((byCat[cat] || 0) + amt);
-    if (isNearExpiry_(s.expiry, readSettings_())) {
-      expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: 'คลังหลัก' });
+    if (isNearExpiry_(s.expiry, settings)) {
+      expiry.push({ name: it.name, expiry: formatDate_(s.expiry), qty: q, location: LOC_LABEL.MAIN });
     }
   });
   var byValue = Object.keys(byCat).map(function (c) {
@@ -1235,6 +1504,7 @@ function buildDashboard_(items, stock, receipts, transfers) {
   }).filter(function (x) { return x.value > 0; });
   return {
     mainValue: round2_(mainVal),
+    extValue: round2_(extVal),
     totalValue: round2_(mainVal),
     byValue: byValue,
     expiry: expiry.slice(0, 12),
@@ -1950,10 +2220,11 @@ function itemTrendRange_(p) {
   return result;
 }
 
-function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemMap, stock, stockById, moves) {
+function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemMap, stock, stockById, moves, loc) {
+  loc = loc === LOC_EXT ? LOC_EXT : LOC_MAIN;
   var byKey = {};
   stock.forEach(function (s) {
-    if (s.location !== LOC_MAIN || s.itemId !== itemId) return;
+    if (s.location !== loc || s.itemId !== itemId) return;
     var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
     if (!row) return;
     if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
@@ -1961,7 +2232,7 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
     row.remainValue += num_(s.qty) * num_(s.unitPrice);
   });
   moves.forEach(function (m) {
-    if (m.location !== LOC_MAIN || m.itemId !== itemId) return;
+    if (m.location !== loc || m.itemId !== itemId) return;
     if (!shouldCountMovement_(m)) return;
     var lot = moveReportLot_(m, stockById, itemMap);
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
@@ -1976,8 +2247,8 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
       var price = num_(m.unitPrice);
       row.periodChange += ch;
       row.periodChangeValue += ch * price;
-      row.received += reportPeriodReceive_(m, ch);
-      row.receivedValue += reportPeriodReceive_(m, ch) * price;
+      row.received += reportPeriodReceive_(m, ch, loc);
+      row.receivedValue += reportPeriodReceive_(m, ch, loc) * price;
       row.issued += reportPeriodIssue_(m, ch);
       row.issuedValue += reportPeriodIssue_(m, ch) * price;
     }
@@ -2012,6 +2283,7 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
 }
 
 function apiItemTrendReport_(p) {
+  var loc = reportLocation_(p);
   var itemId = String(p.itemId || '');
   if (!itemId) throw new Error('เลือกรายการยา');
   var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
@@ -2029,7 +2301,7 @@ function apiItemTrendReport_(p) {
   var months = monthKeys.map(function (mk) {
     var mr = monthRange_(mk);
     // คำนวณครั้งเดียวต่อเดือน (เดิมยิง 2 รอบ: กรองแพ็ก + ทุกแพ็ก)
-    var statsAll = computeItemPeriodStats_(itemId, mr.start, mr.end, '', itemMap, stock, stockById, moves);
+    var statsAll = computeItemPeriodStats_(itemId, mr.start, mr.end, '', itemMap, stock, stockById, moves, loc);
     statsAll.packs.forEach(function (pk) {
       var key = packKey_(pk.item.packSize) + '|' + round2_(pk.item.unitPrice);
       if (!packMap[key]) {
@@ -2113,6 +2385,8 @@ function apiItemTrendReport_(p) {
       unit: unitLabel
     },
     packFilter: packFilter,
+    location: loc,
+    locationLabel: LOC_LABEL[loc],
     label: range.label,
     lookbackMonths: range.lookbackMonths,
     range: { start: range.start, end: range.end },
@@ -2148,6 +2422,8 @@ var MUTATION_APIS_ = {
   saveReceipt: 1,
   saveTransfer: 1,
   deleteTransfer: 1,
+  saveExtReceipt: 1,
+  deleteExtReceipt: 1,
   importSeed: 1,
   addUser: 1,
   removeUser: 1,

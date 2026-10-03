@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=109">
+  <link rel="stylesheet" href="css/styles.css?v=110">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -56,6 +56,10 @@
       <button class="nav-btn" data-page="stock"><span class="nav-ico" data-ico="stock"></span>ยอดคงเหลือ</button>
       <button class="nav-btn" data-page="receive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังหลัก</button>
       <button class="nav-btn" data-page="withdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังหลัก</button>
+      <div class="nav-label">คลังยาภายนอก</div>
+      <button class="nav-btn" data-page="exstock"><span class="nav-ico" data-ico="stock"></span>ยอดคงเหลือภายนอก</button>
+      <button class="nav-btn" data-page="exreceive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังภายนอก</button>
+      <button class="nav-btn" data-page="exwithdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังภายนอก</button>
       <button class="nav-btn" data-page="reports"><span class="nav-ico" data-ico="reports"></span>สรุปรายเดือน</button>
       <button class="nav-btn" data-page="climate"><span class="nav-ico" data-ico="climate"></span>ความชื้น/อุณหภูมิ</button>
       <button class="nav-btn" data-page="import"><span class="nav-ico" data-ico="import"></span>ตั้งค่า / นำเข้า</button>
@@ -251,6 +255,113 @@
         </div>
       </section>
 
+      <section class="page" id="page-exstock">
+        <div class="top">
+          <div>
+            <h2>ยอดคงเหลือคลังยาภายนอก</h2>
+            <div class="sub">ดูจำนวน มูลค่า วันหมดอายุ · เกณฑ์ใกล้หมดใช้ค่าเดียวกับคลังหลัก</div>
+          </div>
+        </div>
+        <div id="exStockAlert" class="stock-alert" style="display:none"></div>
+        <div class="toolbar">
+          <div class="field"><label>ค้นหา</label><input id="exStockQ" oninput="renderExStock()" placeholder="ชื่อรายการ"></div>
+          <div class="stock-filters" id="exStockFilters">
+            <button type="button" class="chip active" data-sf="all" onclick="setStockFilter('all','EXT')">ทั้งหมด</button>
+            <button type="button" class="chip" data-sf="low" onclick="setStockFilter('low','EXT')">ใกล้หมด</button>
+            <button type="button" class="chip" data-sf="expiry" onclick="setStockFilter('expiry','EXT')">ใกล้หมดอายุ</button>
+          </div>
+        </div>
+        <div class="card table-wrap table-wrap-full"><table id="exStockTable"></table></div>
+      </section>
+
+      <section class="page" id="page-exreceive">
+        <div class="top">
+          <div>
+            <h2>รับเข้าคลังยาภายนอก</h2>
+            <div class="sub">เลือกจากสต็อกคลังหลัก · คลังหลักลดและคลังภายนอกเพิ่มตามล็อตเดิม</div>
+          </div>
+        </div>
+        <div class="card">
+          <div id="exInEditBanner" class="wd-edit-banner" style="display:none">
+            <span id="exInEditBannerText">กำลังแก้ไขใบรับ</span>
+            <button type="button" class="btn ghost" onclick="cancelExInEdit()">ยกเลิกการแก้ไข</button>
+          </div>
+          <div class="row">
+            <div class="field th-date-field"><label>วันที่รับเข้า</label><input id="exInDate" type="hidden"><button type="button" class="th-date-btn" data-for="exInDate">เลือกวันที่</button></div>
+            <div class="field"><label>หมายเหตุ</label><input id="exInNotes" placeholder="โอนจากคลังหลัก"></div>
+          </div>
+          <div class="row" style="margin-top:10px;align-items:flex-end">
+            <div class="field" style="flex:2"><label>ค้นหา / กรองยาในคลังหลัก</label><input id="exInSearch" placeholder="พิมพ์ชื่อยา หมวด หรือบรรจุ" oninput="filterExInStock()"></div>
+            <div class="field"><label>หมวด</label><select id="exInCatFilter" onchange="filterExInStock()"><option value="">ทั้งหมด</option></select></div>
+          </div>
+          <p class="muted" style="margin:10px 0 6px">คลิกเพิ่มรายการ · แถวสีเหลือง = แนะนำใช้ก่อน</p>
+          <div class="table-wrap wd-pick-wrap"><table id="exInPickTable"></table></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>สรุปรายการที่รับเข้า</h3>
+          <div class="table-wrap"><table id="exInSummaryTable"></table></div>
+          <div class="row" style="justify-content:space-between;margin-top:12px">
+            <div class="muted" id="exInCalc">ยังไม่ได้เลือก</div>
+            <div class="row" style="gap:8px;margin:0">
+              <button type="button" class="btn secondary" onclick="clearExInCart()">ล้างรายการ</button>
+              <button class="btn" id="exInSaveBtn" onclick="saveExIn()">บันทึกรับเข้าคลังภายนอก</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>ใบรับคลังภายนอกล่าสุด</h3>
+          <div id="exInHistory" class="muted">ยังไม่มี</div>
+        </div>
+      </section>
+
+      <section class="page" id="page-exwithdraw">
+        <div class="top">
+          <div>
+            <h2>เบิกจากคลังยาภายนอก</h2>
+            <div class="sub">ค้นหาแล้วเลือกยา · ระบบแนะนำล็อตหมดอายุก่อน · สรุปด้านล่างก่อนบันทึก</div>
+          </div>
+        </div>
+        <div class="card">
+          <div id="exOutEditBanner" class="wd-edit-banner" style="display:none">
+            <span id="exOutEditBannerText">กำลังแก้ไขใบเบิก</span>
+            <button type="button" class="btn ghost" onclick="cancelExOutEdit()">ยกเลิกการแก้ไข</button>
+          </div>
+          <div class="row">
+            <div class="field th-date-field"><label>วันที่เบิก</label><input id="exOutDate" type="hidden"><button type="button" class="th-date-btn" data-for="exOutDate">เลือกวันที่</button></div>
+            <div class="field"><label>หมายเหตุ</label><input id="exOutNotes" placeholder="เบิกใช้ประจำ"></div>
+          </div>
+          <div class="row" style="margin-top:10px;align-items:flex-end">
+            <div class="field" style="flex:2"><label>ค้นหา / กรองยา</label><input id="exOutSearch" placeholder="พิมพ์ชื่อยา หมวด หรือบรรจุ" oninput="filterExOutStock()"></div>
+            <div class="field"><label>หมวด</label><select id="exOutCatFilter" onchange="filterExOutStock()"><option value="">ทั้งหมด</option></select></div>
+          </div>
+          <p class="muted" style="margin:10px 0 6px">คลิกเพิ่มรายการ · แถวสีเหลือง = แนะนำใช้ก่อน</p>
+          <div class="table-wrap wd-pick-wrap"><table id="exOutPickTable"></table></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>สรุปรายการที่เบิก</h3>
+          <div class="table-wrap"><table id="exOutSummaryTable"></table></div>
+          <div class="row" style="justify-content:space-between;margin-top:12px">
+            <div class="muted" id="exOutCalc">ยังไม่ได้เลือก</div>
+            <div class="row" style="gap:8px;margin:0">
+              <button type="button" class="btn secondary" onclick="clearExOutCart()">ล้างรายการ</button>
+              <button class="btn" id="exOutSaveBtn" onclick="saveExOut()">บันทึกใบเบิก</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>ใบเบิกล่าสุด</h3>
+          <div id="exOutHistory" class="muted">ยังไม่มี</div>
+        </div>
+        <div class="card" style="margin-top:14px;display:none" id="exOutPrintCard">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h3 style="margin:0">ใบเบิกสำหรับพิมพ์</h3>
+            <button type="button" class="btn" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+          </div>
+          <p class="muted" style="margin:8px 0 0">กรอกวันที่ลงนาม (วัน / เดือน / พ.ศ.) ในแต่ละช่องด้านล่างก่อนพิมพ์ — แก้ไขได้ตามจริง</p>
+          <div id="exOutPrintOut" class="print-sheet" style="margin-top:12px"></div>
+        </div>
+      </section>
+
       <section class="page" id="page-reports">
         <div class="top">
           <div>
@@ -259,8 +370,12 @@
           </div>
         </div>
         <div class="card">
-          <div class="toolbar rp-toolbar">
-            <div class="rp-range-mode" id="rpRangeMode">
+        <div class="toolbar rp-toolbar">
+          <div class="rp-range-mode" id="rpLocMode">
+            <button type="button" class="chip active" data-loc="MAIN" onclick="setReportLocation('MAIN')">คลังหลัก</button>
+            <button type="button" class="chip" data-loc="EXT" onclick="setReportLocation('EXT')">คลังยาภายนอก</button>
+          </div>
+          <div class="rp-range-mode" id="rpRangeMode">
               <button type="button" class="chip active" data-rm="month" onclick="setReportRangeMode('month')">รายเดือน</button>
               <button type="button" class="chip" data-rm="range" onclick="setReportRangeMode('range')">ช่วงวันที่</button>
             </div>
@@ -534,6 +649,9 @@
     <div class="mob-more-bg" id="mobMoreBg" onclick="closeMobMore()"></div>
     <div class="mob-more-sheet" id="mobMoreSheet">
       <div class="mob-more-handle"></div>
+      <button class="mob-more-item" data-page="exstock" onclick="mobPickPage('exstock')"><span class="mob-nav-ico" data-ico="stock" style="background:rgba(10,122,102,.12)"></span>ยอดคงเหลือภายนอก</button>
+      <button class="mob-more-item" data-page="exreceive" onclick="mobPickPage('exreceive')"><span class="mob-nav-ico" data-ico="receive" style="background:rgba(10,122,102,.12)"></span>รับเข้าคลังภายนอก</button>
+      <button class="mob-more-item" data-page="exwithdraw" onclick="mobPickPage('exwithdraw')"><span class="mob-nav-ico" data-ico="withdraw" style="background:rgba(10,122,102,.12)"></span>เบิกจากคลังภายนอก</button>
       <button class="mob-more-item" data-page="items" onclick="mobPickPage('items')"><span class="mob-nav-ico" data-ico="items" style="background:rgba(10,122,102,.12)"></span>ทะเบียนรายการ</button>
       <button class="mob-more-item" data-page="reports" onclick="mobPickPage('reports')"><span class="mob-nav-ico" data-ico="reports" style="background:rgba(10,122,102,.12)"></span>สรุปรายเดือน</button>
       <button class="mob-more-item" data-page="climate" onclick="mobPickPage('climate')"><span class="mob-nav-ico" data-ico="climate" style="background:rgba(10,122,102,.12)"></span>ความชื้น/อุณหภูมิ</button>
@@ -609,12 +727,12 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=105"></script>
-  <script src="js/remote.js?v=107"></script>
-  <script src="js/api.js?v=109"></script>
+  <script src="js/db.js?v=110"></script>
+  <script src="js/remote.js?v=110"></script>
+  <script src="js/api.js?v=110"></script>
   <script src="js/options.js?v=105"></script>
   <script src="js/thdate.js?v=105"></script>
-  <script src="js/app.js?v=109"></script>
+  <script src="js/app.js?v=110"></script>
   <script src="js/auth.js?v=105"></script>
   <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->

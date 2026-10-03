@@ -10,8 +10,10 @@ var SHEET_DEFS = {
   Stock: ['id', 'itemId', 'location', 'qty', 'unitPrice', 'packSize', 'expiry', 'lotNote'],
   Receipts: ['id', 'number', 'date', 'source', 'kind', 'notes', 'totalValue', 'createdAt'],
   ReceiptLines: ['id', 'receiptId', 'itemId', 'qtyText', 'qty', 'unitPrice', 'amount', 'packSize', 'expiry', 'requestedQty', 'approvedQty', 'notes'],
-  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt', 'location'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
+  ExtReceipts: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
@@ -22,6 +24,7 @@ var SHEET_DEFS = {
 };
 
 var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
+  'ExtReceipts', 'ExtReceiptLines',
   'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
 
 function doGet(e) {
@@ -148,7 +151,22 @@ function ensureSheets_(ss) {
     if (sheet.getLastRow() === 0) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
+      return;
     }
+    var width = Math.max(sheet.getLastColumn(), 1);
+    var current = sheet.getRange(1, 1, 1, width).getValues()[0];
+    var needs = false;
+    for (var i = 0; i < headers.length; i++) {
+      if (String(current[i] || '') !== headers[i]) { needs = true; break; }
+    }
+    if (!needs) return;
+    var prefixOk = true;
+    for (var j = 0; j < current.length; j++) {
+      var cell = String(current[j] || '');
+      if (!cell) continue;
+      if (headers[j] !== cell) { prefixOk = false; break; }
+    }
+    if (prefixOk) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   });
 }
 
