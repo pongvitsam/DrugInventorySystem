@@ -1007,8 +1007,19 @@ function tabletsAvailable_(packs, units) {
   return n;
 }
 
+function lineCountsTablets_(line) {
+  if (String(line.qtyUnit || '') === 'tablet') return true;
+  if (String(line.qtyUnit || '') === 'pack') return false;
+  var units = num_(line.unitsPerPack) || unitsPerPack_(line.packSize);
+  if (!(units > 1)) return false;
+  if (line.packQty != null && line.packQty !== '') return true;
+  var packAmt = round2_(num_(line.qty) * num_(line.unitPrice));
+  var tabAmt = round2_(num_(line.qty) * (num_(line.unitPrice) / units));
+  return Math.abs(num_(line.amount) - tabAmt) + 0.009 < Math.abs(num_(line.amount) - packAmt);
+}
+
 function extLineMainPacks_(line) {
-  if (String(line.qtyUnit || '') === 'tablet') {
+  if (lineCountsTablets_(line)) {
     if (line.packQty != null && line.packQty !== '') return num_(line.packQty);
     var units = num_(line.unitsPerPack) || unitsPerPack_(line.packSize);
     if (!(units > 0)) units = 1;

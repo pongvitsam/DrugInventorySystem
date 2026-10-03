@@ -3105,6 +3105,16 @@ function tabletsAvailable(packs, units) {
   while (n > 0 && round4qty(n / units) > packs + 1e-9) n--;
   return n;
 }
+function lineCountsTablets(line) {
+  if (String(line.qtyUnit || '') === 'tablet') return true;
+  if (String(line.qtyUnit || '') === 'pack') return false;
+  var units = Number(line.unitsPerPack) || unitsPerPack(line.packSize);
+  if (!(units > 1)) return false;
+  if (line.packQty != null && line.packQty !== '') return true;
+  var packAmt = round2(Number(line.qty || 0) * Number(line.unitPrice || 0));
+  var tabAmt = round2(Number(line.qty || 0) * (Number(line.unitPrice || 0) / units));
+  return Math.abs(Number(line.amount || 0) - tabAmt) + 0.009 < Math.abs(Number(line.amount || 0) - packAmt);
+}
 function fmtCount(n) {
   var x = Number(n || 0);
   if (Math.abs(x - Math.round(x)) < 1e-6) return String(Math.round(x));
@@ -3365,7 +3375,7 @@ function editExIn(id) {
       var packPrice = Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0);
       var tabletQty;
       var packQty;
-      if (String(l.qtyUnit || '') === 'tablet') {
+      if (lineCountsTablets(l)) {
         tabletQty = Number(l.qty || 0);
         packQty = l.packQty != null && l.packQty !== '' ? Number(l.packQty) : splitTabletQty(tabletQty, packPrice, units).packQty;
       } else if (units > 1) {
