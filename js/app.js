@@ -2126,18 +2126,47 @@ function saveWithdraw() {
 function withdrawHistoryTime(x) {
   return ThDate.formatTimeShort(x.createdAt || '') || '';
 }
-function loadWithdrawHistory() {
-  api('listTransfers', { location: 'MAIN' }).then(function (r) {
-    document.getElementById('wdHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
+function transferHistoryHtml_(list, fns) {
+  var groups = {};
+  (list || []).forEach(function (x) {
+    var day = String(x.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) day = '';
+    if (!groups[day]) groups[day] = [];
+    groups[day].push(x);
+  });
+  var days = Object.keys(groups).sort(function (a, b) {
+    if (!a) return 1;
+    if (!b) return -1;
+    return a < b ? 1 : a > b ? -1 : 0;
+  });
+  if (!days.length) return 'ยังไม่มี';
+  return days.map(function (day) {
+    var rows = groups[day].slice().sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+    var label = day && ThDate.formatDateLong(day) ? ThDate.formatDateLong(day) : 'ไม่ระบุวันที่';
+    var html = '<div class="wd-history-day"><div class="wd-history-day-label">' + esc(label) + '</div>';
+    html += rows.map(function (x) {
       var time = withdrawHistoryTime(x);
       return '<div class="user-row wd-history-row">' +
-        '<span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
+        '<span>' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
         (time ? ' · <span class="wd-history-time">' + esc(time) + '</span>' : '') + '</span>' +
         '<span class="row" style="gap:6px;margin:0">' +
-        '<button type="button" class="btn ghost" onclick="editWithdraw(\'' + x.id + '\')">แก้ไข</button>' +
-        '<button type="button" class="btn ghost" onclick="showWithdrawPrint(\'' + x.id + '\')">พิมพ์</button>' +
-        '<button type="button" class="btn ghost danger" onclick="deleteWithdraw(\'' + x.id + '\')">ลบ</button></span></div>';
-    }).join('') || 'ยังไม่มี';
+        '<button type="button" class="btn ghost" onclick="' + fns.edit + '(\'' + x.id + '\')">แก้ไข</button>' +
+        '<button type="button" class="btn ghost" onclick="' + fns.print + '(\'' + x.id + '\')">พิมพ์</button>' +
+        '<button type="button" class="btn ghost danger" onclick="' + fns.del + '(\'' + x.id + '\')">ลบ</button></span></div>';
+    }).join('');
+    html += '</div>';
+    return html;
+  }).join('');
+}
+function loadWithdrawHistory() {
+  api('listTransfers', { location: 'MAIN' }).then(function (r) {
+    document.getElementById('wdHistory').innerHTML = transferHistoryHtml_(r.transfers, {
+      edit: 'editWithdraw',
+      print: 'showWithdrawPrint',
+      del: 'deleteWithdraw'
+    });
   });
 }
 function deleteWithdraw(id) {
@@ -3504,15 +3533,11 @@ function saveExOut() {
 }
 function loadExOutHistory() {
   api('listTransfers', { location: 'EXT' }).then(function (r) {
-    document.getElementById('exOutHistory').innerHTML = (r.transfers || []).slice(0, 10).map(function (x) {
-      var time = ThDate.formatTimeShort(x.createdAt || '') || '';
-      return '<div class="user-row wd-history-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) + ' · ' + money(x.totalValue) + ' ฿' +
-        (time ? ' · <span class="wd-history-time">' + esc(time) + '</span>' : '') + '</span>' +
-        '<span class="row" style="gap:6px;margin:0">' +
-        '<button type="button" class="btn ghost" onclick="editExOut(\'' + x.id + '\')">แก้ไข</button>' +
-        '<button type="button" class="btn ghost" onclick="showExOutPrint(\'' + x.id + '\')">พิมพ์</button>' +
-        '<button type="button" class="btn ghost danger" onclick="deleteExOut(\'' + x.id + '\')">ลบ</button></span></div>';
-    }).join('') || 'ยังไม่มี';
+    document.getElementById('exOutHistory').innerHTML = transferHistoryHtml_(r.transfers, {
+      edit: 'editExOut',
+      print: 'showExOutPrint',
+      del: 'deleteExOut'
+    });
   });
 }
 function editExOut(id) {

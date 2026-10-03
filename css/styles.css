@@ -471,6 +471,8 @@ textarea { min-height: 70px; }
   gap: 8px;
 }
 .user-row span { font-weight: 600; }
+.wd-history-day { margin-bottom: 12px; }
+.wd-history-day-label { font-weight: 700; color: var(--primary); margin: 4px 0 6px; }
 .wd-history-row { flex-wrap: wrap; gap: 8px; }
 .wd-history-time { color: var(--muted); font-weight: 500; }
 .wd-edit-banner {
