@@ -376,6 +376,8 @@ textarea { min-height: 70px; }
   .card, .table-wrap { box-shadow: none; max-height: none; overflow: visible; }
   body { background: #fff; }
   .print-only { display: block; }
+  .rp-screen-only { display: none !important; }
+  .rp-print-brief { display: block !important; }
   .watermark { display: none; }
   .print-sheet {
     position: relative;
@@ -387,9 +389,19 @@ textarea { min-height: 70px; }
     color: #111;
   }
   .print-sheet h2 { font-size: 16px; font-weight: 700; }
-  .print-sheet h3 { page-break-after: avoid; margin-top: 10px; font-size: 14px; font-weight: 700; }
+  .print-sheet h3 { margin-top: 10px; font-size: 14px; font-weight: 700; }
   .print-sheet table { font-size: 11px; }
   .print-sheet th, .print-sheet td { padding: 4px 5px; }
+  html.print-report .main,
+  html.print-report .page,
+  html.print-report .card,
+  html.print-report .print-sheet,
+  html.print-report .rp-print-brief,
+  html.print-report .rp-table-wrap {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
   html.print-report .print-sheet {
     max-width: 190mm;
   }
@@ -397,20 +409,34 @@ textarea { min-height: 70px; }
   html.print-report .rp-screen-only { display: none !important; }
   html.print-report .rp-print-brief { display: block !important; }
   html.print-report .print-sheet::before { display: none !important; }
-  .print-sheet .rp-table { font-size: 11px; }
+  .print-sheet .rp-table {
+    font-size: 11px;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
   .print-sheet .rp-table thead { display: table-header-group; }
-  .print-sheet .rp-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .print-sheet .rp-table tr,
+  .print-sheet .rp-table tbody {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
   .print-sheet .rp-table th {
     font-weight: 700;
     background: #0b6b5b !important;
     color: #fff !important;
+  }
+  .print-sheet .rp-issue-date th {
+    background: #e7f5f1 !important;
+    color: #064e45 !important;
+    text-align: left;
+    font-size: 12px;
   }
   .print-sheet .rp-table td,
   .print-sheet .rp-table th { border: 1px solid #bbb; padding: 3px 4px; }
   .print-sheet .rp-table .rp-total-row td,
   .print-sheet b,
   .print-sheet strong { font-weight: 700; }
-  .print-sheet .rp-table-wrap { overflow: visible; page-break-inside: auto; }
+  .print-sheet .rp-table-wrap { overflow: visible !important; page-break-inside: auto; break-inside: auto; }
   .print-sheet::before {
     content: 'รพ.สต.ทรายขาว';
     position: fixed; top: 45%; left: 50%;
@@ -418,7 +444,7 @@ textarea { min-height: 70px; }
     font-size: 64px; font-weight: 700; color: rgba(11, 107, 91, 0.08);
     z-index: 0; pointer-events: none;
   }
-  .print-sheet > * { position: relative; z-index: 1; }
+  .print-sheet > * { position: static; }
 }
 .login-screen {
   min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
@@ -1011,6 +1037,12 @@ select option[value="__add__"] {
   background: linear-gradient(180deg, #0b6b5b 0%, #095a4d 100%);
   color: #fff;
   font-weight: 700;
+}
+.rp-issue-date th {
+  text-align: left;
+  font-size: 15px;
+  background: #e7f5f1 !important;
+  color: var(--primary-deep, #064e45) !important;
 }
 .rp-table .col-item { width: 24%; }
 .rp-table .col-pack { width: 9%; }

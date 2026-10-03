@@ -2371,7 +2371,7 @@ function rpTableHead() {
     '</tr></thead>';
 }
 function issueGroupTable_(g) {
-  var html = '<h3>เบิกวันที่ ' + esc(g.label) + '</h3><div class="rp-table-wrap"><table class="rp-table rp-print-table"><thead><tr>' +
+  var html = '<div class="rp-table-wrap rp-issue-group"><table class="rp-table rp-print-table"><thead><tr class="rp-issue-date"><th colspan="4">เบิกวันที่ ' + esc(g.label) + '</th></tr><tr>' +
     '<th class="col-item">รายการ</th><th class="col-pack">บรรจุ</th>' +
     '<th class="col-num right">จำนวนเบิก</th><th class="col-val right">มูลค่า (บาท)</th>' +
     '</tr></thead><tbody>';
