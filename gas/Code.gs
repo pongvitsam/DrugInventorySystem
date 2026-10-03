@@ -13,7 +13,7 @@ var SHEET_DEFS = {
   Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt', 'location'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   ExtReceipts: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
-  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name'],
+  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name', 'qtyUnit', 'packQty', 'unitsPerPack'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],

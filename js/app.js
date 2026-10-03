@@ -3072,6 +3072,44 @@ function exLotMax(stockId, stockQty, editingId, orig) {
   if (editingId && orig) max += Number(orig[stockId] || 0);
   return max;
 }
+function unitsPerPack(pack) {
+  var s = String(pack || '').replace(/\s+/g, '').replace(/[’′]/g, "'");
+  var m = s.match(/(\d+(?:\.\d+)?)'s/i);
+  if (m) return Number(m[1]);
+  m = s.match(/(\d+(?:\.\d+)?)(เม็ด|แคปซูล|ชิ้น|tablets?|tabs?)/i);
+  if (m) return Number(m[1]);
+  m = s.match(/(\d+(?:\.\d+)?)s$/i);
+  if (m) return Number(m[1]);
+  return 1;
+}
+function round4qty(n) {
+  return Math.round((Number(n || 0) + Number.EPSILON) * 10000) / 10000;
+}
+function splitTabletQty(tablets, packPrice, units) {
+  units = units > 1 ? units : 1;
+  tablets = round4qty(tablets);
+  var packQty = units > 1 ? round4qty(tablets / units) : tablets;
+  var tabletPrice = units > 1 ? round4qty(Number(packPrice || 0) / units) : Number(packPrice || 0);
+  return {
+    tablets: tablets,
+    packQty: packQty,
+    tabletPrice: tabletPrice,
+    amount: round2(tablets * tabletPrice),
+    units: units
+  };
+}
+function tabletsAvailable(packs, units) {
+  packs = Number(packs || 0);
+  if (!(units > 1)) return round4qty(packs);
+  var n = Math.floor(round4qty(packs * units) + 1e-4);
+  while (n > 0 && round4qty(n / units) > packs + 1e-9) n--;
+  return n;
+}
+function fmtCount(n) {
+  var x = Number(n || 0);
+  if (Math.abs(x - Math.round(x)) < 1e-6) return String(Math.round(x));
+  return String(round4qty(x));
+}
 function renderLotPick(cfg) {
   var q = (document.getElementById(cfg.searchId).value || '').toLowerCase().trim();
   var catEl = document.getElementById(cfg.catId);
@@ -3081,17 +3119,26 @@ function renderLotPick(cfg) {
     if (!q) return true;
     return (String(s.name) + ' ' + String(s.packSize) + ' ' + String(s.category)).toLowerCase().indexOf(q) >= 0;
   });
-  var html = '<tr><th></th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">จำนวน</th><th></th></tr>';
+  var qtyHead = cfg.tablets ? 'จำนวนเม็ด' : 'จำนวน';
+  var html = '<tr><th></th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th>หมดอายุ</th><th class="right">' + qtyHead + '</th><th></th></tr>';
   if (!rows.length) html += '<tr><td colspan="9" class="muted">ไม่พบรายการที่ตรงเงื่อนไข</td></tr>';
   else {
     html += rows.map(function (s) {
       var tip = s.fefoRecommend ? '<span class="pill warn">แนะนำ</span>' : '';
       var inCart = (cfg.cart() || []).filter(function (c) { return c.stockId === s.id; })[0];
-      var maxQ = exLotMax(s.id, s.qty, cfg.editing(), cfg.orig());
+      var packHave = exLotMax(s.id, s.qty, cfg.editing(), cfg.orig());
+      var units = cfg.tablets ? unitsPerPack(s.packSize) : 1;
+      var maxQ = cfg.tablets ? tabletsAvailable(packHave, units) : packHave;
+      var remain = cfg.tablets && units > 1
+        ? (fmtCount(packHave) + ' แพ็ก<div class="muted">' + fmtCount(maxQ) + ' เม็ด</div>')
+        : fmtCount(packHave);
+      var priceCell = cfg.tablets && units > 1
+        ? (money(s.unitPrice) + '<div class="muted">' + money(round4qty(Number(s.unitPrice || 0) / units)) + '/เม็ด</div>')
+        : money(s.unitPrice);
       return '<tr class="' + (s.fefoRecommend ? 'fefo-row' : '') + '">' +
         '<td>' + tip + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td>' +
-        '<td class="right">' + s.qty + '</td><td class="right">' + money(s.unitPrice) + '</td><td>' + (s.expiryLabel || '-') + '</td>' +
-        '<td class="right"><input id="' + cfg.qtyPrefix + s.id + '" type="number" min="1" step="1" max="' + maxQ + '" value="' + (inCart ? inCart.qty : '') + '" style="width:80px"></td>' +
+        '<td class="right">' + remain + '</td><td class="right">' + priceCell + '</td><td>' + (s.expiryLabel || '-') + '</td>' +
+        '<td class="right"><input id="' + cfg.qtyPrefix + s.id + '" type="number" min="1" step="1" max="' + maxQ + '" value="' + (inCart ? inCart.qty : '') + '" style="width:88px"></td>' +
         '<td><button type="button" class="btn" onclick="' + cfg.addFn + '(\'' + s.id + '\')">' + (inCart ? 'อัปเดต' : 'เพิ่ม') + '</button></td></tr>';
     }).join('');
   }
@@ -3099,22 +3146,32 @@ function renderLotPick(cfg) {
 }
 function renderLotSummary(cfg) {
   var cart = cfg.cart() || [];
-  var html = '<tr><th>ลำดับ</th><th>รายการ</th><th>บรรจุ</th><th>หมดอายุ</th><th class="right">ราคา</th><th class="right">จำนวน</th><th class="right">มูลค่า</th><th></th></tr>';
+  var qtyHead = cfg.tablets ? 'จำนวนเม็ด' : 'จำนวน';
+  var html = '<tr><th>ลำดับ</th><th>รายการ</th><th>บรรจุ</th><th>หมดอายุ</th><th class="right">ราคา</th><th class="right">' + qtyHead + '</th><th class="right">มูลค่า</th><th></th></tr>';
   if (!cart.length) html += '<tr><td colspan="8" class="muted">ยังไม่มีรายการ — ค้นหาด้านบนแล้วกดเพิ่ม</td></tr>';
   else {
     html += cart.map(function (l, i) {
+      var priceLabel = cfg.tablets && l.unitsPerPack > 1 ? money(l.unitPrice) + '/เม็ด' : money(l.unitPrice);
+      var qtyLabel = cfg.tablets && l.unitsPerPack > 1 ? ' เม็ด' : '';
       return '<tr class="' + (l.fefoRecommend ? 'fefo-row' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(l.name) +
         (l.fefoRecommend ? ' <span class="pill warn">แนะนำ</span>' : '') + '</td><td>' + esc(l.packSize) + '</td><td>' + esc(l.expiryLabel) +
-        '</td><td class="right">' + money(l.unitPrice) + '</td><td class="right"><input type="number" min="1" step="1" max="' + l.maxQty +
-        '" value="' + l.qty + '" style="width:80px" onchange="' + cfg.qtyFn + '(\'' + l.stockId + '\', this.value)"></td><td class="right"><b>' +
-        money(l.amount) + '</b></td><td><button type="button" class="btn ghost" onclick="' + cfg.removeFn + '(\'' + l.stockId + '\')">ลบ</button></td></tr>';
+        '</td><td class="right">' + priceLabel + '</td><td class="right"><input type="number" min="1" step="1" max="' + l.maxQty +
+        '" value="' + l.qty + '" style="width:88px" onchange="' + cfg.qtyFn + '(\'' + l.stockId + '\', this.value)">' + qtyLabel +
+        '</td><td class="right"><b>' + money(l.amount) + '</b></td><td><button type="button" class="btn ghost" onclick="' + cfg.removeFn + '(\'' + l.stockId + '\')">ลบ</button></td></tr>';
     }).join('');
   }
   document.getElementById(cfg.summaryId).innerHTML = html;
-  var n = 0, v = 0;
-  cart.forEach(function (l) { n += Number(l.qty || 0); v += Number(l.amount || 0); });
+  var tabs = 0, packs = 0, v = 0;
+  cart.forEach(function (l) {
+    v += Number(l.amount || 0);
+    if (cfg.tablets && l.unitsPerPack > 1) tabs += Number(l.qty || 0);
+    else packs += Number(l.qty || 0);
+  });
+  var bits = [];
+  if (tabs) bits.push(fmtCount(tabs) + ' เม็ด');
+  if (packs) bits.push(fmtCount(packs) + (cfg.tablets ? ' หน่วย' : ' หน่วย'));
   document.getElementById(cfg.calcId).textContent = cart.length
-    ? ('สรุป ' + cart.length + ' รายการ · ' + n + ' หน่วย · ' + money(v) + ' บาท')
+    ? ('สรุป ' + cart.length + ' รายการ · ' + bits.join(' · ') + ' · ' + money(v) + ' บาท')
     : 'ยังไม่ได้เลือก';
 }
 function addLotLine(cfg, stockId) {
@@ -3122,35 +3179,66 @@ function addLotLine(cfg, stockId) {
   if (!s) return toast('ไม่พบสต็อก');
   var inp = document.getElementById(cfg.qtyPrefix + stockId);
   var qty = Number(inp && inp.value ? inp.value : 0);
-  if (!qty || qty <= 0) return toast('ใส่จำนวนที่ต้องการ');
-  var maxAllowed = exLotMax(stockId, s.qty, cfg.editing(), cfg.orig());
-  if (qty > maxAllowed + 1e-9) return toast('จำนวนเกินคงเหลือ (' + maxAllowed + ')');
+  if (!qty || qty <= 0) return toast(cfg.tablets ? 'ใส่จำนวนเม็ด' : 'ใส่จำนวนที่ต้องการ');
+  var units = cfg.tablets ? unitsPerPack(s.packSize) : 1;
+  if (cfg.tablets && units > 1 && Math.abs(qty - Math.round(qty)) > 1e-6) return toast('ใส่จำนวนเม็ดเป็นจำนวนเต็ม');
+  if (cfg.tablets && units > 1) qty = Math.round(qty);
+  var packHave = exLotMax(stockId, s.qty, cfg.editing(), cfg.orig());
+  var maxAllowed = cfg.tablets ? tabletsAvailable(packHave, units) : packHave;
+  if (qty > maxAllowed + 1e-9) {
+    return toast(cfg.tablets && units > 1 ? ('จำนวนเม็ดเกินคงเหลือ (' + maxAllowed + ' เม็ด)') : ('จำนวนเกินคงเหลือ (' + maxAllowed + ')'));
+  }
+  var split = cfg.tablets ? splitTabletQty(qty, s.unitPrice, units) : null;
+  var packPrice = Number(s.unitPrice || 0);
+  var linePrice = split ? (units > 1 ? split.tabletPrice : packPrice) : packPrice;
+  var lineAmount = split ? split.amount : qty * packPrice;
   var cart = cfg.cart() || [];
   var existing = cart.filter(function (c) { return c.stockId === stockId; })[0];
   if (existing) {
     existing.qty = qty;
     existing.maxQty = maxAllowed;
-    existing.amount = qty * Number(s.unitPrice || 0);
+    existing.unitPrice = linePrice;
+    existing.packPrice = packPrice;
+    existing.unitsPerPack = units;
+    existing.packQty = split ? split.packQty : qty;
+    existing.amount = lineAmount;
   } else {
     cart.push({
       stockId: s.id, itemId: s.itemId, name: s.name, category: s.category, packSize: s.packSize,
-      expiry: s.expiry || '', expiryLabel: s.expiryLabel || '-', unitPrice: Number(s.unitPrice || 0),
-      qty: qty, maxQty: maxAllowed, amount: qty * Number(s.unitPrice || 0), fefoRecommend: !!s.fefoRecommend
+      expiry: s.expiry || '', expiryLabel: s.expiryLabel || '-', unitPrice: linePrice, packPrice: packPrice,
+      unitsPerPack: units, packQty: split ? split.packQty : qty,
+      qty: qty, maxQty: maxAllowed, amount: lineAmount, fefoRecommend: !!s.fefoRecommend
     });
   }
   cfg.setCart(cart);
   cfg.renderSummary();
   cfg.renderPick();
-  toast('เพิ่ม ' + s.name + ' × ' + qty);
+  toast('เพิ่ม ' + s.name + ' × ' + fmtCount(qty) + (cfg.tablets && units > 1 ? ' เม็ด' : ''));
 }
 function updateLotQty(cfg, stockId, value) {
   var line = (cfg.cart() || []).filter(function (c) { return c.stockId === stockId; })[0];
   if (!line) return;
   var qty = Number(value || 0);
   if (qty <= 0) { cfg.remove(stockId); return; }
-  if (qty > line.maxQty + 1e-9) { toast('จำนวนเกินคงเหลือ (' + line.maxQty + ')'); qty = line.maxQty; }
+  if (cfg.tablets && line.unitsPerPack > 1 && Math.abs(qty - Math.round(qty)) > 1e-6) {
+    toast('ใส่จำนวนเม็ดเป็นจำนวนเต็ม');
+    qty = Math.round(qty);
+  }
+  if (qty > line.maxQty + 1e-9) {
+    toast(cfg.tablets && line.unitsPerPack > 1 ? ('จำนวนเม็ดเกินคงเหลือ (' + line.maxQty + ' เม็ด)') : ('จำนวนเกินคงเหลือ (' + line.maxQty + ')'));
+    qty = line.maxQty;
+  }
   line.qty = qty;
-  line.amount = qty * line.unitPrice;
+  if (cfg.tablets) {
+    var packPrice = line.packPrice != null ? Number(line.packPrice) : (line.unitsPerPack > 1 ? line.unitPrice * line.unitsPerPack : line.unitPrice);
+    var split = splitTabletQty(qty, packPrice, line.unitsPerPack || 1);
+    line.packQty = split.packQty;
+    line.packPrice = packPrice;
+    line.unitPrice = line.unitsPerPack > 1 ? split.tabletPrice : packPrice;
+    line.amount = split.amount;
+  } else {
+    line.amount = qty * line.unitPrice;
+  }
   cfg.renderSummary();
 }
 function removeLotLine(cfg, stockId) {
@@ -3178,7 +3266,7 @@ var EX_IN = {
   setCart: function (c) { STATE.exInCart = c; },
   editing: function () { return STATE.editingExInId; },
   orig: function () { return STATE.editExInOrig; },
-  addFn: 'addExInLine', qtyFn: 'updateExInCartQty', removeFn: 'removeExInLine',
+  addFn: 'addExInLine', qtyFn: 'updateExInCartQty', removeFn: 'removeExInLine', tablets: true,
   renderPick: function () { renderLotPick(EX_IN); },
   renderSummary: function () { renderLotSummary(EX_IN); },
   remove: function (id) { removeExInLine(id); }
@@ -3272,14 +3360,33 @@ function editExIn(id) {
     var orig = {};
     STATE.exInCart = (data.lines || []).map(function (l) {
       var s = stockById[l.stockId] || {};
-      var origQty = Number(l.qty || 0);
-      orig[l.stockId] = origQty;
+      var pack = l.packSize || s.packSize || '';
+      var units = Number(l.unitsPerPack) || unitsPerPack(pack);
+      var packPrice = Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0);
+      var tabletQty;
+      var packQty;
+      if (String(l.qtyUnit || '') === 'tablet') {
+        tabletQty = Number(l.qty || 0);
+        packQty = l.packQty != null && l.packQty !== '' ? Number(l.packQty) : splitTabletQty(tabletQty, packPrice, units).packQty;
+      } else if (units > 1) {
+        packQty = Number(l.qty || 0);
+        tabletQty = Math.round(packQty * units);
+      } else {
+        units = 1;
+        packQty = Number(l.qty || 0);
+        tabletQty = packQty;
+      }
+      orig[l.stockId] = packQty;
+      var split = splitTabletQty(tabletQty, packPrice, units);
       return {
         stockId: l.stockId, itemId: l.itemId, name: l.name || s.name || '', category: s.category || '',
-        packSize: l.packSize || s.packSize || '', expiry: l.expiry || s.expiry || '',
-        expiryLabel: l.expiryLabel || s.expiryLabel || '-', unitPrice: Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0),
-        qty: origQty, maxQty: exLotMax(l.stockId, s.qty, id, orig),
-        amount: origQty * Number(l.unitPrice != null ? l.unitPrice : s.unitPrice || 0), fefoRecommend: !!s.fefoRecommend
+        packSize: pack, expiry: l.expiry || s.expiry || '',
+        expiryLabel: l.expiryLabel || s.expiryLabel || '-',
+        unitPrice: units > 1 ? split.tabletPrice : packPrice,
+        packPrice: packPrice, unitsPerPack: units, packQty: split.packQty,
+        qty: units > 1 ? split.tablets : packQty,
+        maxQty: tabletsAvailable(exLotMax(l.stockId, s.qty, id, orig), units),
+        amount: split.amount, fefoRecommend: !!s.fefoRecommend
       };
     });
     STATE.editingExInId = id;

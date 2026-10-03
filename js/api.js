@@ -28,7 +28,7 @@ var SHEET_DEFS = {
   Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt', 'location'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   ExtReceipts: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
-  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name'],
+  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name', 'qtyUnit', 'packQty', 'unitsPerPack'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
@@ -974,6 +974,49 @@ function apiGetTransfer_(p) {
   return { transfer: tr, lines: lines, settings: readSettings_() };
 }
 
+function unitsPerPack_(pack) {
+  var s = String(pack || '').replace(/\s+/g, '').replace(/[’′]/g, "'");
+  var m = s.match(/(\d+(?:\.\d+)?)'s/i);
+  if (m) return Number(m[1]);
+  m = s.match(/(\d+(?:\.\d+)?)(เม็ด|แคปซูล|ชิ้น|tablets?|tabs?)/i);
+  if (m) return Number(m[1]);
+  m = s.match(/(\d+(?:\.\d+)?)s$/i);
+  if (m) return Number(m[1]);
+  return 1;
+}
+
+function splitTabletMove_(tablets, packPrice, units) {
+  units = units > 1 ? units : 1;
+  tablets = round4_(tablets);
+  var packQty = units > 1 ? round4_(tablets / units) : tablets;
+  var tabletPrice = units > 1 ? round4_(num_(packPrice) / units) : num_(packPrice);
+  return {
+    tablets: tablets,
+    packQty: packQty,
+    tabletPrice: tabletPrice,
+    amount: round2_(tablets * tabletPrice),
+    units: units
+  };
+}
+
+function tabletsAvailable_(packs, units) {
+  packs = num_(packs);
+  if (!(units > 1)) return round4_(packs);
+  var n = Math.floor(round4_(packs * units) + 1e-4);
+  while (n > 0 && round4_(n / units) > packs + 1e-9) n--;
+  return n;
+}
+
+function extLineMainPacks_(line) {
+  if (String(line.qtyUnit || '') === 'tablet') {
+    if (line.packQty != null && line.packQty !== '') return num_(line.packQty);
+    var units = num_(line.unitsPerPack) || unitsPerPack_(line.packSize);
+    if (!(units > 0)) units = 1;
+    return round4_(num_(line.qty) / units);
+  }
+  return num_(line.qty);
+}
+
 function applyExtReceiptLines_(rec, lines, stock, items, eLines, moves) {
   var seen = {};
   lines.forEach(function (line) {
@@ -981,34 +1024,50 @@ function applyExtReceiptLines_(rec, lines, stock, items, eLines, moves) {
     seen[line.stockId] = 1;
     var from = findById_(stock, line.stockId);
     if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
-    var qty = num_(line.qty);
-    if (qty > num_(from.qty) + 1e-9) throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
+    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
+    var units = unitsPerPack_(pack);
+    var name = (items[from.itemId] || {}).name || from.itemId;
+    if (units > 1 && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
+      throw new Error('จำนวนเม็ดต้องเป็นจำนวนเต็ม: ' + name);
+    }
+    var split = splitTabletMove_(line.qty, from.unitPrice, units);
+    if (split.packQty > num_(from.qty) + 1e-9) {
+      var maxT = tabletsAvailable_(from.qty, units);
+      throw new Error((units > 1 ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + maxT + ' เม็ด): ' : 'จำนวนเกินคงเหลือ: ') + name);
+    }
   });
   lines.forEach(function (line) {
     var from = findById_(stock, line.stockId);
-    var qty = num_(line.qty);
     var price = num_(from.unitPrice);
-    var amount = round2_(qty * price);
     var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
-    from.qty = round4_(num_(from.qty) - qty);
-    var to = addStock_(stock, from.itemId, LOC_EXT, qty, price, from.expiry || '', 'โอนจากคลังหลัก', pack);
+    var units = unitsPerPack_(pack);
+    var split = splitTabletMove_(line.qty, price, units);
+    var asTablets = units > 1;
+    var extQty = asTablets ? split.tablets : split.packQty;
+    var extPrice = asTablets ? split.tabletPrice : price;
+    var extPack = asTablets ? 'เม็ด' : pack;
+    from.qty = round4_(num_(from.qty) - split.packQty);
+    var to = addStock_(stock, from.itemId, LOC_EXT, extQty, extPrice, from.expiry || '', asTablets ? ('โอนจากคลังหลัก ' + pack) : 'โอนจากคลังหลัก', extPack);
     eLines.push({
       id: nextId_('ERL'),
       extReceiptId: rec.id,
       itemId: from.itemId,
       fromStockId: from.id,
       toStockId: to.id,
-      qty: qty,
+      qty: extQty,
+      qtyUnit: asTablets ? 'tablet' : 'pack',
+      packQty: split.packQty,
+      unitsPerPack: units,
       unitPrice: price,
-      amount: amount,
+      amount: split.amount,
       expiry: from.expiry || '',
       packSize: pack,
       name: (items[from.itemId] || {}).name || ''
     });
-    moves.push(movement_('TRANSFER_OUT', rec.date, LOC_MAIN, from.itemId, from.id, -qty, price, amount, rec.id, ''));
-    moves.push(movement_('TRANSFER_IN', rec.date, LOC_EXT, from.itemId, to.id, qty, price, amount, rec.id, ''));
-    rec.totalQty = round4_(num_(rec.totalQty) + qty);
-    rec.totalValue = round2_(num_(rec.totalValue) + amount);
+    moves.push(movement_('TRANSFER_OUT', rec.date, LOC_MAIN, from.itemId, from.id, -split.packQty, price, split.amount, rec.id, ''));
+    moves.push(movement_('TRANSFER_IN', rec.date, LOC_EXT, from.itemId, to.id, extQty, extPrice, split.amount, rec.id, ''));
+    rec.totalQty = round4_(num_(rec.totalQty) + extQty);
+    rec.totalValue = round2_(num_(rec.totalValue) + split.amount);
   });
 }
 
@@ -1030,7 +1089,7 @@ function apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves) {
   });
   var giveBack = {};
   oldLines.forEach(function (old) {
-    giveBack[old.fromStockId] = round4_((giveBack[old.fromStockId] || 0) + num_(old.qty));
+    giveBack[old.fromStockId] = round4_((giveBack[old.fromStockId] || 0) + extLineMainPacks_(old));
   });
   var seen = {};
   lines.forEach(function (line) {
@@ -1039,8 +1098,15 @@ function apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves) {
     var from = findById_(stock, line.stockId);
     var have = (from && from.location === LOC_MAIN ? num_(from.qty) : 0) + (giveBack[line.stockId] || 0);
     if (!from || from.location !== LOC_MAIN) throw new Error('ไม่พบสต็อกคลังหลัก');
-    if (num_(line.qty) > have + 1e-9) {
-      throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
+    var pack = preferSpacedPack_(String(from.packSize || (items[from.itemId] || {}).packSize || ''));
+    var units = unitsPerPack_(pack);
+    var name = (items[from.itemId] || {}).name || from.itemId;
+    if (units > 1 && Math.abs(num_(line.qty) - Math.round(num_(line.qty))) > 1e-6) {
+      throw new Error('จำนวนเม็ดต้องเป็นจำนวนเต็ม: ' + name);
+    }
+    var split = splitTabletMove_(line.qty, from.unitPrice, units);
+    if (split.packQty > have + 1e-9) {
+      throw new Error((units > 1 ? 'จำนวนเม็ดเกินคงเหลือ (สูงสุด ' + tabletsAvailable_(have, units) + ' เม็ด): ' : 'จำนวนเกินคงเหลือ: ') + name);
     }
   });
   oldLines.forEach(function (old) {
@@ -1054,7 +1120,7 @@ function apiUpdateExtReceipt_(p, lines, stock, items, heads, eLines, moves) {
       unitPrice: old.unitPrice,
       packSize: old.packSize,
       expiry: old.expiry
-    }, q, LOC_MAIN);
+    }, extLineMainPacks_(old), LOC_MAIN);
   });
   eLines = eLines.filter(function (l) { return l.extReceiptId !== rec.id; });
   moves = moves.filter(function (m) {
@@ -1159,7 +1225,7 @@ function apiDeleteExtReceipt_(p) {
       unitPrice: old.unitPrice,
       packSize: old.packSize,
       expiry: old.expiry
-    }, q, LOC_MAIN);
+    }, extLineMainPacks_(old), LOC_MAIN);
   });
   eLines = eLines.filter(function (l) { return l.extReceiptId !== rec.id; });
   moves = moves.filter(function (m) {
