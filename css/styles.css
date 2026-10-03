@@ -1463,6 +1463,35 @@ select option[value="__add__"] {
   background: var(--warn-soft);
   color: var(--warn);
 }
+.cl-slot-status.off {
+  background: #eef2f1;
+  color: var(--muted);
+}
+.cl-weekend-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f7faf8;
+}
+.cl-weekend-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.cl-weekend-row .muted {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+.cl-weekend-chips {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
 .cl-slot-actions {
   display: flex;
   gap: 8px;

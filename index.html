@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=108">
+  <link rel="stylesheet" href="css/styles.css?v=109">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -319,6 +319,16 @@
             </div>
           </div>
           <p id="clBackdateHint" class="muted">ลืมลงวันก่อนหน้า — กด «วันก่อน» หรือเลือกวันที่จากปฏิทิน แล้วบันทึกได้เลย</p>
+          <div class="cl-weekend-row">
+            <div>
+              <div class="cl-weekend-title">แจ้งเตือนวันเสาร์–อาทิตย์</div>
+              <p id="clWeekendAlertHint" class="muted">เปิดอยู่ — วันเสาร์และอาทิตย์ที่ยังไม่บันทึกจะแสดงในรายการแจ้งเตือน</p>
+            </div>
+            <div class="cl-weekend-chips" id="clWeekendAlertChips">
+              <button type="button" class="chip active" data-weekend="1" onclick="ClimateUI.setWeekendAlert(true)">เปิด</button>
+              <button type="button" class="chip" data-weekend="0" onclick="ClimateUI.setWeekendAlert(false)">ปิด</button>
+            </div>
+          </div>
           <div id="clMissingWrap" class="cl-missing-wrap" style="display:none">
             <div class="cl-missing-label">วันที่ยังไม่ครบ — คลิกเพื่อลงย้อนหลัง</div>
             <div id="clMissingDays" class="cl-missing"></div>
@@ -601,10 +611,10 @@
   <div class="toast" id="toast"></div>
   <script src="js/db.js?v=105"></script>
   <script src="js/remote.js?v=107"></script>
-  <script src="js/api.js?v=107"></script>
+  <script src="js/api.js?v=109"></script>
   <script src="js/options.js?v=105"></script>
   <script src="js/thdate.js?v=105"></script>
-  <script src="js/app.js?v=108"></script>
+  <script src="js/app.js?v=109"></script>
   <script src="js/auth.js?v=105"></script>
   <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->

@@ -233,7 +233,8 @@ function apiSaveSettings_(p) {
     'issuerName', 'issuerPosition',
     'gasWebAppUrl',
     'logoDataUrl',
-    'historyFromDate'
+    'historyFromDate',
+    'climateWeekendAlert'
   ];
   keys.forEach(function (k) {
     if (p[k] !== undefined) setSetting_(k, String(p[k]));
@@ -1360,6 +1361,7 @@ function ensureDb_() {
     expiryWarnMonths: '6',
     historyFromDate: HISTORY_FROM_DATE_
     ,logoDataUrl: ''
+    ,climateWeekendAlert: '1'
   };
   var cur = readSettings_();
   var changed = false;

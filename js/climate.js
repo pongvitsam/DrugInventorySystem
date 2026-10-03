@@ -160,12 +160,14 @@ var ClimateUI = (function () {
       yEl2._clBound = true;
       yEl2.addEventListener('change', loadReport);
     }
+    paintWeekendAlertUi_();
     loadTodaySlots();
     setMode(MODE_ || 'day');
     // ตัวอย่าง PDF โหลดเมื่อเลือกเดือนส่งออกหรือกดพิมพ์ — ไม่ยิง climateReport ซ้ำตอนเปิดหน้า
   }
 
   function refreshPage() {
+    paintWeekendAlertUi_();
     loadTodaySlots();
     loadReport();
     if (MODE_ === 'month') loadMonthPreview_();
@@ -200,6 +202,60 @@ var ClimateUI = (function () {
     return String(a || '').slice(0, 10) === String(b || '').slice(0, 10);
   }
 
+  function weekendAlertOn_() {
+    var s = (typeof STATE !== 'undefined' && STATE.boot && STATE.boot.settings) || {};
+    var v = s.climateWeekendAlert;
+    if (v == null || v === '') return true;
+    return String(v) === '1';
+  }
+
+  function isWeekendIso_(iso) {
+    var dt = new Date(String(iso || '') + 'T12:00:00+07:00');
+    if (isNaN(dt.getTime())) return false;
+    var day = dt.getDay();
+    return day === 0 || day === 6;
+  }
+
+  function paintWeekendAlertUi_() {
+    var on = weekendAlertOn_();
+    document.querySelectorAll('#clWeekendAlertChips .chip').forEach(function (b) {
+      b.classList.toggle('active', (b.getAttribute('data-weekend') === '1') === on);
+    });
+    var hint = document.getElementById('clWeekendAlertHint');
+    if (hint) {
+      hint.textContent = on
+        ? 'เปิดอยู่ — วันเสาร์และอาทิตย์ที่ยังไม่บันทึกจะแสดงในรายการแจ้งเตือน'
+        : 'ปิดอยู่ — วันเสาร์และอาทิตย์จะไม่ขึ้นแจ้งเตือน ยังบันทึกได้ตามปกติ';
+    }
+  }
+
+  function setWeekendAlert(on) {
+    var value = on ? '1' : '0';
+    if (weekendAlertOn_() === !!on) {
+      paintWeekendAlertUi_();
+      return;
+    }
+    if (typeof STATE !== 'undefined') {
+      if (!STATE.boot) STATE.boot = {};
+      if (!STATE.boot.settings) STATE.boot.settings = {};
+      STATE.boot.settings.climateWeekendAlert = value;
+    }
+    paintWeekendAlertUi_();
+    renderMissingDays_(RECENT_ROWS_, todayIso());
+    loadTodaySlots();
+    api('saveSettings', { climateWeekendAlert: value }).then(function (r) {
+      if (typeof STATE !== 'undefined' && STATE.boot && r && r.settings) {
+        STATE.boot.settings = r.settings;
+        STATE.boot.settings.climateWeekendAlert = value;
+      }
+      if (typeof toast === 'function') {
+        toast(on ? 'เปิดแจ้งเตือนวันเสาร์–อาทิตย์แล้ว' : 'ปิดแจ้งเตือนวันเสาร์–อาทิตย์แล้ว');
+      }
+    }).catch(function (e) {
+      if (typeof toast === 'function') toast(e.message || String(e));
+    });
+  }
+
   function fillSlotForm_(slot, row) {
     var t = document.getElementById(slot === 'pm' ? 'clTempPm' : 'clTempAm');
     var h = document.getElementById(slot === 'pm' ? 'clHumPm' : 'clHumAm');
@@ -212,6 +268,9 @@ var ClimateUI = (function () {
       if (row) {
         st.textContent = 'บันทึกแล้ว' + (row.recordedBy ? ' · ' + row.recordedBy : '') + ' · แก้ได้';
         st.className = 'cl-slot-status ok';
+      } else if (!weekendAlertOn_() && isWeekendIso_(selectedEntryDate_())) {
+        st.textContent = 'วันหยุด — ไม่แจ้งเตือน';
+        st.className = 'cl-slot-status off';
       } else {
         st.textContent = (selectedEntryDate_() < todayIso()) ? 'ยังไม่บันทึก · ลงย้อนหลังได้' : 'ยังไม่บันทึก';
         st.className = 'cl-slot-status pending';
@@ -356,8 +415,10 @@ var ClimateUI = (function () {
       else byDay[d].am = true;
     });
     var chips = [];
+    var skipWeekend = !weekendAlertOn_();
     for (var i = 0; i < 14; i++) {
       var iso = isoAddDays_(today, -i);
+      if (skipWeekend && isWeekendIso_(iso)) continue;
       var pair = byDay[iso] || { am: false, pm: false };
       if (pair.am && pair.pm) continue;
       var miss = [];
@@ -758,6 +819,7 @@ var ClimateUI = (function () {
     editLog: editLog,
     shiftDate: shiftDate,
     jumpToday: jumpToday,
+    setWeekendAlert: setWeekendAlert,
     exportPdf: exportPdf,
     exportMonthPdf: exportMonthPdf
   };
