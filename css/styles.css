@@ -445,6 +445,7 @@ textarea { min-height: 70px; }
 .login-card .login-sub {
   color: var(--muted); margin: 0 0 22px; font-size: 14px; line-height: 1.55;
 }
+.login-card input::placeholder { color: #9aa8b2; opacity: 1; }
 .login-btn { width: 100%; margin-top: 8px; padding: 13px; font-size: 16px; }
 .remember-row {
   display: flex; align-items: center; gap: 8px; margin: 14px 0 4px;
