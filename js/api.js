@@ -84,22 +84,6 @@ function enrichStockRow_(s, items, settings) {
   });
 }
 
-function migrateStockPackSizes_() {
-  if (String(readSettings_().stockPackMigrated) === '1') return;
-  var items = indexById_(readObjects_('Items'));
-  var stock = readObjects_('Stock');
-  var changed = false;
-  stock.forEach(function (s) {
-    if (!String(s.packSize || '').trim() && items[s.itemId]) {
-      s.packSize = preferSpacedPack_(items[s.itemId].packSize || '');
-      if (s.packSize) changed = true;
-    }
-  });
-  if (changed) writeObjects_('Stock', stock);
-  setSetting_('stockPackMigrated', '1');
-  invalidateStockCaches_();
-}
-
 function normalizeLoc_(loc) {
   return loc === LOC_EXT ? LOC_EXT : LOC_MAIN;
 }
@@ -164,7 +148,6 @@ function markFefoRecommend_(rows) {
 
 function callApi(name, payload) {
   ensureDb_();
-  migrateStockPackSizes_();
   var fns = {
     bootstrap: apiBootstrap_,
     saveSettings: apiSaveSettings_,
@@ -1290,6 +1273,10 @@ function reportRowKey_(itemId, packSize, unitPrice) {
   return String(itemId) + '|' + packKey_(packSize) + '|' + round2_(num_(unitPrice));
 }
 
+function reportLotPack_(packSize, item) {
+  return preferSpacedPack_(String(packSize || (item && item.packSize) || ''));
+}
+
 function moveReportLot_(m, stockById, items) {
   var st = stockById[m.stockId];
   var it = items[m.itemId] || {};
@@ -1341,7 +1328,7 @@ function apiMonthReport_(p) {
   var byKey = {};
   stock.forEach(function (s) {
     if (s.location !== loc || !itemMap[s.itemId]) return;
-    var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
+    var row = ensureReportRow_(byKey, s.itemId, reportLotPack_(s.packSize, itemMap[s.itemId]), s.unitPrice, itemMap);
     if (!row) return;
     row.remain += num_(s.qty);
     row.remainValue += num_(s.qty) * num_(s.unitPrice);
@@ -2329,7 +2316,7 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
   var byKey = {};
   stock.forEach(function (s) {
     if (s.location !== loc || s.itemId !== itemId) return;
-    var row = ensureReportRow_(byKey, s.itemId, s.packSize, s.unitPrice, itemMap);
+    var row = ensureReportRow_(byKey, s.itemId, reportLotPack_(s.packSize, itemMap[s.itemId]), s.unitPrice, itemMap);
     if (!row) return;
     if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
     row.remain += num_(s.qty);
