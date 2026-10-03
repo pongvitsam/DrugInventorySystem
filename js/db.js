@@ -1,6 +1,71 @@
 var DB_PREFIX = 'pharma:';
 var DB_MEM = {};
 
+function dbRound4_(n) {
+  return Math.round((Number(n || 0) + Number.EPSILON) * 10000) / 10000;
+}
+
+function dbUnionById_(primary, extra) {
+  var seen = {};
+  var out = [];
+  (primary || []).concat(extra || []).forEach(function (row) {
+    if (!row) return;
+    var id = row.id != null && row.id !== '' ? String(row.id) : '';
+    if (!id) { out.push(row); return; }
+    if (seen[id]) return;
+    seen[id] = 1;
+    out.push(row);
+  });
+  return out;
+}
+
+function dbExtMainPacks_(line) {
+  if (String(line.qtyUnit || '') === 'tablet') {
+    if (line.packQty != null && line.packQty !== '') return Number(line.packQty);
+    var units = Number(line.unitsPerPack) || 1;
+    if (!(units > 0)) units = 1;
+    return dbRound4_(Number(line.qty || 0) / units);
+  }
+  return Number(line.qty || 0);
+}
+
+function dbRestoreExtTransfer_(stock, line, deduct) {
+  var need = Number(line.qty) || 0;
+  if (!(need > 0)) return;
+  var ext = null;
+  stock.forEach(function (s) {
+    if (!ext && s && s.id === line.toStockId) ext = s;
+  });
+  if (ext && ext.location === 'EXT' && Number(ext.qty) + 1e-9 >= need) return;
+  if (deduct) {
+    var packQty = dbExtMainPacks_(line);
+    stock.forEach(function (s) {
+      if (!s || s.id !== line.fromStockId || s.location !== 'MAIN') return;
+      var have = Number(s.qty) || 0;
+      if (have + 1e-9 >= packQty) s.qty = dbRound4_(have - packQty);
+    });
+  }
+  var asTablet = String(line.qtyUnit || '') === 'tablet';
+  var price = asTablet && need ? Number(line.amount || 0) / need : Number(line.unitPrice || 0);
+  if (!ext) {
+    stock.push({
+      id: line.toStockId || '',
+      itemId: line.itemId || '',
+      location: 'EXT',
+      qty: need,
+      unitPrice: price,
+      packSize: asTablet ? 'เม็ด' : (line.packSize || ''),
+      expiry: line.expiry || '',
+      lotNote: asTablet && line.packSize ? ('โอนจากคลังหลัก ' + line.packSize) : 'โอนจากคลังหลัก'
+    });
+    return;
+  }
+  ext.location = 'EXT';
+  ext.qty = need;
+  if (asTablet) ext.packSize = 'เม็ด';
+  if (!(Number(ext.unitPrice) > 0)) ext.unitPrice = price;
+}
+
 var DB = {
   readObjects: function (name) {
     if (DB_MEM[name]) return DB_MEM[name];
@@ -147,6 +212,9 @@ var DB = {
     return out;
   },
   importAll: function (data) {
+    var priorHeads = (DB.readObjects('ExtReceipts') || []).slice();
+    var priorLines = (DB.readObjects('ExtReceiptLines') || []).slice();
+    var priorMoves = (DB.readObjects('Movements') || []).slice();
     DB.clearCache();
     var d = data || {};
     DB.writeSettingsObj(d.SettingsObj || {});
@@ -175,5 +243,26 @@ var DB = {
       }
       DB.writeObjects(k, DB.dedupeRows(k, rows));
     });
+    var heads = dbUnionById_(DB.readObjects('ExtReceipts'), priorHeads);
+    var lines = dbUnionById_(DB.readObjects('ExtReceiptLines'), priorLines);
+    var receiptIds = {};
+    heads.forEach(function (h) { if (h && h.id) receiptIds[h.id] = 1; });
+    var remoteApplied = {};
+    (d.Movements || []).forEach(function (m) {
+      if (m && m.type === 'TRANSFER_OUT' && m.refId && receiptIds[m.refId]) remoteApplied[m.refId] = 1;
+    });
+    var keptMoves = priorMoves.filter(function (m) {
+      return m && m.refId && receiptIds[m.refId];
+    });
+    var moves = dbUnionById_(DB.readObjects('Movements'), keptMoves);
+    var stock = (DB.readObjects('Stock') || []).slice();
+    lines.forEach(function (line) {
+      if (!line || !receiptIds[line.extReceiptId]) return;
+      dbRestoreExtTransfer_(stock, line, !remoteApplied[line.extReceiptId]);
+    });
+    DB.writeObjects('ExtReceipts', heads);
+    DB.writeObjects('ExtReceiptLines', lines);
+    DB.writeObjects('Movements', moves);
+    DB.writeObjects('Stock', stock);
   }
 };

@@ -13,6 +13,7 @@ var RemoteDB = (function () {
   var loaded = false;
   var syncing = false;
   var localRevision = Number(localStorage.getItem(REV_KEY) || 0) || 0;
+  var dataEpoch_ = 0;
   var pollTimer = null;
   var pollCallback = null;
   var visibilityBound = false;
@@ -592,7 +593,12 @@ var RemoteDB = (function () {
     return !imported && items.length === 0 && !hasRealActivity_(fp);
   }
 
-  function applyRemotePayload_(res, force) {
+  function noteLocalMutation_() {
+    dataEpoch_ += 1;
+  }
+
+  function applyRemotePayload_(res, force, epoch) {
+    if (epoch != null && epoch !== dataEpoch_) return false;
     if (!res) return false;
     applyRevision_(res.revision);
     if (force || !isEmptyRemote_(res.data)) {
@@ -621,9 +627,11 @@ var RemoteDB = (function () {
   function handleImportResult_(res) {
     if (res && res.conflict) {
       // Sheet ชนะเสมอ — ดึงจาก Google แล้วให้ทำรายการใหม่ (slim ข้ามรูปบิล)
+      var epoch = dataEpoch_;
       return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (ex) {
+        if (epoch !== dataEpoch_) return;
         if (!ex || !ex.ok) throw new Error('ข้อมูลบน Google ใหม่กว่า และโหลดไม่สำเร็จ');
-        applyRemotePayload_(ex, true);
+        applyRemotePayload_(ex, true, epoch);
         loaded = true;
         throw new Error('มีข้อมูลใหม่กว่าบน Google Sheets — โหลดแล้ว กรุณาทำรายการอีกครั้ง');
       });
@@ -700,13 +708,15 @@ var RemoteDB = (function () {
 
   function fetchAndApplyExport_() {
     // slim=1 ข้ามรูปบิล — โหลดเร็วขึ้นมาก (รูปยังอยู่ในเครื่องแยก)
+    var epoch = dataEpoch_;
     var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
+      if (epoch !== dataEpoch_) return { ok: true, action: 'stale', changed: false };
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
       // ใช้ Sheet อย่างเดียว — ทับเครื่องเสมอ (รวมกรณี Sheet ว่าง = ล้างแคชในเครื่อง)
-      applyRemotePayload_(res, true);
+      applyRemotePayload_(res, true, epoch);
       loaded = true;
       lastSyncAction = 'pulled';
       return { ok: true, action: 'pulled', changed: true };
@@ -770,15 +780,18 @@ var RemoteDB = (function () {
   function refreshIfNewer() {
     if (!enabled()) return Promise.resolve({ changed: false });
     if (!isOnline_()) return Promise.resolve({ changed: false, offline: true });
+    var epoch = dataEpoch_;
     var url = baseUrl() + '?action=meta&t=' + Date.now();
     return fetchJson(url).then(function (meta) {
+      if (epoch !== dataEpoch_) return { changed: false, stale: true };
       if (!meta || !meta.ok) return { changed: false };
       var remoteRev = Number(meta.revision) || 0;
       if (remoteRev <= localRevision) return { changed: false, revision: localRevision };
       return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (res) {
+        if (epoch !== dataEpoch_) return { changed: false, stale: true };
         if (!res || !res.ok) return { changed: false };
         // Sheet ใหม่กว่า — ดึงทับเครื่องเสมอ ไม่ push local ทับ Sheet
-        var changed = applyRemotePayload_(res, true);
+        var changed = applyRemotePayload_(res, true, epoch);
         loaded = true;
         if (changed) lastSyncAction = 'pulled';
         return { changed: changed, revision: localRevision };
@@ -798,12 +811,14 @@ var RemoteDB = (function () {
   function pullRemote() {
     if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
     loaded = false;
+    var epoch = dataEpoch_;
     var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
+      if (epoch !== dataEpoch_) return;
       if (!res || !res.ok || !res.data) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
-      applyRemotePayload_(res, true);
+      applyRemotePayload_(res, true, epoch);
       loaded = true;
     });
   }
@@ -957,6 +972,7 @@ var RemoteDB = (function () {
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
+    noteLocalMutation: noteLocalMutation_,
     sync: sync,
     ping: ping,
     pushLocal: pushLocal,

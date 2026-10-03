@@ -2544,6 +2544,9 @@ return {
         throw new Error(err && err.message ? err.message : String(err));
       }
     };
+    if (typeof RemoteDB !== 'undefined' && RemoteDB.noteLocalMutation && MUTATION_APIS_[name]) {
+      RemoteDB.noteLocalMutation();
+    }
     if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled()) {
       if (MUTATION_APIS_[name]) {
         var ready;
