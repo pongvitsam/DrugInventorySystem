@@ -72,7 +72,18 @@ var unlinked = alignSlipIssues_(
   [{ id: 'T9', date: '2026-09-10', location: 'MAIN' }],
   [{ id: 'TL9', transferId: 'T9', itemId: 'I9', stockId: 'S9', qty: 4, unitPrice: 2, amount: 8 }]
 );
-eq('unlinked issue is not added again', unlinked.length, 1);
+eq('slip replaces an unlinked issue', unlinked.map(function (m) { return m.type + m.qtyChange; }), ['ISSUE-4']);
+
+var mixed = alignSlipIssues_(
+  [
+    { id: 'R', date: '2026-09-01', type: 'RECEIVE', location: 'MAIN', itemId: 'I1', stockId: 'S1', qtyChange: 20, unitPrice: 10, amount: 200, refId: 'RC', notes: '' },
+    { id: 'EXTRA', date: '2026-09-04', type: 'ISSUE', location: 'MAIN', itemId: 'I1', stockId: 'S1', qtyChange: -9, unitPrice: 10, amount: 90, refId: '', notes: '' },
+    { id: 'M4', date: stamp, type: 'ISSUE', location: 'MAIN', itemId: 'I1', stockId: 'S1', qtyChange: -6, unitPrice: 50, amount: 300, refId: 'T4', notes: '' }
+  ],
+  [{ id: 'T4', date: '2026-09-04', location: 'MAIN', totalValue: 60 }],
+  [{ id: 'TL4', transferId: 'T4', itemId: 'I1', stockId: 'S1', qty: 6, unitPrice: 10, amount: 60 }]
+);
+eq('extra movement issue is dropped', mixed.map(function (m) { return m.type + ':' + m.qtyChange + ':' + m.amount; }), ['RECEIVE:20:200', 'ISSUE:-6:60']);
 
 if (fail) {
   console.log(fail + ' failed');

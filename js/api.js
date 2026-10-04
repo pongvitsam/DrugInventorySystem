@@ -1268,6 +1268,11 @@ function reportPeriodIssue_(m, ch) {
   return m.type === 'ISSUE' && ch < 0 ? -ch : 0;
 }
 
+function issueMoney_(m, qty) {
+  if (m && m.type === 'ISSUE' && num_(m.amount) > 0) return round2_(num_(m.amount));
+  return round2_(num_(qty) * num_(m && m.unitPrice));
+}
+
 function reportIssueGroups_(moves, itemMap, stockById, loc, range) {
   var byDate = {};
   (moves || []).forEach(function (m) {
@@ -1293,7 +1298,7 @@ function reportIssueGroups_(moves, itemMap, stockById, loc, range) {
       };
     }
     row.issued = round4_(row.issued + qty);
-    row.issuedValue = round2_(row.issuedValue + qty * price);
+    row.issuedValue = round2_(row.issuedValue + issueMoney_(m, qty));
   });
   return Object.keys(byDate).sort().map(function (d) {
     var rows = Object.keys(byDate[d]).map(function (k) { return byDate[d][k]; });
@@ -1336,64 +1341,60 @@ function slipDay_(v) {
   return toIsoDate_(v);
 }
 
-/**
- * สรุปรายเดือนใช้ใบเบิกเป็นหลักเฉพาะใบที่วันหรือจำนวนไม่ตรงกับรายการเคลื่อนไหว
- * ใบที่ตรงอยู่แล้วไม่ถูกบวกซ้ำ
- */
+/** ยอดเบิกในสรุป = ใบเบิกจากคลังเท่านั้น ไม่เอารายการเคลื่อนไหวที่ซ้ำหรือเกินมาบวก */
 function alignSlipIssues_(moves, transfers, tLines) {
   var heads = indexById_(transfers || []);
-  var out = (moves || []).map(function (m) { return Object.assign({}, m); });
-  var linesBy = {};
+  var locHint = {};
+  (moves || []).forEach(function (m) {
+    if (m && m.refId && m.type === 'ISSUE' && m.location) locHint[m.refId] = m.location;
+  });
+  var out = [];
+  (moves || []).forEach(function (m) {
+    if (!m || m.type === 'ISSUE' || m.type === 'RETURN') return;
+    out.push(Object.assign({}, m));
+  });
+  var grouped = {};
   (tLines || []).forEach(function (l) {
     if (!l || !heads[l.transferId] || !(num_(l.qty) > 0)) return;
-    var bucket = linesBy[l.transferId] || (linesBy[l.transferId] = {});
-    bucket[String(l.stockId || '') + '|' + String(l.itemId || '')] = l;
+    var key = String(l.id || '') || (String(l.transferId) + '|' + String(l.stockId || '') + '|' + String(l.itemId || ''));
+    grouped[key] = l;
   });
-  Object.keys(linesBy).forEach(function (tid) {
+  var byTransfer = {};
+  Object.keys(grouped).forEach(function (k) {
+    var l = grouped[k];
+    var same = String(l.transferId) + '|' + String(l.stockId || '') + '|' + String(l.itemId || '');
+    if (!byTransfer[l.transferId]) byTransfer[l.transferId] = { order: [], seen: {} };
+    if (byTransfer[l.transferId].seen[same]) return;
+    byTransfer[l.transferId].seen[same] = 1;
+    byTransfer[l.transferId].order.push(l);
+  });
+  Object.keys(byTransfer).forEach(function (tid) {
     var tr = heads[tid];
+    var lines = byTransfer[tid].order;
     var day = slipDay_(tr.date);
-    var lines = [];
-    var lineQty = 0;
-    Object.keys(linesBy[tid]).forEach(function (k) {
-      lines.push(linesBy[tid][k]);
-      lineQty += num_(linesBy[tid][k].qty);
-    });
-    var linked = [];
-    var issued = 0;
-    var hasReturn = false;
-    out.forEach(function (m) {
-      if (!m || String(m.refId || '') !== String(tid)) return;
-      if (m.type !== 'ISSUE' && m.type !== 'RETURN') return;
-      linked.push(m);
-      if (m.type === 'RETURN' && Math.abs(num_(m.qtyChange)) > 1e-9) hasReturn = true;
-      if (m.type === 'ISSUE' && num_(m.qtyChange) < 0) issued += -num_(m.qtyChange);
-    });
-    if (!linked.length) return;
-    if (!hasReturn && Math.abs(issued - lineQty) < 1e-4) {
-      if (!day) return;
-      linked.forEach(function (m) {
-        if (toIsoDate_(m.date) !== day) m.date = day;
-      });
-      return;
-    }
-    var loc = (tr.location && normalizeLoc_(tr.location)) || linked[0].location || LOC_MAIN;
-    out = out.filter(function (m) {
-      return !(m && String(m.refId || '') === String(tid) && (m.type === 'ISSUE' || m.type === 'RETURN'));
-    });
-    lines.forEach(function (l) {
+    var loc = tr.location ? normalizeLoc_(tr.location) : (locHint[tid] || LOC_MAIN);
+    var prepared = lines.map(function (l) {
       var qty = num_(l.qty);
-      if (!(qty > 0)) return;
       var price = num_(l.unitPrice);
+      var amt = num_(l.amount);
+      if (!(amt > 0)) amt = round2_(qty * price);
+      return { line: l, qty: qty, price: price, amt: amt };
+    });
+    var sumAmt = prepared.reduce(function (s, row) { return s + row.amt; }, 0);
+    var target = round2_(num_(tr.totalValue));
+    var scale = (target > 0 && sumAmt > 0 && Math.abs(sumAmt - target) > 0.009) ? (target / sumAmt) : 1;
+    prepared.forEach(function (row) {
+      var amt = scale === 1 ? round2_(row.amt) : round2_(row.amt * scale);
       out.push({
-        id: l.id || ('iss-' + tid),
+        id: row.line.id || ('iss-' + tid),
         date: day || toIsoDate_(tr.date),
         type: 'ISSUE',
         location: loc,
-        itemId: l.itemId,
-        stockId: l.stockId || '',
-        qtyChange: -qty,
-        unitPrice: price,
-        amount: num_(l.amount) || round2_(qty * price),
+        itemId: row.line.itemId,
+        stockId: row.line.stockId || '',
+        qtyChange: -row.qty,
+        unitPrice: row.qty ? (amt / row.qty) : row.price,
+        amount: amt,
         refId: tid,
         notes: ''
       });
@@ -1475,7 +1476,7 @@ function apiMonthReport_(p) {
       row.received += reportPeriodReceive_(m, ch, loc);
       row.receivedValue += reportPeriodReceive_(m, ch, loc) * price;
       row.issued += reportPeriodIssue_(m, ch);
-      row.issuedValue += reportPeriodIssue_(m, ch) * price;
+      row.issuedValue += issueMoney_(m, reportPeriodIssue_(m, ch));
     }
   });
   Object.keys(byKey).forEach(function (key) {
@@ -1584,7 +1585,7 @@ function apiMoneyReport_(p) {
       var price = num_(m.unitPrice);
       map[cat].periodChange += ch * price;
       map[cat].receive += reportPeriodReceive_(m, ch, loc) * price;
-      map[cat].used += reportPeriodIssue_(m, ch) * price;
+      map[cat].used += issueMoney_(m, reportPeriodIssue_(m, ch));
     }
   });
   var rows = Object.keys(map).map(function (c) {
@@ -2467,7 +2468,7 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
       row.received += reportPeriodReceive_(m, ch, loc);
       row.receivedValue += reportPeriodReceive_(m, ch, loc) * price;
       row.issued += reportPeriodIssue_(m, ch);
-      row.issuedValue += reportPeriodIssue_(m, ch) * price;
+      row.issuedValue += issueMoney_(m, reportPeriodIssue_(m, ch));
     }
   });
   var rows = Object.keys(byKey).map(function (k) { return byKey[k]; });
