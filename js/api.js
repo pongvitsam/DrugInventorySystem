@@ -170,6 +170,9 @@ function callApi(name, payload) {
     listExtReceipts: apiListExtReceipts_,
     getExtReceipt: apiGetExtReceipt_,
     deleteExtReceipt: apiDeleteExtReceipt_,
+    saveExtOpening: apiSaveExtOpening_,
+    listExtOpenings: apiListExtOpenings_,
+    deleteExtOpening: apiDeleteExtOpening_,
     monthReport: apiMonthReport_,
     moneyReport: apiMoneyReport_,
     itemTrendReport: apiItemTrendReport_,
@@ -1259,6 +1262,95 @@ function apiDeleteExtReceipt_(p) {
   return { ok: true, id: p.id };
 }
 
+function extOpeningParts_(item, qty) {
+  var pack = preferSpacedPack_(String(item.packSize || ''));
+  var spec = withdrawSpec_(pack, item.form);
+  var n = num_(qty);
+  var name = item.name || item.id;
+  if (!(n > 0)) throw new Error('จำนวนต้องมากกว่า 0: ' + name);
+  if (spec.split && Math.abs(n - Math.round(n)) > 1e-6) throw new Error('จำนวนเม็ดต้องเป็นจำนวนเต็ม: ' + name);
+  var price = num_(item.unitPrice);
+  var split = splitTabletMove_(n, price, spec.units);
+  return {
+    extQty: spec.split ? split.tablets : n,
+    extPrice: spec.split ? split.tabletPrice : price,
+    extPack: spec.split ? 'เม็ด' : pack,
+    amount: spec.split ? split.amount : round2_(n * price),
+    unit: spec.unit
+  };
+}
+
+function apiSaveExtOpening_(p) {
+  if (!p.date) throw new Error('กรุณาใส่วันที่');
+  var lines = (p.lines || []).filter(function (l) { return l.itemId && num_(l.qty) > 0; });
+  if (!lines.length) throw new Error('กรุณาเพิ่มรายการ');
+  var items = indexById_(readObjects_('Items'));
+  var stock = readObjects_('Stock');
+  var moves = readObjects_('Movements');
+  var id = nextId_('EO');
+  var date = toIsoDate_(p.date);
+  var totalQty = 0;
+  var totalValue = 0;
+  var seen = {};
+  lines.forEach(function (line) {
+    var item = items[line.itemId];
+    if (!item) throw new Error('ไม่พบรายการยา');
+    if (seen[item.id]) throw new Error('รายการซ้ำ: ' + item.name);
+    seen[item.id] = 1;
+    var q = extOpeningParts_(item, line.qty);
+    var lot = addStock_(stock, item.id, LOC_EXT, q.extQty, q.extPrice, '', 'ยอดยกมาคลังภายนอก', q.extPack);
+    moves.push(movement_('EXT_OPENING', date, LOC_EXT, item.id, lot.id, q.extQty, q.extPrice, q.amount, id, 'ยอดยกมาคลังภายนอก'));
+    totalQty = round4_(totalQty + q.extQty);
+    totalValue = round2_(totalValue + q.amount);
+  });
+  writeObjects_('Stock', stock);
+  writeObjects_('Movements', moves);
+  return { ok: true, id: id, date: date, totalQty: totalQty, totalValue: totalValue };
+}
+
+function apiListExtOpenings_() {
+  var groups = {};
+  readObjects_('Movements').forEach(function (m) {
+    if (!m || m.type !== 'EXT_OPENING' || m.location !== LOC_EXT) return;
+    var id = m.refId || m.id;
+    if (!groups[id]) groups[id] = { id: id, date: m.date || '', totalQty: 0, totalValue: 0, lines: 0 };
+    groups[id].totalQty = round4_(groups[id].totalQty + num_(m.qtyChange));
+    groups[id].totalValue = round2_(groups[id].totalValue + num_(m.amount));
+    groups[id].lines += 1;
+  });
+  var openings = Object.keys(groups).map(function (k) { return groups[k]; });
+  openings.sort(function (a, b) {
+    return String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id));
+  });
+  return { openings: openings };
+}
+
+function apiDeleteExtOpening_(p) {
+  if (!p.id) throw new Error('ไม่พบรายการยอดยกมา');
+  var stock = readObjects_('Stock');
+  var moves = readObjects_('Movements');
+  var mine = moves.filter(function (m) { return m.type === 'EXT_OPENING' && m.refId === p.id; });
+  if (!mine.length) throw new Error('ไม่พบรายการยอดยกมา');
+  var need = {};
+  mine.forEach(function (m) {
+    need[m.stockId] = round4_((need[m.stockId] || 0) + num_(m.qtyChange));
+  });
+  Object.keys(need).forEach(function (id) {
+    var st = findById_(stock, id);
+    if (!st || st.location !== LOC_EXT || num_(st.qty) + 1e-9 < need[id]) {
+      throw new Error('ลบไม่ได้ — ยอดนี้ถูกเบิกไปแล้วบางส่วน');
+    }
+  });
+  mine.forEach(function (m) {
+    var st = findById_(stock, m.stockId);
+    st.qty = round4_(num_(st.qty) - num_(m.qtyChange));
+  });
+  moves = moves.filter(function (m) { return !(m.type === 'EXT_OPENING' && m.refId === p.id); });
+  writeObjects_('Stock', stock);
+  writeObjects_('Movements', moves);
+  return { ok: true, id: p.id };
+}
+
 function reportPeriodReceive_(m, ch, loc) {
   if (loc === LOC_EXT) return m.type === 'TRANSFER_IN' && ch > 0 ? ch : 0;
   return m.type === 'RECEIVE' && ch > 0 ? ch : 0;
@@ -1466,6 +1558,10 @@ function apiMonthReport_(p) {
     if (!row) return;
     var d = m.date;
     var ch = num_(m.qtyChange);
+    if (skipExtOpeningPeriod_(m, d, range.end, function () {
+      row.remain -= ch;
+      row.remainValue -= ch * num_(m.unitPrice);
+    })) return;
     if (d > range.end) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
@@ -1579,6 +1675,9 @@ function apiMoneyReport_(p) {
     var d = m.date;
     var ch = num_(m.qtyChange);
     var val = ch * num_(m.unitPrice);
+    if (skipExtOpeningPeriod_(m, d, range.end, function () {
+      map[cat].remain -= val;
+    })) return;
     if (d > range.end) {
       map[cat].remain -= val;
     } else if (d >= range.start && d <= range.end) {
@@ -2038,6 +2137,12 @@ function filterHistoryDocs_(docs) {
   });
 }
 
+function skipExtOpeningPeriod_(m, d, rangeEnd, rollback) {
+  if (!m || m.type !== 'EXT_OPENING') return false;
+  if (d && rangeEnd && d > rangeEnd && rollback) rollback();
+  return true;
+}
+
 function shouldCountMovement_(m) {
   if (!m) return false;
   var cut = getHistoryFromDate_();
@@ -2458,6 +2563,10 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
     if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
     var d = m.date;
     var ch = num_(m.qtyChange);
+    if (skipExtOpeningPeriod_(m, d, rangeEnd, function () {
+      row.remain -= ch;
+      row.remainValue -= ch * num_(m.unitPrice);
+    })) return;
     if (d > rangeEnd) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
@@ -2642,6 +2751,8 @@ var MUTATION_APIS_ = {
   deleteTransfer: 1,
   saveExtReceipt: 1,
   deleteExtReceipt: 1,
+  saveExtOpening: 1,
+  deleteExtOpening: 1,
   importSeed: 1,
   addUser: 1,
   removeUser: 1,

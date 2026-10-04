@@ -13,6 +13,9 @@ var STATE = {
   editExInOrig: {},
   exOutPick: [],
   exOutCart: [],
+  exOpCart: [],
+  exOpExtQty: {},
+  exOpSearch: [],
   editingExOutId: null,
   editExOutOrig: {},
   reportLocation: 'MAIN',
@@ -78,6 +81,7 @@ function showPage(id) {
     loadWithdrawHistory();
   }
   if (id === 'exstock') showExStock();
+  if (id === 'exopening') loadExOpening();
   if (id === 'exreceive') {
     loadExInPick();
     loadExInHistory();
@@ -168,6 +172,7 @@ function applyBoot(b) {
   ThDate.set('wdDate', todayInput());
   ThDate.set('exInDate', todayInput());
   ThDate.set('exOutDate', todayInput());
+  ThDate.set('exOpDate', todayInput());
   var now = new Date();
   ThDate.set('rpMonth', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));
   ThDate.set('rpFrom', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01');
@@ -3604,5 +3609,142 @@ function showExOutPrint(id) {
     document.getElementById('exOutPrintOut').innerHTML = html;
     initWithdrawSignDates(t.date, 'exOutPrintOut');
     document.getElementById('exOutPrintCard').style.display = 'block';
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function exOpeningUnit_(item) {
+  var spec = withdrawSpec(item && item.packSize, item && item.form);
+  return spec.unit || 'หน่วย';
+}
+function exOpeningHave_(itemId) {
+  return Number((STATE.exOpExtQty || {})[itemId] || 0);
+}
+function loadExOpening() {
+  var dateEl = document.getElementById('exOpDate');
+  if (dateEl && !dateEl.value) ThDate.set('exOpDate', todayInput());
+  api('listStock', { location: 'EXT' }).then(function (r) {
+    var qty = {};
+    (r.stock || []).forEach(function (s) {
+      qty[s.itemId] = (qty[s.itemId] || 0) + Number(s.qty || 0);
+    });
+    STATE.exOpExtQty = qty;
+    renderExOpCart();
+  }).catch(function () {});
+  loadExOpHistory();
+}
+function searchExOpening() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function () {
+    var q = document.getElementById('exOpSearch').value;
+    api('searchItems', { q: q }).then(function (r) {
+      var box = document.getElementById('exOpSuggest');
+      var rows = r.items || [];
+      STATE.exOpSearch = rows;
+      box.style.display = 'block';
+      box.innerHTML = rows.map(function (i, idx) {
+        var have = exOpeningHave_(i.id);
+        var unit = exOpeningUnit_(i);
+        return '<div onclick="addExOpeningItem(' + idx + ')">' + (i.code ? esc(i.code) + ' · ' : '') + esc(i.name) +
+          ' <span class="muted">' + esc(unit) + ' · คงเหลือภายนอก ' + have + '</span></div>';
+      }).join('') || '<div class="muted">ไม่พบรายการในทะเบียน</div>';
+    }).catch(function (e) { toast(e.message || String(e)); });
+  }, 220);
+}
+function addExOpeningItem(idx) {
+  var it = (STATE.exOpSearch || [])[idx];
+  if (!it) return;
+  if ((STATE.exOpCart || []).some(function (l) { return l.itemId === it.id; })) {
+    toast('รายการนี้อยู่ในรายการแล้ว');
+    return;
+  }
+  STATE.exOpCart.push({
+    itemId: it.id,
+    name: it.name,
+    code: it.code || '',
+    packSize: it.packSize || '',
+    form: it.form || '',
+    unit: exOpeningUnit_(it),
+    have: exOpeningHave_(it.id),
+    qty: ''
+  });
+  document.getElementById('exOpSuggest').style.display = 'none';
+  document.getElementById('exOpSearch').value = '';
+  renderExOpCart();
+}
+function updateExOpQty(idx, value) {
+  if (!STATE.exOpCart[idx]) return;
+  STATE.exOpCart[idx].qty = value;
+  var total = 0;
+  var n = 0;
+  STATE.exOpCart.forEach(function (l) {
+    var q = Number(l.qty);
+    if (q > 0) { total += q; n++; }
+  });
+  document.getElementById('exOpCalc').textContent = n ? (n + ' รายการ · ' + total + ' หน่วย') : 'ยังไม่ได้ใส่จำนวน';
+}
+function removeExOpLine(idx) {
+  STATE.exOpCart.splice(idx, 1);
+  renderExOpCart();
+}
+function renderExOpCart() {
+  var table = document.getElementById('exOpTable');
+  if (!table) return;
+  var rows = STATE.exOpCart || [];
+  if (!rows.length) {
+    table.innerHTML = '<tr><td class="muted">ยังไม่ได้เลือก</td></tr>';
+    document.getElementById('exOpCalc').textContent = 'ยังไม่ได้เลือก';
+    return;
+  }
+  var html = '<tr><th>รายการ</th><th>หน่วย</th><th class="right">คงเหลือภายนอก</th><th class="right">จำนวนที่ยกมา</th><th></th></tr>';
+  html += rows.map(function (l, idx) {
+    var have = exOpeningHave_(l.itemId);
+    l.have = have;
+    return '<tr><td>' + esc(l.name) + (l.packSize ? '<div class="muted">' + esc(l.packSize) + '</div>' : '') + '</td>' +
+      '<td>' + esc(l.unit) + '</td>' +
+      '<td class="right">' + have + '</td>' +
+      '<td class="right"><input type="number" min="0" step="any" value="' + esc(l.qty) + '" style="width:110px;text-align:right" oninput="updateExOpQty(' + idx + ', this.value)"></td>' +
+      '<td><button type="button" class="btn ghost" onclick="removeExOpLine(' + idx + ')">เอาออก</button></td></tr>';
+  }).join('');
+  table.innerHTML = html;
+  updateExOpQty(0, rows[0] ? rows[0].qty : '');
+}
+function clearExOpening() {
+  STATE.exOpCart = [];
+  var box = document.getElementById('exOpSuggest');
+  if (box) box.style.display = 'none';
+  var search = document.getElementById('exOpSearch');
+  if (search) search.value = '';
+  renderExOpCart();
+}
+function saveExOpening() {
+  var lines = (STATE.exOpCart || []).filter(function (l) { return Number(l.qty) > 0; })
+    .map(function (l) { return { itemId: l.itemId, qty: Number(l.qty) }; });
+  if (!lines.length) return toast('ใส่จำนวนที่ยกมาก่อน');
+  var date = document.getElementById('exOpDate').value;
+  if (!date) return toast('กรุณาเลือกวันที่');
+  api('saveExtOpening', { date: date, lines: lines }).then(function (r) {
+    toast('บันทึกยอดยกมา ' + r.id + ' · ' + r.totalQty + ' หน่วย');
+    clearExOpening();
+    loadExOpening();
+    refreshAfterMutation();
+  }).catch(function (e) { toast(e.message || String(e)); });
+}
+function loadExOpHistory() {
+  var box = document.getElementById('exOpHistory');
+  if (!box) return;
+  api('listExtOpenings').then(function (r) {
+    box.innerHTML = (r.openings || []).slice(0, 12).map(function (x) {
+      return '<div class="user-row wd-history-row"><span>' + esc(ThDate.formatDateLong(x.date)) + ' · ' + esc(x.id) +
+        ' · ' + x.lines + ' รายการ · ' + x.totalQty + ' หน่วย</span>' +
+        '<button type="button" class="btn ghost danger" onclick="deleteExOpening(\'' + x.id + '\')">ลบ</button></div>';
+    }).join('') || 'ยังไม่มี';
+  }).catch(function () { box.textContent = 'ยังไม่มี'; });
+}
+function deleteExOpening(id) {
+  if (!confirm('ลบยอดยกมา ' + id + ' และหักจำนวนนี้ออกจากคลังภายนอก?')) return;
+  api('deleteExtOpening', { id: id }).then(function () {
+    toast('ลบยอดยกมา ' + id + ' แล้ว');
+    loadExOpening();
+    refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }

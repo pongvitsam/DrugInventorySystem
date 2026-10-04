@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=123">
+  <link rel="stylesheet" href="css/styles.css?v=124">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -58,6 +58,7 @@
       <button class="nav-btn" data-page="withdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังหลัก</button>
       <div class="nav-label">คลังยาภายนอก</div>
       <button class="nav-btn" data-page="exstock"><span class="nav-ico" data-ico="stock"></span>ยอดคงเหลือภายนอก</button>
+      <button class="nav-btn" data-page="exopening"><span class="nav-ico" data-ico="receive"></span>ยอดยกมาคลังภายนอก</button>
       <button class="nav-btn" data-page="exreceive"><span class="nav-ico" data-ico="receive"></span>รับเข้าคลังภายนอก</button>
       <button class="nav-btn" data-page="exwithdraw"><span class="nav-ico" data-ico="withdraw"></span>เบิกจากคลังภายนอก</button>
       <button class="nav-btn" data-page="reports"><span class="nav-ico" data-ico="reports"></span>สรุปรายเดือน</button>
@@ -272,6 +273,41 @@
           </div>
         </div>
         <div class="card table-wrap table-wrap-full"><table id="exStockTable"></table></div>
+      </section>
+
+      <section class="page" id="page-exopening">
+        <div class="top">
+          <div>
+            <h2>ยอดยกมาคลังภายนอก</h2>
+            <div class="sub">ใส่เฉพาะจำนวนที่มีอยู่แล้วแต่ยังไม่ลงระบบ · ไม่ตัดคลังหลัก · ไม่นับเป็นรับเข้า · เดือนที่ผ่านมาไม่เปลี่ยน</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="field th-date-field"><label>วันที่บันทึก</label><input id="exOpDate" type="hidden"><button type="button" class="th-date-btn" data-for="exOpDate">เลือกวันที่</button></div>
+            <div class="field suggest" style="flex:2">
+              <label>ค้นหารายการยา</label>
+              <input id="exOpSearch" placeholder="พิมพ์ชื่อยา แล้วเลือก" oninput="searchExOpening()">
+              <div class="suggest-list" id="exOpSuggest" style="display:none"></div>
+            </div>
+          </div>
+          <p class="muted" style="margin:10px 0 0">ดูยอดคงเหลือคลังภายนอกก่อน แล้วใส่เฉพาะจำนวนที่ยังขาด ยาเม็ดใส่เป็นเม็ด ครีมและน้ำใส่เป็นหลอดหรือขวด</p>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>รายการที่ยกมา</h3>
+          <div class="table-wrap"><table id="exOpTable"></table></div>
+          <div class="row" style="justify-content:space-between;margin-top:12px">
+            <div class="muted" id="exOpCalc">ยังไม่ได้เลือก</div>
+            <div class="row" style="gap:8px;margin:0">
+              <button type="button" class="btn secondary" onclick="clearExOpening()">ล้างรายการ</button>
+              <button class="btn" id="exOpSaveBtn" onclick="saveExOpening()">บันทึกยอดยกมา</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>รายการที่ยกมาล่าสุด</h3>
+          <div id="exOpHistory" class="muted">ยังไม่มี</div>
+        </div>
       </section>
 
       <section class="page" id="page-exreceive">
@@ -650,6 +686,7 @@
     <div class="mob-more-sheet" id="mobMoreSheet">
       <div class="mob-more-handle"></div>
       <button class="mob-more-item" data-page="exstock" onclick="mobPickPage('exstock')"><span class="mob-nav-ico" data-ico="stock" style="background:rgba(10,122,102,.12)"></span>ยอดคงเหลือภายนอก</button>
+      <button class="mob-more-item" data-page="exopening" onclick="mobPickPage('exopening')"><span class="mob-nav-ico" data-ico="receive" style="background:rgba(10,122,102,.12)"></span>ยอดยกมาคลังภายนอก</button>
       <button class="mob-more-item" data-page="exreceive" onclick="mobPickPage('exreceive')"><span class="mob-nav-ico" data-ico="receive" style="background:rgba(10,122,102,.12)"></span>รับเข้าคลังภายนอก</button>
       <button class="mob-more-item" data-page="exwithdraw" onclick="mobPickPage('exwithdraw')"><span class="mob-nav-ico" data-ico="withdraw" style="background:rgba(10,122,102,.12)"></span>เบิกจากคลังภายนอก</button>
       <button class="mob-more-item" data-page="items" onclick="mobPickPage('items')"><span class="mob-nav-ico" data-ico="items" style="background:rgba(10,122,102,.12)"></span>ทะเบียนรายการ</button>
@@ -727,12 +764,12 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=123"></script>
-  <script src="js/remote.js?v=123"></script>
-  <script src="js/api.js?v=123"></script>
+  <script src="js/db.js?v=124"></script>
+  <script src="js/remote.js?v=124"></script>
+  <script src="js/api.js?v=124"></script>
   <script src="js/options.js?v=105"></script>
   <script src="js/thdate.js?v=105"></script>
-  <script src="js/app.js?v=123"></script>
+  <script src="js/app.js?v=124"></script>
   <script src="js/auth.js?v=105"></script>
   <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->

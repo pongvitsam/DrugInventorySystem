@@ -88,7 +88,7 @@ var RemoteDB = (function () {
     });
     moves.forEach(function (m) {
       if (m.type === 'OPENING' || String(m.refId || '') === 'SEED') return;
-      if (m.type === 'RECEIVE' || m.type === 'ISSUE' || m.type === 'COUNT' || m.type === 'RETURN' || m.type === 'TRANSFER_IN' || m.type === 'TRANSFER_OUT') {
+      if (m.type === 'RECEIVE' || m.type === 'ISSUE' || m.type === 'COUNT' || m.type === 'RETURN' || m.type === 'TRANSFER_IN' || m.type === 'TRANSFER_OUT' || m.type === 'EXT_OPENING') {
         histMoves++;
         noteTime(m.date || '');
         var d = String(m.date || '').slice(0, 10);

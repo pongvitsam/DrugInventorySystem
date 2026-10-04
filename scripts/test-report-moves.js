@@ -85,6 +85,22 @@ var mixed = alignSlipIssues_(
 );
 eq('extra movement issue is dropped', mixed.map(function (m) { return m.type + ':' + m.qtyChange + ':' + m.amount; }), ['RECEIVE:20:200', 'ISSUE:-6:60']);
 
+var openingKept = alignSlipIssues_(
+  [{ id: 'EO', date: '2026-10-04', type: 'EXT_OPENING', location: 'EXT', itemId: 'I1', stockId: 'S1', qtyChange: 8, unitPrice: 1, amount: 8, refId: 'EO-0001', notes: 'ยอดยกมาคลังภายนอก' }],
+  [],
+  []
+);
+eq('external opening is not a withdrawal', openingKept.map(function (m) { return m.type + m.qtyChange; }), ['EXT_OPENING8']);
+
+eval(extract('skipExtOpeningPeriod_'));
+var remain = 15;
+var rolled = skipExtOpeningPeriod_({ type: 'EXT_OPENING' }, '2026-10-04', '2026-09-30', function () { remain -= 10; });
+eq('past month rolls opening stock back', [rolled, remain], [true, 5]);
+remain = 15;
+var current = skipExtOpeningPeriod_({ type: 'EXT_OPENING' }, '2026-10-04', '2026-10-31', function () { remain -= 10; });
+eq('current month keeps opening inside the balance', [current, remain], [true, 15]);
+eq('other movements are unchanged', skipExtOpeningPeriod_({ type: 'RECEIVE' }, '2026-10-04', '2026-09-30', function () {}), false);
+
 if (fail) {
   console.log(fail + ' failed');
   process.exit(1);
