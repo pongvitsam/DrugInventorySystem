@@ -813,7 +813,6 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
   var editDate = toIsoDate_(p.date);
   var returnedQty = 0;
   var returnedCount = 0;
-  var newMoves = [];
 
   oldLines.forEach(function (old) {
     var oldQty = num_(old.qty);
@@ -824,8 +823,6 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
       returnStockQty_(stock, old, returnQty, loc);
       returnedQty = round4_(returnedQty + returnQty);
       returnedCount += 1;
-      newMoves.push(movement_('RETURN', editDate, loc, old.itemId, old.stockId, returnQty,
-        num_(old.unitPrice), round2_(returnQty * num_(old.unitPrice)), tr.id, 'คืนจากแก้ไขใบเบิก'));
     }
   });
 
@@ -839,16 +836,13 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
     if (issueQty > num_(from.qty) + 1e-9) {
       throw new Error('จำนวนเกินคงเหลือ: ' + ((items[from.itemId] || {}).name || from.itemId));
     }
-    var price = num_(from.unitPrice);
-    var amount = round2_(issueQty * price);
     from.qty = round4_(num_(from.qty) - issueQty);
-    newMoves.push(movement_('ISSUE', editDate, loc, from.itemId, from.id, -issueQty, price, amount, tr.id, ''));
   });
 
   tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
   moves = moves.filter(function (m) {
     return !(m.refId === tr.id && (m.type === 'ISSUE' || m.type === 'RETURN'));
-  }).concat(newMoves);
+  });
 
   tr.date = editDate;
   tr.notes = String(p.notes || '');
@@ -856,6 +850,14 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
   tr.totalValue = 0;
   lines.forEach(function (line) {
     pushTransferLineRecord_(tr, line, stock, items, tLines);
+  });
+  // เก็บยอดเบิกทั้งใบ ไม่ใช่แค่ส่วนต่าง — ไม่งั้นสรุปรายเดือนหายหลังแก้ไข
+  tLines.forEach(function (l) {
+    if (l.transferId !== tr.id) return;
+    var qty = num_(l.qty);
+    if (qty <= 0) return;
+    var price = num_(l.unitPrice);
+    moves.push(movement_('ISSUE', tr.date, loc, l.itemId, l.stockId, -qty, price, num_(l.amount) || round2_(qty * price), tr.id, ''));
   });
   return { transfer: tr, tLines: tLines, moves: moves, returnedQty: returnedQty, returnedCount: returnedCount };
 }
@@ -914,8 +916,6 @@ function apiDeleteTransfer_(p) {
   var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
   var returnedQty = 0;
   var returnedCount = 0;
-  var newMoves = [];
-  var returnDate = tr.date || toIsoDate_(new Date());
 
   oldLines.forEach(function (old) {
     var qty = num_(old.qty);
@@ -923,14 +923,13 @@ function apiDeleteTransfer_(p) {
     returnStockQty_(stock, old, qty, loc);
     returnedQty = round4_(returnedQty + qty);
     returnedCount += 1;
-    newMoves.push(movement_('RETURN', returnDate, loc, old.itemId, old.stockId, qty,
-      num_(old.unitPrice), round2_(qty * num_(old.unitPrice)), tr.id, 'ลบใบเบิก'));
   });
 
   tLines = tLines.filter(function (l) { return l.transferId !== tr.id; });
+  // คืนสต็อกแล้ว — ตัดเคลื่อนไหวของใบนี้ออกทั้งก้อน ไม่ใส่รายการคืนซ้ำ
   moves = moves.filter(function (m) {
     return !(m.refId === tr.id && (m.type === 'ISSUE' || m.type === 'RETURN'));
-  }).concat(newMoves);
+  });
   heads = heads.filter(function (h) { return h.id !== tr.id; });
 
   writeObjects_('Stock', stock);
@@ -1324,10 +1323,77 @@ function reportLotPack_(packSize, item) {
 function moveReportLot_(m, stockById, items) {
   var st = stockById[m.stockId];
   var it = items[m.itemId] || {};
+  var pack = (st && st.packSize) || it.packSize || '';
+  var price = st ? num_(st.unitPrice) : (num_(m.unitPrice) || num_(it.unitPrice));
   return {
-    packSize: preferSpacedPack_(String((st && st.packSize) || it.packSize || '')),
-    unitPrice: num_(m.unitPrice) || (st ? num_(st.unitPrice) : num_(it.unitPrice))
+    packSize: preferSpacedPack_(String(pack)),
+    unitPrice: price
   };
+}
+
+/** ใบเบิกที่เคยแก้ไขเก็บแค่ส่วนต่าง — สร้างยอดเบิกจากบรรทัดใบเบิกที่ยังอยู่ */
+function reconcileIssueMoves_(moves, transfers, tLines, stock) {
+  moves = moves || [];
+  var heads = indexById_(transfers || []);
+  var stockById = indexById_(stock || []);
+  var linesBy = {};
+  var issueRefs = {};
+  moves.forEach(function (m) {
+    if (m && m.type === 'ISSUE' && m.refId) issueRefs[m.refId] = 1;
+  });
+  (tLines || []).forEach(function (l) {
+    if (!l || !heads[l.transferId] || !(num_(l.qty) > 0)) return;
+    if (!linesBy[l.transferId]) linesBy[l.transferId] = [];
+    linesBy[l.transferId].push(l);
+  });
+  function locOf_(tr) {
+    if (tr && tr.location) return normalizeLoc_(tr.location);
+    if (resolveTransferLocation_(tr, moves) === LOC_EXT) return LOC_EXT;
+    var ls = linesBy[tr.id] || [];
+    for (var i = 0; i < ls.length; i++) {
+      var st = stockById[ls[i].stockId];
+      if (st && st.location === LOC_EXT) return LOC_EXT;
+    }
+    return LOC_MAIN;
+  }
+  var out = [];
+  moves.forEach(function (m) {
+    if (!m) return;
+    if ((m.type === 'ISSUE' || m.type === 'RETURN') && m.refId && linesBy[m.refId]) return;
+    if (m.type === 'RETURN' && m.refId && !heads[m.refId] && !issueRefs[m.refId]) return;
+    out.push(m);
+  });
+  Object.keys(linesBy).forEach(function (tid) {
+    var tr = heads[tid];
+    var loc = locOf_(tr);
+    linesBy[tid].forEach(function (l) {
+      var qty = num_(l.qty);
+      var price = num_(l.unitPrice);
+      out.push({
+        id: l.id || ('iss-' + tid),
+        date: toIsoDate_(tr.date),
+        type: 'ISSUE',
+        location: loc,
+        itemId: l.itemId,
+        stockId: l.stockId || '',
+        qtyChange: -qty,
+        unitPrice: price,
+        amount: num_(l.amount) || round2_(qty * price),
+        refId: tid,
+        notes: ''
+      });
+    });
+  });
+  return out;
+}
+
+function reportMoves_() {
+  return reconcileIssueMoves_(
+    readObjects_('Movements'),
+    readObjects_('Transfers'),
+    readObjects_('TransferLines'),
+    readObjects_('Stock')
+  );
 }
 
 function ensureReportRow_(map, itemId, packSize, unitPrice, items) {
@@ -1364,11 +1430,11 @@ function apiMonthReport_(p) {
   var loc = reportLocation_(p);
   var rr = reportRange_(p);
   var range = { start: rr.start, end: rr.end };
-  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items'), false);
   var itemMap = indexById_(items);
   var stock = readObjects_('Stock');
   var stockById = indexById_(stock);
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var byKey = {};
   stock.forEach(function (s) {
     if (s.location !== loc || !itemMap[s.itemId]) return;
@@ -1383,8 +1449,9 @@ function apiMonthReport_(p) {
     var lot = moveReportLot_(m, stockById, itemMap);
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
     if (!row) return;
-    var d = m.date;
+    var d = toIsoDate_(m.date);
     var ch = num_(m.qtyChange);
+    if (!d) return;
     if (d > range.end) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
@@ -1477,7 +1544,7 @@ function apiMoneyReport_(p) {
   var range = { start: rr.start, end: rr.end };
   var items = indexById_(normalizeItemPacks_(readObjects_('Items'), false));
   var stock = readObjects_('Stock');
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var map = {};
   CATEGORIES.forEach(function (c) {
     map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
@@ -1495,9 +1562,10 @@ function apiMoneyReport_(p) {
     var it = items[m.itemId] || {};
     var cat = it.category || 'อื่น ๆ';
     if (!map[cat]) map[cat] = { category: cat, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
-    var d = m.date;
+    var d = toIsoDate_(m.date);
     var ch = num_(m.qtyChange);
     var val = ch * num_(m.unitPrice);
+    if (!d) return;
     if (d > range.end) {
       map[cat].remain -= val;
     } else if (d >= range.start && d <= range.end) {
@@ -2375,8 +2443,9 @@ function computeItemPeriodStats_(itemId, rangeStart, rangeEnd, packFilter, itemM
     var row = ensureReportRow_(byKey, m.itemId, lot.packSize, lot.unitPrice, itemMap);
     if (!row) return;
     if (packFilter && packKey_(row.item.packSize) !== packKey_(packFilter)) return;
-    var d = m.date;
+    var d = toIsoDate_(m.date);
     var ch = num_(m.qtyChange);
+    if (!d) return;
     if (d > rangeEnd) {
       row.remain -= ch;
       row.remainValue -= ch * num_(m.unitPrice);
@@ -2423,7 +2492,7 @@ function apiItemTrendReport_(p) {
   var loc = reportLocation_(p);
   var itemId = String(p.itemId || '');
   if (!itemId) throw new Error('เลือกรายการยา');
-  var items = normalizeItemPacks_(readObjects_('Items'), false).filter(function (i) { return i.active !== '0'; });
+  var items = normalizeItemPacks_(readObjects_('Items'), false);
   var itemMap = indexById_(items);
   var it = itemMap[itemId];
   if (!it) throw new Error('ไม่พบรายการยา');
@@ -2433,7 +2502,7 @@ function apiItemTrendReport_(p) {
   if (!monthKeys.length) throw new Error('ช่วงวันที่ไม่ถูกต้อง');
   var stock = readObjects_('Stock');
   var stockById = indexById_(stock);
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var packMap = {};
   var months = monthKeys.map(function (mk) {
     var mr = monthRange_(mk);

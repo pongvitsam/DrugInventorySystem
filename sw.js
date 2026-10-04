@@ -3,7 +3,7 @@
  * - แคชไฟล์หลักให้เปิดออฟไลน์ได้ (ข้อมูลอยู่ใน localStorage อยู่แล้ว)
  * - ไม่แคช Google Sheets / GAS / ฟอนต์ภายนอกแบบ network-only ที่จำเป็น
  */
-var CACHE_NAME = 'pharma-shell-v119';
+var CACHE_NAME = 'pharma-shell-v120';
 var PRECACHE = [
   './',
   './index.html',
@@ -14,13 +14,13 @@ var PRECACHE = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
-  './css/styles.css?v=119',
-  './js/db.js?v=119',
-  './js/remote.js?v=119',
-  './js/api.js?v=119',
+  './css/styles.css?v=120',
+  './js/db.js?v=120',
+  './js/remote.js?v=120',
+  './js/api.js?v=120',
   './js/options.js?v=105',
   './js/thdate.js?v=105',
-  './js/app.js?v=119',
+  './js/app.js?v=120',
   './js/auth.js?v=105',
   './js/pwa.js?v=1'
 ];

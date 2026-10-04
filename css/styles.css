@@ -347,6 +347,7 @@ textarea { min-height: 70px; }
     size: A4 portrait;
     margin: 12mm 10mm;
   }
+  th, td { position: static !important; }
   .sidebar, .toolbar, .btn, .toast, .nav-btn, .sheet-link, .stock-alert, .stock-filters { display: none !important; }
   .app { display: block; }
   .main { max-width: none; padding: 0; }
