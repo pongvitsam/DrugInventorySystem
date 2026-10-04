@@ -1329,6 +1329,87 @@ function moveReportLot_(m, stockById, items) {
   };
 }
 
+/** วันตามที่หน้าเบิกแสดง — ไม่เลื่อนวันที่ที่มีเวลาต่อท้ายไปวันถัดไป */
+function slipDay_(v) {
+  var s = String(v || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return toIsoDate_(v);
+}
+
+/**
+ * สรุปรายเดือนใช้ใบเบิกเป็นหลักเฉพาะใบที่วันหรือจำนวนไม่ตรงกับรายการเคลื่อนไหว
+ * ใบที่ตรงอยู่แล้วไม่ถูกบวกซ้ำ
+ */
+function alignSlipIssues_(moves, transfers, tLines) {
+  var heads = indexById_(transfers || []);
+  var out = (moves || []).map(function (m) { return Object.assign({}, m); });
+  var linesBy = {};
+  (tLines || []).forEach(function (l) {
+    if (!l || !heads[l.transferId] || !(num_(l.qty) > 0)) return;
+    var bucket = linesBy[l.transferId] || (linesBy[l.transferId] = {});
+    bucket[String(l.stockId || '') + '|' + String(l.itemId || '')] = l;
+  });
+  Object.keys(linesBy).forEach(function (tid) {
+    var tr = heads[tid];
+    var day = slipDay_(tr.date);
+    var lines = [];
+    var lineQty = 0;
+    Object.keys(linesBy[tid]).forEach(function (k) {
+      lines.push(linesBy[tid][k]);
+      lineQty += num_(linesBy[tid][k].qty);
+    });
+    var linked = [];
+    var issued = 0;
+    var hasReturn = false;
+    out.forEach(function (m) {
+      if (!m || String(m.refId || '') !== String(tid)) return;
+      if (m.type !== 'ISSUE' && m.type !== 'RETURN') return;
+      linked.push(m);
+      if (m.type === 'RETURN' && Math.abs(num_(m.qtyChange)) > 1e-9) hasReturn = true;
+      if (m.type === 'ISSUE' && num_(m.qtyChange) < 0) issued += -num_(m.qtyChange);
+    });
+    if (!linked.length) return;
+    if (!hasReturn && Math.abs(issued - lineQty) < 1e-4) {
+      if (!day) return;
+      linked.forEach(function (m) {
+        if (toIsoDate_(m.date) !== day) m.date = day;
+      });
+      return;
+    }
+    var loc = (tr.location && normalizeLoc_(tr.location)) || linked[0].location || LOC_MAIN;
+    out = out.filter(function (m) {
+      return !(m && String(m.refId || '') === String(tid) && (m.type === 'ISSUE' || m.type === 'RETURN'));
+    });
+    lines.forEach(function (l) {
+      var qty = num_(l.qty);
+      if (!(qty > 0)) return;
+      var price = num_(l.unitPrice);
+      out.push({
+        id: l.id || ('iss-' + tid),
+        date: day || toIsoDate_(tr.date),
+        type: 'ISSUE',
+        location: loc,
+        itemId: l.itemId,
+        stockId: l.stockId || '',
+        qtyChange: -qty,
+        unitPrice: price,
+        amount: num_(l.amount) || round2_(qty * price),
+        refId: tid,
+        notes: ''
+      });
+    });
+  });
+  return out;
+}
+
+function reportMoves_() {
+  return alignSlipIssues_(
+    readObjects_('Movements'),
+    readObjects_('Transfers'),
+    readObjects_('TransferLines')
+  );
+}
+
 function ensureReportRow_(map, itemId, packSize, unitPrice, items) {
   var it = items[itemId];
   if (!it) return null;
@@ -1367,7 +1448,7 @@ function apiMonthReport_(p) {
   var itemMap = indexById_(items);
   var stock = readObjects_('Stock');
   var stockById = indexById_(stock);
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var byKey = {};
   stock.forEach(function (s) {
     if (s.location !== loc || !itemMap[s.itemId]) return;
@@ -1476,7 +1557,7 @@ function apiMoneyReport_(p) {
   var range = { start: rr.start, end: rr.end };
   var items = indexById_(normalizeItemPacks_(readObjects_('Items'), false));
   var stock = readObjects_('Stock');
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var map = {};
   CATEGORIES.forEach(function (c) {
     map[c] = { category: c, opening: 0, receive: 0, used: 0, remain: 0, periodChange: 0 };
@@ -2432,7 +2513,7 @@ function apiItemTrendReport_(p) {
   if (!monthKeys.length) throw new Error('ช่วงวันที่ไม่ถูกต้อง');
   var stock = readObjects_('Stock');
   var stockById = indexById_(stock);
-  var moves = readObjects_('Movements');
+  var moves = reportMoves_();
   var packMap = {};
   var months = monthKeys.map(function (mk) {
     var mr = monthRange_(mk);
