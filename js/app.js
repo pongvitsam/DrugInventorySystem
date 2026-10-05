@@ -3758,6 +3758,7 @@ function loadExOpHistory() {
   }).catch(function () { box.textContent = 'ยังไม่มี'; });
 }
 function deleteExOpening(id) {
+  if (!confirmStockUser('การลบยอดยกมา ' + id)) return;
   if (!confirm('ลบยอดยกมา ' + id + ' และหักจำนวนนี้ออกจากคลังภายนอก?')) return;
   api('deleteExtOpening', { id: id }).then(function () {
     toast('ลบยอดยกมา ' + id + ' แล้ว');
