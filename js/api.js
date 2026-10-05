@@ -2296,14 +2296,20 @@ function apiSaveClimateLog_(p) {
     rows.push(row);
   }
   writeObjects_('ClimateLogs', rows);
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.holdClimateUpsert) RemoteDB.holdClimateUpsert(row);
   return { ok: true, log: row };
 }
 
 function apiDeleteClimateLog_(p) {
   var id = String((p && p.id) || '');
   if (!id) throw new Error('ไม่พบรหัสรายการ');
-  var rows = readObjects_('ClimateLogs').filter(function (r) { return r.id !== id; });
-  writeObjects_('ClimateLogs', rows);
+  var all = readObjects_('ClimateLogs');
+  var removed = null;
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].id === id) { removed = all[i]; break; }
+  }
+  writeObjects_('ClimateLogs', all.filter(function (r) { return r.id !== id; }));
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.holdClimateDelete) RemoteDB.holdClimateDelete(id, removed);
   return { ok: true };
 }
 

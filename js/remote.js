@@ -6,6 +6,7 @@ var RemoteDB = (function () {
   var GAS_URL_KEY = 'pharma:gasUrl';
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
+  var CLIMATE_HOLD_KEY = 'pharma:climateHold';
   var HISTORY_CUTOFF_ = '2026-09-01';
   var POLL_MS = 45000;
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
@@ -25,6 +26,7 @@ var RemoteDB = (function () {
   var syncPendingOpts_ = null;
   var syncDeferredWhileOffline_ = false;
   var onlineBound_ = false;
+  var syncSerial_ = 0;
 
   function isOnline_() {
     return typeof navigator === 'undefined' || navigator.onLine !== false;
@@ -174,7 +176,8 @@ var RemoteDB = (function () {
             TransferLines: data.TransferLines,
             ExtReceipts: data.ExtReceipts,
             ExtReceiptLines: data.ExtReceiptLines,
-            Movements: data.Movements
+            Movements: data.Movements,
+            ClimateLogs: data.ClimateLogs
           };
           payload.slim = true;
           localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
@@ -597,15 +600,142 @@ var RemoteDB = (function () {
     dataEpoch_ += 1;
   }
 
-  function applyRemotePayload_(res, force, epoch) {
+  function readClimateHolds_() {
+    try {
+      var raw = localStorage.getItem(CLIMATE_HOLD_KEY);
+      var rows = raw ? JSON.parse(raw) : [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeClimateHolds_(rows) {
+    try {
+      if (!rows || !rows.length) localStorage.removeItem(CLIMATE_HOLD_KEY);
+      else localStorage.setItem(CLIMATE_HOLD_KEY, JSON.stringify(rows));
+    } catch (e) { /* quota */ }
+  }
+
+  function climateDate_(row) {
+    return String((row && row.date) || '').slice(0, 10);
+  }
+
+  function climateSlot_(row) {
+    return row && row.slot === 'pm' ? 'pm' : 'am';
+  }
+
+  function sameClimate_(a, b) {
+    return !!a && !!b && climateDate_(a) === climateDate_(b) && climateSlot_(a) === climateSlot_(b);
+  }
+
+  // บันทึกอุณหภูมิที่ยังไม่ยืนยันบน Sheet — ดึงชีตทับเครื่องแล้วต้องใส่กลับ
+  function holdClimateUpsert_(row) {
+    if (!row || !row.date) return;
+    var holds = readClimateHolds_().filter(function (h) {
+      if (h.op === 'upsert' && h.row && sameClimate_(h.row, row)) return false;
+      if (h.op === 'delete' && ((h.id && row.id && h.id === row.id) || (h.date === climateDate_(row) && h.slot === climateSlot_(row)))) return false;
+      return true;
+    });
+    holds.push({ op: 'upsert', row: row });
+    writeClimateHolds_(holds);
+  }
+
+  function holdClimateDelete_(id, row) {
+    id = String(id || '');
+    var date = row ? climateDate_(row) : '';
+    var slot = row ? climateSlot_(row) : '';
+    if (!id && !date) return;
+    var holds = readClimateHolds_().filter(function (h) {
+      if (h.op === 'upsert' && h.row && ((id && h.row.id === id) || (date && sameClimate_(h.row, row)))) return false;
+      if (h.op === 'delete' && h.id === id && id) return false;
+      return true;
+    });
+    holds.push({ op: 'delete', id: id, date: date, slot: slot });
+    writeClimateHolds_(holds);
+  }
+
+  function replayClimateHolds_() {
+    var holds = readClimateHolds_();
+    if (!holds.length) return;
+    var rows = DB.readObjects('ClimateLogs').slice();
+    holds.forEach(function (h) {
+      if (h.op === 'delete') {
+        rows = rows.filter(function (r) {
+          if (h.id && r.id === h.id) return false;
+          if (h.date && climateDate_(r) === h.date && climateSlot_(r) === h.slot) return false;
+          return true;
+        });
+        return;
+      }
+      if (h.op !== 'upsert' || !h.row) return;
+      var replaced = false;
+      rows = rows.map(function (r) {
+        if ((h.row.id && r.id === h.row.id) || sameClimate_(r, h.row)) {
+          replaced = true;
+          return h.row;
+        }
+        return r;
+      });
+      if (!replaced) rows.push(h.row);
+    });
+    DB.writeObjects('ClimateLogs', rows);
+  }
+
+  function climateValueMatches_(remoteRow, held) {
+    return String(remoteRow.temperature) === String(held.temperature) &&
+      String(remoteRow.humidity) === String(held.humidity);
+  }
+
+  function confirmClimateHolds_(remoteRows) {
+    remoteRows = remoteRows || [];
+    var next = readClimateHolds_().filter(function (h) {
+      if (h.op === 'delete') {
+        return remoteRows.some(function (r) {
+          if (h.id && r.id === h.id) return true;
+          return h.date && climateDate_(r) === h.date && climateSlot_(r) === h.slot;
+        });
+      }
+      if (!h.row) return false;
+      var onSheet = remoteRows.some(function (r) {
+        return sameClimate_(r, h.row) && climateValueMatches_(r, h.row);
+      });
+      return !onSheet;
+    });
+    writeClimateHolds_(next);
+  }
+
+  function schedulePushHolds_() {
+    if (!readClimateHolds_().length) return;
+    if (syncing || syncDebounceTimer_ || syncPendingOpts_) return;
+    if (!enabled() || !isOnline_()) return;
+    sync({ force: false, skipImages: true }).catch(function () {});
+  }
+
+  function snapshotIsStale_(serial) {
+    if (syncing) return true;
+    if (serial != null && serial !== syncSerial_) return true;
+    return false;
+  }
+
+  function applyRemotePayload_(res, force, epoch, serial) {
     if (epoch != null && epoch !== dataEpoch_) return false;
+    if (serial != null && serial !== syncSerial_) return false;
     if (!res) return false;
-    applyRevision_(res.revision);
+    var incomingRev = Number(res.revision) || 0;
+    // สแนปช็อตที่เก่ากว่าเครื่อง — ทับแล้วรายการที่ซิงก์ไปแล้วจะหาย
+    if (incomingRev < localRevision) return false;
+    applyRevision_(incomingRev);
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
+      var remoteClimate = (res.data && res.data.ClimateLogs) ? res.data.ClimateLogs : [];
       // Sheet เป็นต้นทางเดียว — ทับทั้งชุดในเครื่องตาม Sheet เสมอ
+      // แล้วใส่บันทึกอุณหภูมิที่ยังไม่ขึ้นชีตกลับเข้าไป
       DB.importAll(res.data || {});
+      replayClimateHolds_();
+      confirmClimateHolds_(remoteClimate);
       resetApiCaches_();
+      if (readClimateHolds_().length) schedulePushHolds_();
       return true;
     }
     return false;
@@ -627,11 +757,13 @@ var RemoteDB = (function () {
   function handleImportResult_(res) {
     if (res && res.conflict) {
       // Sheet ชนะเสมอ — ดึงจาก Google แล้วให้ทำรายการใหม่ (slim ข้ามรูปบิล)
+      // บันทึกอุณหภูมิที่ยังค้างจะถูกใส่กลับหลังทับ
       var epoch = dataEpoch_;
+      var serial = syncSerial_;
       return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (ex) {
         if (epoch !== dataEpoch_) return;
         if (!ex || !ex.ok) throw new Error('ข้อมูลบน Google ใหม่กว่า และโหลดไม่สำเร็จ');
-        applyRemotePayload_(ex, true, epoch);
+        applyRemotePayload_(ex, true, epoch, serial);
         loaded = true;
         throw new Error('มีข้อมูลใหม่กว่าบน Google Sheets — โหลดแล้ว กรุณาทำรายการอีกครั้ง');
       });
@@ -655,6 +787,7 @@ var RemoteDB = (function () {
 
   function runSyncJob_(opts) {
     opts = opts || {};
+    syncSerial_ += 1;
     syncing = true;
     var exportOpts = {};
     if (opts.skipImages) exportOpts.skipImages = true;
@@ -709,14 +842,15 @@ var RemoteDB = (function () {
   function fetchAndApplyExport_() {
     // slim=1 ข้ามรูปบิล — โหลดเร็วขึ้นมาก (รูปยังอยู่ในเครื่องแยก)
     var epoch = dataEpoch_;
+    var serial = syncSerial_;
     var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
-      if (epoch !== dataEpoch_) return { ok: true, action: 'stale', changed: false };
+      if (epoch !== dataEpoch_ || snapshotIsStale_(serial)) return { ok: true, action: 'stale', changed: false };
       if (!res || !res.ok) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
       // ใช้ Sheet อย่างเดียว — ทับเครื่องเสมอ (รวมกรณี Sheet ว่าง = ล้างแคชในเครื่อง)
-      applyRemotePayload_(res, true, epoch);
+      applyRemotePayload_(res, true, epoch, serial);
       loaded = true;
       lastSyncAction = 'pulled';
       return { ok: true, action: 'pulled', changed: true };
@@ -781,17 +915,18 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.resolve({ changed: false });
     if (!isOnline_()) return Promise.resolve({ changed: false, offline: true });
     var epoch = dataEpoch_;
+    var serial = syncSerial_;
     var url = baseUrl() + '?action=meta&t=' + Date.now();
     return fetchJson(url).then(function (meta) {
-      if (epoch !== dataEpoch_) return { changed: false, stale: true };
+      if (epoch !== dataEpoch_ || snapshotIsStale_(serial)) return { changed: false, stale: true };
       if (!meta || !meta.ok) return { changed: false };
       var remoteRev = Number(meta.revision) || 0;
       if (remoteRev <= localRevision) return { changed: false, revision: localRevision };
       return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (res) {
-        if (epoch !== dataEpoch_) return { changed: false, stale: true };
+        if (epoch !== dataEpoch_ || snapshotIsStale_(serial)) return { changed: false, stale: true };
         if (!res || !res.ok) return { changed: false };
         // Sheet ใหม่กว่า — ดึงทับเครื่องเสมอ ไม่ push local ทับ Sheet
-        var changed = applyRemotePayload_(res, true, epoch);
+        var changed = applyRemotePayload_(res, true, epoch, serial);
         loaded = true;
         if (changed) lastSyncAction = 'pulled';
         return { changed: changed, revision: localRevision };
@@ -812,13 +947,14 @@ var RemoteDB = (function () {
     if (!enabled()) return Promise.reject(new Error('ยังไม่ได้ตั้ง URL Web App'));
     loaded = false;
     var epoch = dataEpoch_;
+    var serial = syncSerial_;
     var url = baseUrl() + '?action=export&slim=1&t=' + Date.now();
     return fetchJson(url).then(function (res) {
-      if (epoch !== dataEpoch_) return;
+      if (epoch !== dataEpoch_ || snapshotIsStale_(serial)) return;
       if (!res || !res.ok || !res.data) {
         throw new Error((res && res.error) || 'โหลดจาก Google ไม่สำเร็จ');
       }
-      applyRemotePayload_(res, true, epoch);
+      applyRemotePayload_(res, true, epoch, serial);
       loaded = true;
     });
   }
@@ -973,6 +1109,8 @@ var RemoteDB = (function () {
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,
     noteLocalMutation: noteLocalMutation_,
+    holdClimateUpsert: holdClimateUpsert_,
+    holdClimateDelete: holdClimateDelete_,
     sync: sync,
     ping: ping,
     pushLocal: pushLocal,

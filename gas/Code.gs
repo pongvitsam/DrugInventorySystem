@@ -228,12 +228,12 @@ function writeSheetObjects_(sheet, columns, objects) {
     });
   });
   var range = sheet.getRange(2, 1, rows.length, columns.length);
-  range.setValues(rows);
-  // บังคับคอลัมน์วันที่เป็นข้อความ — กัน Sheets แปลงเป็น Date แล้วเลื่อนวันตอน export
+  // ตั้งเป็นข้อความก่อนใส่ค่า — กัน Sheets แปลง YYYY-MM-DD เป็น Date แล้ววันเลื่อน
   columns.forEach(function (col, i) {
     if (!DATE_ONLY_COLS_[col]) return;
     sheet.getRange(2, i + 1, rows.length, 1).setNumberFormat('@');
   });
+  range.setValues(rows);
 }
 
 var LOGO_PROP_KEY_ = 'LOGO_DATA_URL';
@@ -330,10 +330,7 @@ function importAll_(data) {
   var current = readSettingsObj_(ss);
   var settings = data.SettingsObj || {};
   var rev = Number(current.syncRevision) || 0;
-  settings.syncRevision = String(rev + 1);
-  settings.syncUpdatedAt = new Date().toISOString();
-  data.SettingsObj = settings;
-  writeSettingsObj_(ss, settings);
+  // เขียนชีตก่อน แล้วค่อยขึ้น revision — ถ้าหมดเวลากลางทาง จะยังไม่ประกาศชุดที่ไม่ครบ (เช่น อุณหภูมิ)
   if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
   if (data.Receipts && data.Receipts.length) {
     var props2 = PropertiesService.getScriptProperties();
@@ -350,6 +347,10 @@ function importAll_(data) {
       writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
     }
   });
+  settings.syncRevision = String(rev + 1);
+  settings.syncUpdatedAt = new Date().toISOString();
+  data.SettingsObj = settings;
+  writeSettingsObj_(ss, settings);
   return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
 }
 
