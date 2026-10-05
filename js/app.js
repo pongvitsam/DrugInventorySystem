@@ -2397,9 +2397,10 @@ function renderMonthIssueBrief(d) {
   var html = '<div class="rp-print-brief print-only">';
   var locName = d.locationLabel || 'คลังหลัก';
   html += hdr(d.settings, 'สรุปเบิกออกจาก' + locName, period);
+  var qtyWord = d.location === 'EXT' ? 'หน่วย' : 'แพ็ก';
   html += '<div class="rp-print-total">' +
     '<p class="rp-print-big"><b>' + money(sm.issuedValue) + ' บาท</b></p>' +
-    '<p>จำนวน ' + (sm.issuedQty || 0) + ' แพ็ก · เบิกจาก' + locName + ' · ' + esc(period) + '</p>' +
+    '<p>จำนวน ' + (sm.issuedQty || 0) + ' ' + qtyWord + ' · เบิกจาก' + locName + ' · ' + esc(period) + '</p>' +
     '</div>';
   if (groups.length) {
     groups.forEach(function (g) { html += issueGroupTable_(g); });
@@ -2426,7 +2427,7 @@ function renderMonth(d) {
     kpi('ยอดคงเหลือเดิม', money(sm.openingValue) + ' ฿', (sm.openingQty || 0) + ' หน่วย · ต้นช่วงที่เลือก', 'leaf') +
     kpi('รับเข้า', money(sm.receivedValue) + ' ฿', (sm.receivedQty || 0) + ' หน่วย · ' + recvHint, 'sky') +
     kpi('เบิกออก', money(sm.issuedValue) + ' ฿', (sm.issuedQty || 0) + ' หน่วย · เบิกจาก' + locName + 'ในช่วงที่เลือก', 'sand') +
-    kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' แพ็ก · แยกตามบรรจุ', 'teal') +
+    kpi('คงเหลือ ณ สิ้นช่วง', money(sm.remainValue) + ' ฿', (sm.remainQty || 0) + ' ' + (d.location === 'EXT' ? 'หน่วย' : 'แพ็ก') + ' · แยกตามบรรจุ', 'teal') +
     '</div>';
   var issueGroups = d.issueGroups || [];
   if (issueGroups.length) {
@@ -3164,6 +3165,11 @@ function lineCountsTablets(line) {
   var tabAmt = round2(Number(line.qty || 0) * (Number(line.unitPrice || 0) / units));
   return Math.abs(Number(line.amount || 0) - tabAmt) + 0.009 < Math.abs(Number(line.amount || 0) - packAmt);
 }
+function displayedLotUnit(cfg, packSize, spec) {
+  if (cfg && cfg.byUnit && spec && spec.unit) return spec.unit;
+  if (String(packSize || '').replace(/\s+/g, '') === 'เม็ด') return 'เม็ด';
+  return '';
+}
 function fmtCount(n) {
   var x = Number(n || 0);
   if (Math.abs(x - Math.round(x)) < 1e-6) return String(Math.round(x));
@@ -3188,9 +3194,10 @@ function renderLotPick(cfg) {
       var spec = cfg.byUnit ? withdrawSpec(s.packSize, s.form) : { unit: '', units: 1, split: false };
       var units = spec.split ? spec.units : 1;
       var maxQ = spec.split ? tabletsAvailable(packHave, units) : packHave;
+      var unitShown = displayedLotUnit(cfg, s.packSize, spec);
       var remain = spec.split
         ? (fmtCount(packHave) + ' แพ็ก<div class="muted">' + fmtCount(maxQ) + ' เม็ด</div>')
-        : (fmtCount(packHave) + (cfg.byUnit ? ' ' + spec.unit : ''));
+        : (fmtCount(packHave) + (unitShown ? ' ' + unitShown : ''));
       var priceCell = spec.split
         ? (money(s.unitPrice) + '<div class="muted">' + money(round4qty(Number(s.unitPrice || 0) / units)) + '/เม็ด</div>')
         : money(s.unitPrice);
@@ -3198,7 +3205,7 @@ function renderLotPick(cfg) {
         '<td>' + tip + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.category) + '</td><td>' + esc(s.packSize) + '</td>' +
         '<td class="right">' + remain + '</td><td class="right">' + priceCell + '</td><td>' + (s.expiryLabel || '-') + '</td>' +
         '<td class="right"><input id="' + cfg.qtyPrefix + s.id + '" type="number" min="1" step="1" max="' + maxQ + '" value="' + (inCart ? inCart.qty : '') + '" style="width:88px">' +
-        (cfg.byUnit ? ' <span class="muted">' + spec.unit + '</span>' : '') + '</td>' +
+        (unitShown ? ' <span class="muted">' + unitShown + '</span>' : '') + '</td>' +
         '<td><button type="button" class="btn" onclick="' + cfg.addFn + '(\'' + s.id + '\')">' + (inCart ? 'อัปเดต' : 'เพิ่ม') + '</button></td></tr>';
     }).join('');
   }
@@ -3239,13 +3246,14 @@ function addLotLine(cfg, stockId) {
   var qty = Number(inp && inp.value ? inp.value : 0);
   var spec = cfg.byUnit ? withdrawSpec(s.packSize, s.form) : { unit: '', units: 1, split: false };
   var units = spec.split ? spec.units : 1;
-  if (!qty || qty <= 0) return toast(spec.unit ? ('ใส่จำนวน' + spec.unit) : 'ใส่จำนวนที่ต้องการ');
+  var unitShown = displayedLotUnit(cfg, s.packSize, spec);
+  if (!qty || qty <= 0) return toast(unitShown ? ('ใส่จำนวน' + unitShown) : 'ใส่จำนวนที่ต้องการ');
   if (spec.split && Math.abs(qty - Math.round(qty)) > 1e-6) return toast('ใส่จำนวนเม็ดเป็นจำนวนเต็ม');
   if (spec.split) qty = Math.round(qty);
   var packHave = exLotMax(stockId, s.qty, cfg.editing(), cfg.orig());
   var maxAllowed = spec.split ? tabletsAvailable(packHave, units) : packHave;
   if (qty > maxAllowed + 1e-9) {
-    return toast(spec.unit ? ('จำนวน' + spec.unit + 'เกินคงเหลือ (' + fmtCount(maxAllowed) + ' ' + spec.unit + ')') : ('จำนวนเกินคงเหลือ (' + maxAllowed + ')'));
+    return toast(unitShown ? ('จำนวน' + unitShown + 'เกินคงเหลือ (' + fmtCount(maxAllowed) + ' ' + unitShown + ')') : ('จำนวนเกินคงเหลือ (' + maxAllowed + ')'));
   }
   var split = cfg.byUnit ? splitTabletQty(qty, s.unitPrice, units) : null;
   var packPrice = Number(s.unitPrice || 0);
@@ -3259,21 +3267,21 @@ function addLotLine(cfg, stockId) {
     existing.unitPrice = linePrice;
     existing.packPrice = packPrice;
     existing.unitsPerPack = units;
-    existing.unitLabel = spec.unit || '';
+    existing.unitLabel = unitShown;
     existing.packQty = split ? split.packQty : qty;
     existing.amount = lineAmount;
   } else {
     cart.push({
       stockId: s.id, itemId: s.itemId, name: s.name, category: s.category, packSize: s.packSize,
       expiry: s.expiry || '', expiryLabel: s.expiryLabel || '-', unitPrice: linePrice, packPrice: packPrice,
-      unitsPerPack: units, unitLabel: spec.unit || '', packQty: split ? split.packQty : qty,
+      unitsPerPack: units, unitLabel: unitShown, packQty: split ? split.packQty : qty,
       qty: qty, maxQty: maxAllowed, amount: lineAmount, fefoRecommend: !!s.fefoRecommend
     });
   }
   cfg.setCart(cart);
   cfg.renderSummary();
   cfg.renderPick();
-  toast('เพิ่ม ' + s.name + ' × ' + fmtCount(qty) + (spec.unit ? ' ' + spec.unit : ''));
+  toast('เพิ่ม ' + s.name + ' × ' + fmtCount(qty) + (unitShown ? ' ' + unitShown : ''));
 }
 function updateLotQty(cfg, stockId, value) {
   var line = (cfg.cart() || []).filter(function (c) { return c.stockId === stockId; })[0];

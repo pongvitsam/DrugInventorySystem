@@ -80,8 +80,16 @@ function enrichStockRow_(s, items, settings) {
     locationLabel: LOC_LABEL[s.location] || s.location,
     expiryLabel: formatDate_(s.expiry),
     nearExpiry: isNearExpiry_(s.expiry, settings),
-    lowStockThreshold: getItemLowStockThreshold_(it)
+    lowStockThreshold: stockLowThreshold_(s, it, settings)
   });
+}
+
+function stockLowThreshold_(s, it, settings) {
+  var base = getItemLowStockThreshold_(it, settings);
+  if (!s || s.location !== LOC_EXT || packKey_(s.packSize) !== packKey_('เม็ด')) return base;
+  var units = unitsPerPack_(it && it.packSize);
+  if (!(units > 1)) return base;
+  return base * units;
 }
 
 function normalizeLoc_(loc) {
@@ -822,6 +830,9 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
   var editDate = toIsoDate_(p.date);
   var returnedQty = 0;
   var returnedCount = 0;
+  var replayExt = loc === LOC_MAIN && (moves || []).some(function (m) {
+    return m && m.refId === tr.id && m.type === 'TRANSFER_IN' && m.location === LOC_EXT;
+  });
   moves = reverseExtInbound_(stock, moves, tr.id);
 
   oldLines.forEach(function (old) {
@@ -869,7 +880,7 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
     var price = num_(l.unitPrice);
     moves.push(movement_('ISSUE', tr.date, loc, l.itemId, l.stockId, -qty, price, num_(l.amount) || round2_(qty * price), tr.id, ''));
   });
-  if (loc === LOC_MAIN) {
+  if (replayExt) {
     tLines.forEach(function (l) {
       if (l.transferId !== tr.id) return;
       var qty = num_(l.qty);
@@ -1428,11 +1439,14 @@ function reportPeriodReceive_(m, ch, loc) {
 }
 
 function reportPeriodIssue_(m, ch) {
-  return m.type === 'ISSUE' && ch < 0 ? -ch : 0;
+  if (!(ch < 0) || !m) return 0;
+  if (m.type === 'ISSUE') return -ch;
+  if (m.location === LOC_MAIN && m.type === 'TRANSFER_OUT') return -ch;
+  return 0;
 }
 
 function issueMoney_(m, qty) {
-  if (m && m.type === 'ISSUE' && num_(m.amount) > 0) return round2_(num_(m.amount));
+  if (m && (m.type === 'ISSUE' || m.type === 'TRANSFER_OUT') && num_(m.amount) > 0) return round2_(num_(m.amount));
   return round2_(num_(qty) * num_(m && m.unitPrice));
 }
 
@@ -1893,7 +1907,7 @@ function buildDashboard_(items, stock, receipts, transfers) {
   return {
     mainValue: round2_(mainVal),
     extValue: round2_(extVal),
-    totalValue: round2_(mainVal),
+    totalValue: round2_(mainVal + extVal),
     byValue: byValue,
     expiry: expiry.slice(0, 12),
     receiptCount: receipts.length,

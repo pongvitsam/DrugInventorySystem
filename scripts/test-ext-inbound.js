@@ -165,6 +165,65 @@ Promise.resolve()
     });
   })
   .then(function () {
+    seed();
+    return run('saveExtReceipt', {
+      date: '2026-10-05',
+      lines: [{ stockId: 'S1', qty: 500 }]
+    });
+  })
+  .then(function () {
+    eq('receiving 500 tablets takes one box from main', mainQty('S1'), 1);
+    eq('receiving 500 tablets lands in the external store', extQty('I1'), 500);
+    return run('monthReport', { location: 'MAIN', rangeStart: '2026-10-01', rangeEnd: '2026-10-31' });
+  })
+  .then(function (rep) {
+    var row = null;
+    (rep.groups || []).forEach(function (g) {
+      (g.rows || []).forEach(function (r) {
+        if (r.item && r.item.name === 'para 500 mg') row = r;
+      });
+    });
+    eq('main report counts that receipt as issued', row && row.issued, 1);
+    eq('main report does not hide it as an adjustment', row && row.adjusted, 0);
+    return run('monthReport', { location: 'EXT', rangeStart: '2026-10-01', rangeEnd: '2026-10-31' });
+  })
+  .then(function (rep) {
+    var row = null;
+    (rep.groups || []).forEach(function (g) {
+      (g.rows || []).forEach(function (r) {
+        if (r.item && r.item.name === 'para 500 mg') row = r;
+      });
+    });
+    eq('external report receives the tablets', row && row.received, 500);
+    eq('external report has not issued them', row && row.issued, 0);
+    return run('listStock', { location: 'EXT' });
+  })
+  .then(function (listed) {
+    var lot = (listed.stock || []).filter(function (s) { return s.itemId === 'I1'; })[0];
+    eq('tablet warning uses boxes times tablets per box', lot && lot.lowStockThreshold, 5000);
+    seed();
+    var stock = DB.readObjects('Stock');
+    stock[0].qty = 1;
+    DB.writeObjects('Stock', stock);
+    DB.writeObjects('Transfers', [{
+      id: 'T-OLD', date: '2026-10-05', location: 'MAIN', totalQty: 1, totalValue: 100, notes: '', createdAt: '2026-10-05 10:00:00'
+    }]);
+    DB.writeObjects('TransferLines', [{
+      id: 'TL-OLD', transferId: 'T-OLD', itemId: 'I1', stockId: 'S1', qty: 1, approvedQty: 1,
+      unitPrice: 100, amount: 100, expiry: '2027-06-01', packSize: "500's", name: 'para 500 mg'
+    }]);
+    DB.writeObjects('Movements', [{
+      id: 'M-OLD', date: '2026-10-05', type: 'ISSUE', location: 'MAIN', itemId: 'I1', stockId: 'S1',
+      qtyChange: -1, unitPrice: 100, amount: 100, refId: 'T-OLD', notes: ''
+    }]);
+    return run('saveTransfer', {
+      id: 'T-OLD', date: '2026-10-05', location: 'MAIN', notes: 'แก้หมายเหตุ',
+      lines: [{ stockId: 'S1', qty: 1 }]
+    });
+  })
+  .then(function () {
+    eq('editing an old slip does not invent external stock', extQty('I1'), 0);
+    eq('editing an old slip keeps the withdrawn box out', mainQty('S1'), 1);
     if (fail) {
       console.log(fail + ' failed');
       process.exit(1);
