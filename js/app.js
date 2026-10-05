@@ -1310,10 +1310,11 @@ function renderStockView(which) {
       else if (s.nearExpiry) status = '<span class="pill warn">ใกล้หมดอายุ</span>';
       else status = '<span class="pill">ปกติ</span>';
 
-      var itemTotal = totals[s.itemId] != null ? totals[s.itemId] : Number(s.qty || 0);
-      var qtyCell = low
-        ? '<span class="qty-low">' + s.qty + '</span><div class="muted">รวม ' + itemTotal + '</div>'
-        : '<b>' + s.qty + '</b>';
+      var lotQty = Number(s.qty || 0);
+      var itemTotal = totals[s.itemId] != null ? Number(totals[s.itemId]) : lotQty;
+      var qtyMain = low ? '<span class="qty-low">' + s.qty + '</span>' : '<b>' + s.qty + '</b>';
+      var showSum = low || Math.abs(itemTotal - lotQty) > 1e-6;
+      var qtyCell = qtyMain + (showSum ? '<div class="muted">รวม ' + itemTotal + '</div>' : '');
 
       return '<tr class="' + rowClass.join(' ') + '">' +
         '<td>' + status + '</td>' +
@@ -2112,6 +2113,7 @@ function saveWithdraw() {
   api('saveTransfer', payload).then(function (r) {
     var editing = !!STATE.editingWithdrawId;
     var msg = (editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท';
+    if (!editing && Number(r.extInbound) > 0) msg += ' · เข้าคลังภายนอก ' + fmtCount(r.extInbound) + ' หน่วย';
     if (editing && r.returnedCount > 0) {
       msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
     }
@@ -3665,11 +3667,16 @@ function addExOpeningItem(idx) {
     form: it.form || '',
     unit: exOpeningUnit_(it),
     have: exOpeningHave_(it.id),
-    qty: ''
+    qty: '',
+    expiry: ''
   });
   document.getElementById('exOpSuggest').style.display = 'none';
   document.getElementById('exOpSearch').value = '';
   renderExOpCart();
+}
+function updateExOpExpiry(idx, value) {
+  if (!STATE.exOpCart[idx]) return;
+  STATE.exOpCart[idx].expiry = value || '';
 }
 function updateExOpQty(idx, value) {
   if (!STATE.exOpCart[idx]) return;
@@ -3695,7 +3702,7 @@ function renderExOpCart() {
     document.getElementById('exOpCalc').textContent = 'ยังไม่ได้เลือก';
     return;
   }
-  var html = '<tr><th>รายการ</th><th>หน่วย</th><th class="right">คงเหลือภายนอก</th><th class="right">จำนวนที่ยกมา</th><th></th></tr>';
+  var html = '<tr><th>รายการ</th><th>หน่วย</th><th class="right">คงเหลือภายนอก</th><th class="right">จำนวนที่ยกมา</th><th>หมดอายุ</th><th></th></tr>';
   html += rows.map(function (l, idx) {
     var have = exOpeningHave_(l.itemId);
     l.have = have;
@@ -3703,9 +3710,11 @@ function renderExOpCart() {
       '<td>' + esc(l.unit) + '</td>' +
       '<td class="right">' + have + '</td>' +
       '<td class="right"><input type="number" min="0" step="any" value="' + esc(l.qty) + '" style="width:110px;text-align:right" oninput="updateExOpQty(' + idx + ', this.value)"></td>' +
+      '<td>' + ThDate.fieldHtml('exOpExp' + idx, l.expiry || '', 'updateExOpExpiry(' + idx + ', this.value)', true) + '</td>' +
       '<td><button type="button" class="btn ghost" onclick="removeExOpLine(' + idx + ')">เอาออก</button></td></tr>';
   }).join('');
   table.innerHTML = html;
+  if (ThDate.initFieldsIn) ThDate.initFieldsIn(table);
   updateExOpQty(0, rows[0] ? rows[0].qty : '');
 }
 function clearExOpening() {
@@ -3718,7 +3727,7 @@ function clearExOpening() {
 }
 function saveExOpening() {
   var lines = (STATE.exOpCart || []).filter(function (l) { return Number(l.qty) > 0; })
-    .map(function (l) { return { itemId: l.itemId, qty: Number(l.qty) }; });
+    .map(function (l) { return { itemId: l.itemId, qty: Number(l.qty), expiry: l.expiry || '' }; });
   if (!lines.length) return toast('ใส่จำนวนที่ยกมาก่อน');
   var date = document.getElementById('exOpDate').value;
   if (!date) return toast('กรุณาเลือกวันที่');

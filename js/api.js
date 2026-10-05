@@ -740,7 +740,13 @@ function apiSaveTransfer_(p) {
     writeObjects_('Transfers', heads);
     writeObjects_('TransferLines', upd.tLines);
     writeObjects_('Movements', upd.moves);
-    return { ok: true, transfer: upd.transfer, returnedQty: upd.returnedQty, returnedCount: upd.returnedCount };
+    return {
+      ok: true,
+      transfer: upd.transfer,
+      returnedQty: upd.returnedQty,
+      returnedCount: upd.returnedCount,
+      extInbound: extInboundQty_(upd.moves, upd.transfer.id)
+    };
   }
 
   var tr = {
@@ -758,7 +764,7 @@ function apiSaveTransfer_(p) {
   writeObjects_('Transfers', heads);
   writeObjects_('TransferLines', tLines);
   writeObjects_('Movements', moves);
-  return { ok: true, transfer: tr };
+  return { ok: true, transfer: tr, extInbound: extInboundQty_(moves, tr.id) };
 }
 
 function returnStockQty_(stock, line, qty, location) {
@@ -816,6 +822,7 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
   var editDate = toIsoDate_(p.date);
   var returnedQty = 0;
   var returnedCount = 0;
+  moves = reverseExtInbound_(stock, moves, tr.id);
 
   oldLines.forEach(function (old) {
     var oldQty = num_(old.qty);
@@ -862,7 +869,67 @@ function apiUpdateTransfer_(p, lines, stock, items, heads, tLines, moves) {
     var price = num_(l.unitPrice);
     moves.push(movement_('ISSUE', tr.date, loc, l.itemId, l.stockId, -qty, price, num_(l.amount) || round2_(qty * price), tr.id, ''));
   });
+  if (loc === LOC_MAIN) {
+    tLines.forEach(function (l) {
+      if (l.transferId !== tr.id) return;
+      var qty = num_(l.qty);
+      if (qty <= 0) return;
+      var from = findById_(stock, l.stockId);
+      if (!from) return;
+      postMainWithdrawToExt_(tr, from, items[from.itemId] || {}, qty, stock, moves);
+    });
+  }
   return { transfer: tr, tLines: tLines, moves: moves, returnedQty: returnedQty, returnedCount: returnedCount };
+}
+
+var EXT_INBOUND_BLOCKED_ = 'แก้ไขหรือลบไม่ได้ — ยาที่เข้าคลังภายนอกถูกเบิกออกไปแล้วบางส่วน';
+
+function mainToExtParts_(from, item, packQty) {
+  var pack = preferSpacedPack_(String((from && from.packSize) || (item && item.packSize) || ''));
+  var spec = withdrawSpec_(pack, item && item.form);
+  var price = num_(from && from.unitPrice);
+  var packs = round4_(num_(packQty));
+  if (spec.split) {
+    var tablets = round4_(packs * spec.units);
+    var split = splitTabletMove_(tablets, price, spec.units);
+    return { extQty: split.tablets, extPrice: split.tabletPrice, extPack: 'เม็ด', amount: split.amount };
+  }
+  return { extQty: packs, extPrice: price, extPack: pack, amount: round2_(packs * price) };
+}
+
+function postMainWithdrawToExt_(tr, from, item, packQty, stock, moves) {
+  var parts = mainToExtParts_(from, item, packQty);
+  if (!(parts.extQty > 0)) return;
+  var to = addStock_(stock, from.itemId, LOC_EXT, parts.extQty, parts.extPrice, from.expiry || '', 'เบิกจากคลังหลัก', parts.extPack);
+  moves.push(movement_('TRANSFER_IN', tr.date, LOC_EXT, from.itemId, to.id, parts.extQty, parts.extPrice, parts.amount, tr.id, 'เบิกจากคลังหลัก'));
+}
+
+function reverseExtInbound_(stock, moves, refId) {
+  var inbound = (moves || []).filter(function (m) {
+    return m && m.refId === refId && m.type === 'TRANSFER_IN' && m.location === LOC_EXT;
+  });
+  inbound.forEach(function (m) {
+    var q = num_(m.qtyChange);
+    if (q <= 1e-9) return;
+    var st = findById_(stock, m.stockId);
+    if (!st || st.location !== LOC_EXT || num_(st.qty) + 1e-9 < q) throw new Error(EXT_INBOUND_BLOCKED_);
+  });
+  inbound.forEach(function (m) {
+    var q = num_(m.qtyChange);
+    if (q <= 1e-9) return;
+    var st = findById_(stock, m.stockId);
+    st.qty = round4_(num_(st.qty) - q);
+  });
+  return (moves || []).filter(function (m) {
+    return !(m && m.refId === refId && m.type === 'TRANSFER_IN' && m.location === LOC_EXT);
+  });
+}
+
+function extInboundQty_(moves, refId) {
+  return round4_((moves || []).reduce(function (sum, m) {
+    if (!m || m.refId !== refId || m.type !== 'TRANSFER_IN' || m.location !== LOC_EXT) return sum;
+    return sum + num_(m.qtyChange);
+  }, 0));
 }
 
 function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
@@ -889,6 +956,7 @@ function applyTransferLines_(tr, lines, stock, items, tLines, moves) {
       name: (items[from.itemId] || {}).name || ''
     });
     moves.push(movement_('ISSUE', tr.date, loc, from.itemId, from.id, -qty, price, amount, tr.id, ''));
+    if (loc === LOC_MAIN) postMainWithdrawToExt_(tr, from, items[from.itemId] || {}, qty, stock, moves);
     tr.totalQty = round4_(num_(tr.totalQty) + qty);
     tr.totalValue = round2_(num_(tr.totalValue) + amount);
   });
@@ -919,6 +987,7 @@ function apiDeleteTransfer_(p) {
   var oldLines = tLines.filter(function (l) { return l.transferId === tr.id; });
   var returnedQty = 0;
   var returnedCount = 0;
+  moves = reverseExtInbound_(stock, moves, tr.id);
 
   oldLines.forEach(function (old) {
     var qty = num_(old.qty);
@@ -1295,10 +1364,12 @@ function apiSaveExtOpening_(p) {
   lines.forEach(function (line) {
     var item = items[line.itemId];
     if (!item) throw new Error('ไม่พบรายการยา');
-    if (seen[item.id]) throw new Error('รายการซ้ำ: ' + item.name);
-    seen[item.id] = 1;
+    var expiry = toIsoDate_(line.expiry);
+    var lotKey = item.id + '|' + expiry;
+    if (seen[lotKey]) throw new Error('รายการซ้ำ: ' + item.name);
+    seen[lotKey] = 1;
     var q = extOpeningParts_(item, line.qty);
-    var lot = addStock_(stock, item.id, LOC_EXT, q.extQty, q.extPrice, '', 'ยอดยกมาคลังภายนอก', q.extPack);
+    var lot = addStock_(stock, item.id, LOC_EXT, q.extQty, q.extPrice, expiry, 'ยอดยกมาคลังภายนอก', q.extPack);
     moves.push(movement_('EXT_OPENING', date, LOC_EXT, item.id, lot.id, q.extQty, q.extPrice, q.amount, id, 'ยอดยกมาคลังภายนอก'));
     totalQty = round4_(totalQty + q.extQty);
     totalValue = round2_(totalValue + q.amount);
