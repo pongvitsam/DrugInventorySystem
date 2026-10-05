@@ -2844,6 +2844,7 @@ function refreshActivePageViews_() {
     loadWithdrawHistory();
   }
   if (active.id === 'page-exstock') showExStock();
+  if (active.id === 'page-exopening') loadExOpening();
   if (active.id === 'page-exreceive') {
     loadExInPick();
     loadExInHistory();
@@ -3630,6 +3631,21 @@ function exOpeningHave_(itemId) {
   return Number((STATE.exOpExtQty || {})[itemId] || 0);
 }
 function loadExOpening() {
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.enabled && RemoteDB.enabled() &&
+      RemoteDB.ensureLoaded && RemoteDB.isOnline && RemoteDB.isOnline() && !loadExOpening._busy) {
+    loadExOpening._busy = true;
+    RemoteDB.ensureLoaded().then(function () {
+      loadExOpening._busy = false;
+      paintExOpening_();
+    }, function () {
+      loadExOpening._busy = false;
+      paintExOpening_();
+    });
+    return;
+  }
+  paintExOpening_();
+}
+function paintExOpening_() {
   var dateEl = document.getElementById('exOpDate');
   if (dateEl && !dateEl.value) ThDate.set('exOpDate', todayInput());
   api('listStock', { location: 'EXT' }).then(function (r) {

@@ -7,6 +7,7 @@ var RemoteDB = (function () {
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var CLIMATE_HOLD_KEY = 'pharma:climateHold';
+  var EXT_OPENING_HOLD_KEY = 'pharma:extOpeningHold';
   var HISTORY_CUTOFF_ = '2026-09-01';
   var POLL_MS = 45000;
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwt7Eltan6GU1RYfJdUYFjKuW1YYQIfJeb2mt4bXoSH5VRBMKOAIWvk-iCSf9wdTFOi/exec';
@@ -705,8 +706,115 @@ var RemoteDB = (function () {
     writeClimateHolds_(next);
   }
 
+  function readExtOpeningHolds_() {
+    try {
+      var raw = localStorage.getItem(EXT_OPENING_HOLD_KEY);
+      var rows = raw ? JSON.parse(raw) : [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeExtOpeningHolds_(rows) {
+    try {
+      if (!rows || !rows.length) localStorage.removeItem(EXT_OPENING_HOLD_KEY);
+      else localStorage.setItem(EXT_OPENING_HOLD_KEY, JSON.stringify(rows));
+    } catch (e2) { /* quota */ }
+  }
+
+  function copyJson_(v) {
+    try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; }
+  }
+
+  function roundQty_(n) {
+    return Math.round(((Number(n) || 0) + Number.EPSILON) * 10000) / 10000;
+  }
+
+  function openingOnMoves_(moves, id) {
+    id = String(id || '');
+    return (moves || []).some(function (m) {
+      return m && m.type === 'EXT_OPENING' && String(m.refId || '') === id;
+    });
+  }
+
+  // ยอดยกมาที่ยังไม่ขึ้นชีต — ดึงชีตทับแล้วต้องใส่กลับ ไม่งั้นอีกเบราว์เซอร์ไม่เห็น
+  function holdExtOpeningSave_(entry) {
+    if (!entry || !entry.id) return;
+    var id = String(entry.id);
+    var holds = readExtOpeningHolds_().filter(function (h) { return String(h.id) !== id; });
+    holds.push({
+      op: 'save',
+      id: id,
+      movements: copyJson_(entry.movements || []),
+      lots: copyJson_(entry.lots || [])
+    });
+    writeExtOpeningHolds_(holds);
+  }
+
+  function holdExtOpeningDelete_(entry) {
+    if (!entry || !entry.id) return;
+    var id = String(entry.id);
+    var holds = readExtOpeningHolds_().filter(function (h) { return String(h.id) !== id; });
+    holds.push({ op: 'delete', id: id, lots: copyJson_(entry.lots || []) });
+    writeExtOpeningHolds_(holds);
+  }
+
+  function applyOpeningLots_(lots) {
+    var stock = DB.readObjects('Stock').slice();
+    (lots || []).forEach(function (lot) {
+      var add = roundQty_(lot.delta);
+      var found = null;
+      for (var i = 0; i < stock.length; i++) {
+        if (String(stock[i].id) === String(lot.stockId)) { found = stock[i]; break; }
+      }
+      if (found) {
+        found.qty = roundQty_(Number(found.qty) + add);
+        return;
+      }
+      if (add > 0 && lot.row) {
+        var row = copyJson_(lot.row);
+        row.qty = add;
+        stock.push(row);
+      }
+    });
+    DB.writeObjects('Stock', stock);
+  }
+
+  function replayExtOpeningHolds_() {
+    var holds = readExtOpeningHolds_();
+    if (!holds.length) return;
+    var moves = DB.readObjects('Movements').slice();
+    holds.forEach(function (h) {
+      var present = openingOnMoves_(moves, h.id);
+      if (h.op === 'save' && !present) {
+        (h.movements || []).forEach(function (m) {
+          if (!m) return;
+          var exists = moves.some(function (row) { return row && m.id && row.id === m.id; });
+          if (!exists) moves.push(copyJson_(m));
+        });
+        applyOpeningLots_(h.lots);
+      } else if (h.op === 'delete' && present) {
+        moves = moves.filter(function (m) {
+          return !(m && m.type === 'EXT_OPENING' && String(m.refId || '') === String(h.id));
+        });
+        applyOpeningLots_(h.lots);
+      }
+    });
+    DB.writeObjects('Movements', moves);
+  }
+
+  function confirmExtOpeningHolds_(remoteMoves) {
+    var next = readExtOpeningHolds_().filter(function (h) {
+      var onSheet = openingOnMoves_(remoteMoves, h.id);
+      if (h.op === 'delete') return onSheet;
+      return !onSheet;
+    });
+    writeExtOpeningHolds_(next);
+  }
+
   function schedulePushHolds_() {
-    if (!readClimateHolds_().length) return;
+    if (!readClimateHolds_().length && !readExtOpeningHolds_().length) return;
     if (syncing || syncDebounceTimer_ || syncPendingOpts_) return;
     if (!enabled() || !isOnline_()) return;
     sync({ force: false, skipImages: true }).catch(function () {});
@@ -729,13 +837,16 @@ var RemoteDB = (function () {
     if (force || !isEmptyRemote_(res.data)) {
       saveSafetyBackup_();
       var remoteClimate = (res.data && res.data.ClimateLogs) ? res.data.ClimateLogs : [];
+      var remoteMoves = (res.data && res.data.Movements) ? res.data.Movements : [];
       // Sheet เป็นต้นทางเดียว — ทับทั้งชุดในเครื่องตาม Sheet เสมอ
-      // แล้วใส่บันทึกอุณหภูมิที่ยังไม่ขึ้นชีตกลับเข้าไป
+      // แล้วใส่รายการที่ยังไม่ขึ้นชีตกลับเข้าไป
       DB.importAll(res.data || {});
       replayClimateHolds_();
       confirmClimateHolds_(remoteClimate);
+      replayExtOpeningHolds_();
+      confirmExtOpeningHolds_(remoteMoves);
       resetApiCaches_();
-      if (readClimateHolds_().length) schedulePushHolds_();
+      if (readClimateHolds_().length || readExtOpeningHolds_().length) schedulePushHolds_();
       return true;
     }
     return false;
@@ -1111,6 +1222,8 @@ var RemoteDB = (function () {
     noteLocalMutation: noteLocalMutation_,
     holdClimateUpsert: holdClimateUpsert_,
     holdClimateDelete: holdClimateDelete_,
+    holdExtOpeningSave: holdExtOpeningSave_,
+    holdExtOpeningDelete: holdExtOpeningDelete_,
     sync: sync,
     ping: ping,
     pushLocal: pushLocal,

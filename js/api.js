@@ -1372,6 +1372,7 @@ function apiSaveExtOpening_(p) {
   var totalQty = 0;
   var totalValue = 0;
   var seen = {};
+  var lots = [];
   lines.forEach(function (line) {
     var item = items[line.itemId];
     if (!item) throw new Error('ไม่พบรายการยา');
@@ -1381,12 +1382,27 @@ function apiSaveExtOpening_(p) {
     seen[lotKey] = 1;
     var q = extOpeningParts_(item, line.qty);
     var lot = addStock_(stock, item.id, LOC_EXT, q.extQty, q.extPrice, expiry, 'ยอดยกมาคลังภายนอก', q.extPack);
+    lots.push({
+      stockId: lot.id,
+      delta: q.extQty,
+      row: {
+        id: lot.id, itemId: lot.itemId, location: lot.location, qty: lot.qty,
+        unitPrice: lot.unitPrice, packSize: lot.packSize, expiry: lot.expiry || '', lotNote: lot.lotNote || ''
+      }
+    });
     moves.push(movement_('EXT_OPENING', date, LOC_EXT, item.id, lot.id, q.extQty, q.extPrice, q.amount, id, 'ยอดยกมาคลังภายนอก'));
     totalQty = round4_(totalQty + q.extQty);
     totalValue = round2_(totalValue + q.amount);
   });
   writeObjects_('Stock', stock);
   writeObjects_('Movements', moves);
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.holdExtOpeningSave) {
+    RemoteDB.holdExtOpeningSave({
+      id: id,
+      movements: moves.filter(function (m) { return m && m.refId === id && m.type === 'EXT_OPENING'; }),
+      lots: lots
+    });
+  }
   return { ok: true, id: id, date: date, totalQty: totalQty, totalValue: totalValue };
 }
 
@@ -1423,6 +1439,9 @@ function apiDeleteExtOpening_(p) {
       throw new Error('ลบไม่ได้ — ยอดนี้ถูกเบิกไปแล้วบางส่วน');
     }
   });
+  var lots = mine.map(function (m) {
+    return { stockId: m.stockId, delta: -num_(m.qtyChange) };
+  });
   mine.forEach(function (m) {
     var st = findById_(stock, m.stockId);
     st.qty = round4_(num_(st.qty) - num_(m.qtyChange));
@@ -1430,6 +1449,9 @@ function apiDeleteExtOpening_(p) {
   moves = moves.filter(function (m) { return !(m.type === 'EXT_OPENING' && m.refId === p.id); });
   writeObjects_('Stock', stock);
   writeObjects_('Movements', moves);
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.holdExtOpeningDelete) {
+    RemoteDB.holdExtOpeningDelete({ id: p.id, lots: lots });
+  }
   return { ok: true, id: p.id };
 }
 
