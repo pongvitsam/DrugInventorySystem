@@ -3,7 +3,7 @@
  * - แคชไฟล์หลักให้เปิดออฟไลน์ได้ (ข้อมูลอยู่ใน localStorage อยู่แล้ว)
  * - ไม่แคช Google Sheets / GAS / ฟอนต์ภายนอกแบบ network-only ที่จำเป็น
  */
-var CACHE_NAME = 'pharma-shell-v128';
+var CACHE_NAME = 'pharma-shell-v129';
 var PRECACHE = [
   './',
   './index.html',
@@ -20,7 +20,7 @@ var PRECACHE = [
   './js/api.js?v=127',
   './js/options.js?v=105',
   './js/thdate.js?v=106',
-  './js/app.js?v=128',
+  './js/app.js?v=129',
   './js/auth.js?v=105',
   './js/pwa.js?v=1'
 ];

@@ -3757,12 +3757,46 @@ function loadExOpHistory() {
     }).join('') || 'ยังไม่มี';
   }).catch(function () { box.textContent = 'ยังไม่มี'; });
 }
+var pendingExOpDeleteId_ = null;
 function deleteExOpening(id) {
-  if (!confirmStockUser('การลบยอดยกมา ' + id)) return;
-  if (!confirm('ลบยอดยกมา ' + id + ' และหักจำนวนนี้ออกจากคลังภายนอก?')) return;
+  pendingExOpDeleteId_ = id;
+  var box = document.getElementById('exOpDeleteBox');
+  var label = document.getElementById('exOpDeleteLabel');
+  var input = document.getElementById('exOpDeleteUser');
+  var err = document.getElementById('exOpDeleteErr');
+  if (label) label.textContent = id;
+  if (err) err.textContent = '';
+  if (input) input.value = '';
+  if (box) box.style.display = '';
+  if (input) {
+    input.focus();
+    if (box && box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+}
+function cancelDeleteExOpening() {
+  pendingExOpDeleteId_ = null;
+  var box = document.getElementById('exOpDeleteBox');
+  var input = document.getElementById('exOpDeleteUser');
+  var err = document.getElementById('exOpDeleteErr');
+  if (box) box.style.display = 'none';
+  if (input) input.value = '';
+  if (err) err.textContent = '';
+}
+function submitDeleteExOpening() {
+  var id = pendingExOpDeleteId_;
+  if (!id) return;
+  var input = document.getElementById('exOpDeleteUser');
+  var err = document.getElementById('exOpDeleteErr');
+  var typed = String(input && input.value || '').trim();
+  var curUser = (typeof Auth !== 'undefined' && Auth.getUsername) ? Auth.getUsername() : '';
+  function showErr(msg) { if (err) err.textContent = msg; }
+  if (!curUser) { showErr('กรุณาเข้าสู่ระบบก่อน'); return; }
+  if (!typed) { showErr('กรุณาใส่ Username'); return; }
+  if (typed.toLowerCase() !== String(curUser).toLowerCase()) { showErr('Username ไม่ถูกต้อง'); return; }
   api('deleteExtOpening', { id: id }).then(function () {
     toast('ลบยอดยกมา ' + id + ' แล้ว');
+    cancelDeleteExOpening();
     loadExOpening();
     refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  }).catch(function (e) { showErr(e.message || String(e)); });
 }
