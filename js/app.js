@@ -1262,6 +1262,17 @@ function renderStockAlert(allRows, alertId, which) {
     '<div class="stock-alert-list">' + chips + more + '</div>';
 }
 
+function exStockExpiryKey_(v) {
+  var s = String(v || '').trim();
+  if (!s) return '9999-99-99';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return '9999-99-99';
+  var y = Number(m[3]);
+  if (y > 2400) y -= 543;
+  if (y < 100) y += 2500 - 543;
+  return y + '-' + ('0' + Number(m[2])).slice(-2) + '-' + ('0' + Number(m[1])).slice(-2);
+}
 function renderStock() { renderStockView('MAIN'); }
 function renderExStock() { renderStockView('EXT'); }
 function renderStockView(which) {
@@ -1282,16 +1293,26 @@ function renderStockView(which) {
     return true;
   });
 
-  // ใกล้หมด / ใกล้หมดอายุ ขึ้นก่อน
-  rows = rows.slice().sort(function (a, b) {
-    var al = isLowStock(a, totals) ? 0 : 1;
-    var bl = isLowStock(b, totals) ? 0 : 1;
-    if (al !== bl) return al - bl;
-    var ae = a.nearExpiry ? 0 : 1;
-    var be = b.nearExpiry ? 0 : 1;
-    if (ae !== be) return ae - be;
-    return Number(a.qty || 0) - Number(b.qty || 0);
-  });
+  if (ext) {
+    // วันหมดอายุเร็วสุดอยู่บน รายการที่ไม่ระบุวันหมดอายุอยู่ท้าย
+    rows = rows.slice().sort(function (a, b) {
+      var ae = exStockExpiryKey_(a.expiry);
+      var be = exStockExpiryKey_(b.expiry);
+      if (ae !== be) return ae < be ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'th');
+    });
+  } else {
+    // ใกล้หมด / ใกล้หมดอายุ ขึ้นก่อน
+    rows = rows.slice().sort(function (a, b) {
+      var al = isLowStock(a, totals) ? 0 : 1;
+      var bl = isLowStock(b, totals) ? 0 : 1;
+      if (al !== bl) return al - bl;
+      var ae = a.nearExpiry ? 0 : 1;
+      var be = b.nearExpiry ? 0 : 1;
+      if (ae !== be) return ae - be;
+      return Number(a.qty || 0) - Number(b.qty || 0);
+    });
+  }
 
   var html = '<tr><th>สถานะ</th><th>รายการ</th><th>หมวด</th><th>บรรจุ</th><th class="right">คงเหลือ</th><th class="right">ราคา</th><th class="right">มูลค่า</th><th>หมดอายุ</th></tr>';
   if (!rows.length) {
