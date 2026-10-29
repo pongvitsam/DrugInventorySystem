@@ -1956,7 +1956,7 @@ function editWithdraw(id) {
       var s = stockById[l.stockId] || {};
       var origQty = Number(l.qty || 0);
       orig[l.stockId] = origQty;
-      var maxQty = withdrawStockMax(l.stockId, s.qty);
+      var maxQty = exLotMax(l.stockId, s.qty, id, orig);
       return {
         stockId: l.stockId,
         itemId: l.itemId,
