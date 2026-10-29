@@ -2289,8 +2289,39 @@ function deleteWithdraw(id) {
     refreshAfterMutation();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
+function printActiveSheet_(htmlClass) {
+  var root = document.documentElement;
+  if (!root || !root.classList) {
+    window.print();
+    return;
+  }
+  root.classList.add(htmlClass);
+  var done = function () { root.classList.remove(htmlClass); };
+  if (window.addEventListener) window.addEventListener('afterprint', done, { once: true });
+  window.print();
+  setTimeout(done, 1500);
+}
+
+function revealPrintCard_(cardId, outId, html, isoDate) {
+  var out = document.getElementById(outId);
+  var card = document.getElementById(cardId);
+  if (!out || !card) {
+    toast('ไม่พบใบพิมพ์');
+    return;
+  }
+  out.innerHTML = html;
+  initWithdrawSignDates(isoDate, outId);
+  card.style.display = 'block';
+  if (typeof card.scrollIntoView === 'function') {
+    try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { card.scrollIntoView(true); }
+  }
+}
+
+function printWithdrawSheet() { printActiveSheet_('print-withdraw'); }
+function printExOutSheet() { printActiveSheet_('print-exout'); }
+
 function showWithdrawPrint(id) {
-  api('getTransfer', { id: id }).then(function (data) {
+  return api('getTransfer', { id: id }).then(function (data) {
     var t = data.transfer;
     var s = data.settings || {};
     var html = '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div>' +
@@ -2304,9 +2335,8 @@ function showWithdrawPrint(id) {
     });
     html += '<tr><td colspan="5" class="right"><b>รวมทั้งสิ้น</b></td><td class="right"><b>' + money(t.totalValue) + '</b></td><td colspan="2"></td></tr></table>';
     html += signBlock4(s, true);
-    document.getElementById('wdPrintOut').innerHTML = html;
-    initWithdrawSignDates(t.date);
-    document.getElementById('wdPrintCard').style.display = 'block';
+    revealPrintCard_('wdPrintCard', 'wdPrintOut', html, t.date);
+    printWithdrawSheet();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
@@ -3724,7 +3754,7 @@ function deleteExOut(id) {
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 function showExOutPrint(id) {
-  api('getTransfer', { id: id }).then(function (data) {
+  return api('getTransfer', { id: id }).then(function (data) {
     var t = data.transfer;
     var s = data.settings || {};
     var html = '<div style="text-align:center;margin-bottom:12px"><b>' + esc(s.unitName || '') + '</b><div>' + esc(s.unitSub || '') + '</div>' +
@@ -3738,9 +3768,8 @@ function showExOutPrint(id) {
     });
     html += '<tr><td colspan="5" class="right"><b>รวมทั้งสิ้น</b></td><td class="right"><b>' + money(t.totalValue) + '</b></td><td colspan="2"></td></tr></table>';
     html += signBlock4(s, true);
-    document.getElementById('exOutPrintOut').innerHTML = html;
-    initWithdrawSignDates(t.date, 'exOutPrintOut');
-    document.getElementById('exOutPrintCard').style.display = 'block';
+    revealPrintCard_('exOutPrintCard', 'exOutPrintOut', html, t.date);
+    printExOutSheet();
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 

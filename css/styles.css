@@ -1930,6 +1930,59 @@ select option[value="__add__"] {
   text-align: right;
 }
 @media print {
+  html.print-withdraw .sidebar,
+  html.print-withdraw .mob-nav,
+  html.print-withdraw .mob-more-bg,
+  html.print-withdraw .mob-more-sheet,
+  html.print-withdraw .toolbar,
+  html.print-withdraw .toast,
+  html.print-withdraw .btn,
+  html.print-withdraw .top,
+  html.print-withdraw .watermark,
+  html.print-withdraw .sync-status { display: none !important; }
+  html.print-withdraw .app { display: block; }
+  html.print-withdraw .main { padding: 0; }
+  html.print-withdraw .page { display: none !important; }
+  html.print-withdraw #page-withdraw { display: block !important; }
+  html.print-withdraw #page-withdraw > *:not(#wdPrintCard) { display: none !important; }
+  html.print-withdraw #wdPrintCard {
+    display: block !important;
+    box-shadow: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0 !important;
+  }
+  html.print-withdraw #wdPrintCard > .row,
+  html.print-withdraw #wdPrintCard > p.muted { display: none !important; }
+  html.print-exout .sidebar,
+  html.print-exout .mob-nav,
+  html.print-exout .mob-more-bg,
+  html.print-exout .mob-more-sheet,
+  html.print-exout .toolbar,
+  html.print-exout .toast,
+  html.print-exout .btn,
+  html.print-exout .top,
+  html.print-exout .watermark,
+  html.print-exout .sync-status { display: none !important; }
+  html.print-exout .app { display: block; }
+  html.print-exout .main { padding: 0; }
+  html.print-exout .page { display: none !important; }
+  html.print-exout #page-exwithdraw { display: block !important; }
+  html.print-exout #page-exwithdraw > *:not(#exOutPrintCard) { display: none !important; }
+  html.print-exout #exOutPrintCard {
+    display: block !important;
+    box-shadow: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0 !important;
+  }
+  html.print-exout #exOutPrintCard > .row,
+  html.print-exout #exOutPrintCard > p.muted { display: none !important; }
+}
+
+@media print {
   html.print-items .sidebar,
   html.print-items .mob-nav,
   html.print-items .mob-more-bg,
