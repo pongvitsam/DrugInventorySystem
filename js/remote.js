@@ -48,7 +48,7 @@ var RemoteDB = (function () {
         sync({ force: false, skipImages: true }).then(function (r) {
           if (r && r.saved && typeof toast === 'function') toast('บันทึกลงระบบแล้ว — ส่งข้อมูลที่ค้างตอนออฟไลน์ขึ้น Google Sheets ครบ');
         }, function (err) {
-          if (typeof toast === 'function') toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
+          if (typeof notifySaveStatus === 'function') notifySaveStatus({ failed: true, error: err });
         });
       }
     });
@@ -876,7 +876,8 @@ var RemoteDB = (function () {
       var epoch = dataEpoch_;
       var serial = syncSerial_;
       return fetchJson(baseUrl() + '?action=export&slim=1&t=' + Date.now()).then(function (ex) {
-        if (epoch !== dataEpoch_) return;
+        // มีรายการใหม่ระหว่างโหลด — ไม่ทับเครื่อง แต่รอบนี้ยังไม่ขึ้นชีต
+        if (epoch !== dataEpoch_) throw new Error('มีข้อมูลใหม่กว่าบน Google Sheets — กรุณาทำรายการอีกครั้ง');
         if (!ex || !ex.ok) throw new Error('ข้อมูลบน Google ใหม่กว่า และโหลดไม่สำเร็จ');
         applyRemotePayload_(ex, true, epoch, serial);
         loaded = true;

@@ -45,34 +45,45 @@ function api(name, payload) {
   }
   return DrugAPI.api(name, payload || {});
 }
+var toastTimer_ = null;
+var toastShownAt_ = 0;
+// null = ข้อความที่แสดงอยู่ไม่ใช่สถานะบันทึก; string = ข้อความเดิมก่อนต่อสถานะ
+var toastSaveBase_ = null;
+var SYNC_FAILED_MSG = 'ซิงก์ขึ้น Google ไม่สำเร็จ';
 function toast(msg, ms) {
   var el = document.getElementById('toast');
   el.textContent = msg;
   el.style.display = 'block';
-  el._saveStatus = false;
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(function () { el.style.display = 'none'; }, ms || 3200);
+  toastShownAt_ = Date.now();
+  toastSaveBase_ = null;
+  clearTimeout(toastTimer_);
+  toastTimer_ = setTimeout(function () { el.style.display = 'none'; }, ms || 3200);
 }
-// ต่อท้ายข้อความบันทึกเดิม ไม่ทับรายละเอียดใบที่เพิ่งบันทึก
-function toastSaveStatus_(msg, ms) {
+// ต่อท้ายเฉพาะข้อความที่ขึ้นหลังเริ่มบันทึก (since) — ไม่ต่อท้ายข้อความเก่า/ข้อความอื่น
+function toastSaveStatus_(msg, ms, since) {
   var el = document.getElementById('toast');
-  var base = el && el.style.display === 'block' && !el._saveStatus ? el.textContent : '';
+  var visible = !!el && el.style.display === 'block';
+  var base = '';
+  if (visible && toastSaveBase_ !== null) base = toastSaveBase_;
+  else if (visible && since && toastShownAt_ >= since) base = el.textContent;
   toast(base ? base + ' — ' + msg : msg, ms);
-  if (el) el._saveStatus = true;
+  toastSaveBase_ = base;
 }
-function notifySaveStatus(r) {
+function syncErrorText(err) {
+  return (err && err.message) ? err.message : SYNC_FAILED_MSG;
+}
+function notifySaveStatus(r, since) {
   r = r || {};
   if (r.saved) {
-    toastSaveStatus_('บันทึกลงระบบแล้ว (Google Sheets)', 5000);
+    toastSaveStatus_('บันทึกลงระบบแล้ว (Google Sheets)', 5000, since);
     return;
   }
   if (r.deferred) {
-    toastSaveStatus_('ออฟไลน์ — เก็บไว้ในเครื่องนี้ ยังไม่ขึ้นระบบ จะส่งให้อัตโนมัติเมื่อมีเน็ต', 7000);
+    toastSaveStatus_('ออฟไลน์ — เก็บไว้ในเครื่องนี้ ยังไม่ขึ้นระบบ จะส่งให้อัตโนมัติเมื่อมีเน็ต', 7000, since);
     return;
   }
   if (r.failed) {
-    var err = r.error;
-    toastSaveStatus_('ยังไม่ได้บันทึกขึ้นระบบ: ' + ((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ'), 9000);
+    toastSaveStatus_('ยังไม่ได้บันทึกขึ้นระบบ: ' + syncErrorText(r.error), 9000, since);
   }
 }
 function money(n) {
@@ -1934,11 +1945,7 @@ function loadWithdrawPick() {
   updateWithdrawEditUI();
 }
 function withdrawStockMax(stockId, stockQty) {
-  var max = Number(stockQty || 0);
-  if (STATE.editingWithdrawId && STATE.editWithdrawOrig) {
-    max += Number(STATE.editWithdrawOrig[stockId] || 0);
-  }
-  return max;
+  return exLotMax(stockId, stockQty, STATE.editingWithdrawId, STATE.editWithdrawOrig);
 }
 function updateWithdrawEditUI() {
   var banner = document.getElementById('wdEditBanner');
@@ -2971,10 +2978,15 @@ function restoreFromJsonFile(input) {
       }
       updateBackupStatus('กำลังอัปโหลดไฟล์สำรอง...');
       var runImport = function (force) {
-        return RemoteDB.importDump(data, { force: !!force }).then(function () {
-          toast('อัปโหลดไฟล์สำรองแล้ว (ทับทั้งชุด)');
-          updateBackupStatus('อัปโหลดสำเร็จ — ข้อมูลถูกทับทั้งชุด ไม่ซ้อน');
-          if (typeof updateGasStatus === 'function') updateGasStatus('อัปโหลดไฟล์สำรองแล้ว');
+        return RemoteDB.importDump(data, { force: !!force }).then(function (r) {
+          if (r && r.deferred) {
+            toast('นำเข้าไฟล์ในเครื่องแล้ว — ออฟไลน์ ยังไม่ขึ้นระบบ จะอัปโหลดให้อัตโนมัติเมื่อมีเน็ต', 7000);
+            updateBackupStatus('นำเข้าในเครื่องแล้ว — รออัปโหลดขึ้น Google เมื่อมีเน็ต');
+          } else {
+            toast('อัปโหลดไฟล์สำรองแล้ว (ทับทั้งชุด)');
+            updateBackupStatus('อัปโหลดสำเร็จ — ข้อมูลถูกทับทั้งชุด ไม่ซ้อน');
+            if (typeof updateGasStatus === 'function') updateGasStatus('อัปโหลดไฟล์สำรองแล้ว');
+          }
           input.value = '';
           loadBootstrap();
         });

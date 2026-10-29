@@ -2898,6 +2898,7 @@ return {
           ready = RemoteDB.ensureLoaded().catch(function () { return false; });
         }
         return ready.then(function () {
+          var startedAt = Date.now();
           var result = run();
           // ซิงก์รูปบิลเฉพาะตอนบันทึกใบรับ — mutation อื่นข้ามรูปเพื่อให้เร็ว
           var syncOpts = (name === 'saveReceipt')
@@ -2905,13 +2906,9 @@ return {
             : { force: false, skipImages: true };
           // ซิงก์พื้นหลังทุก mutation — ออฟไลน์จะค้างไว้ใน RemoteDB จนมีเน็ต
           RemoteDB.sync(syncOpts).then(function (r) {
-            if (typeof notifySaveStatus === 'function') notifySaveStatus(r);
+            if (typeof notifySaveStatus === 'function') notifySaveStatus(r, startedAt);
           }, function (err) {
-            if (typeof notifySaveStatus === 'function') {
-              notifySaveStatus({ failed: true, error: err });
-            } else if (typeof toast === 'function') {
-              toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
-            }
+            if (typeof notifySaveStatus === 'function') notifySaveStatus({ failed: true, error: err }, startedAt);
           });
           return result;
         });
