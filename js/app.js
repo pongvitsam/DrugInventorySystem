@@ -45,11 +45,35 @@ function api(name, payload) {
   }
   return DrugAPI.api(name, payload || {});
 }
-function toast(msg) {
+function toast(msg, ms) {
   var el = document.getElementById('toast');
   el.textContent = msg;
   el.style.display = 'block';
-  setTimeout(function () { el.style.display = 'none'; }, 3200);
+  el._saveStatus = false;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function () { el.style.display = 'none'; }, ms || 3200);
+}
+// ต่อท้ายข้อความบันทึกเดิม ไม่ทับรายละเอียดใบที่เพิ่งบันทึก
+function toastSaveStatus_(msg, ms) {
+  var el = document.getElementById('toast');
+  var base = el && el.style.display === 'block' && !el._saveStatus ? el.textContent : '';
+  toast(base ? base + ' — ' + msg : msg, ms);
+  if (el) el._saveStatus = true;
+}
+function notifySaveStatus(r) {
+  r = r || {};
+  if (r.saved) {
+    toastSaveStatus_('บันทึกลงระบบแล้ว (Google Sheets)', 5000);
+    return;
+  }
+  if (r.deferred) {
+    toastSaveStatus_('ออฟไลน์ — เก็บไว้ในเครื่องนี้ ยังไม่ขึ้นระบบ จะส่งให้อัตโนมัติเมื่อมีเน็ต', 7000);
+    return;
+  }
+  if (r.failed) {
+    var err = r.error;
+    toastSaveStatus_('ยังไม่ได้บันทึกขึ้นระบบ: ' + ((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ'), 9000);
+  }
 }
 function money(n) {
   return Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

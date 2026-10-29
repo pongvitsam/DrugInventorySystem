@@ -45,7 +45,11 @@ var RemoteDB = (function () {
       }
       if (syncDeferredWhileOffline_) {
         syncDeferredWhileOffline_ = false;
-        sync({ force: false, skipImages: true }).catch(function () {});
+        sync({ force: false, skipImages: true }).then(function (r) {
+          if (r && r.saved && typeof toast === 'function') toast('บันทึกลงระบบแล้ว — ส่งข้อมูลที่ค้างตอนออฟไลน์ขึ้น Google Sheets ครบ');
+        }, function (err) {
+          if (typeof toast === 'function') toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
+        });
       }
     });
   }
@@ -883,6 +887,7 @@ var RemoteDB = (function () {
       throw new Error((res && res.error) || 'บันทึกขึ้น Google ไม่สำเร็จ');
     }
     applyRevision_(res.revision);
+    return { saved: true, revision: localRevision };
   }
 
   function mergeSyncOpts_(a, b) {
@@ -910,44 +915,59 @@ var RemoteDB = (function () {
     });
   }
 
+  // ทุกคนที่รอ sync ในรอบที่ถูกรวมกัน ต้องได้ผลลัพธ์ของรอบนั้น
+  var syncWaiters_ = [];
+
+  function flushSync_() {
+    clearTimeout(syncDebounceTimer_);
+    syncDebounceTimer_ = null;
+    var waiters = syncWaiters_;
+    syncWaiters_ = [];
+    if (!isOnline_()) {
+      syncDeferredWhileOffline_ = true;
+      waiters.forEach(function (w) { w.resolve({ deferred: true }); });
+      return;
+    }
+    var pending = syncPendingOpts_;
+    syncPendingOpts_ = null;
+    syncDeferredWhileOffline_ = false;
+    var run = function () { return runSyncJob_(pending); };
+    syncChain_ = syncChain_.then(run, run);
+    syncChain_.then(function (r) {
+      waiters.forEach(function (w) { w.resolve(r); });
+    }, function (err) {
+      if (!isOnline_()) {
+        syncDeferredWhileOffline_ = true;
+        syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, pending);
+        waiters.forEach(function (w) { w.resolve({ deferred: true }); });
+        return;
+      }
+      waiters.forEach(function (w) { w.reject(err); });
+    });
+  }
+
   function sync(opts) {
     opts = opts || {};
-    if (!enabled()) return Promise.resolve();
+    if (!enabled()) return Promise.resolve({ disabled: true });
     bindOnlineSync_();
+    syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
     // ออฟไลน์ — เก็บไว้ซิงก์ตอนมีเน็ต ไม่เรียก Google
     if (!isOnline_()) {
       syncDeferredWhileOffline_ = true;
-      syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
-      return Promise.resolve();
+      return Promise.resolve({ deferred: true });
     }
-    // รวม sync หลายครั้งในช่วงสั้น ๆ เป็นครั้งเดียว (เช่น บันทึก AM+PM ติดกัน)
-    syncPendingOpts_ = mergeSyncOpts_(syncPendingOpts_, opts);
+    var waiter = new Promise(function (resolve, reject) {
+      syncWaiters_.push({ resolve: resolve, reject: reject });
+    });
     if (opts.force || opts.includeImages || opts.includeAllImages) {
       // force / มีรูป — รันทันทีหลังคิวปัจจุบัน
+      flushSync_();
+    } else {
+      // รวม sync หลายครั้งในช่วงสั้น ๆ เป็นครั้งเดียว (เช่น บันทึก AM+PM ติดกัน)
       clearTimeout(syncDebounceTimer_);
-      syncDebounceTimer_ = null;
-      var immediate = syncPendingOpts_;
-      syncPendingOpts_ = null;
-      syncDeferredWhileOffline_ = false;
-      syncChain_ = syncChain_.then(function () { return runSyncJob_(immediate); }, function () { return runSyncJob_(immediate); });
-      return syncChain_;
+      syncDebounceTimer_ = setTimeout(flushSync_, 450);
     }
-    clearTimeout(syncDebounceTimer_);
-    return new Promise(function (resolve, reject) {
-      syncDebounceTimer_ = setTimeout(function () {
-        syncDebounceTimer_ = null;
-        if (!isOnline_()) {
-          syncDeferredWhileOffline_ = true;
-          resolve();
-          return;
-        }
-        var pending = syncPendingOpts_;
-        syncPendingOpts_ = null;
-        syncDeferredWhileOffline_ = false;
-        syncChain_ = syncChain_.then(function () { return runSyncJob_(pending); }, function () { return runSyncJob_(pending); });
-        syncChain_.then(resolve, reject);
-      }, 450);
-    });
+    return waiter;
   }
 
   function fetchAndApplyExport_() {

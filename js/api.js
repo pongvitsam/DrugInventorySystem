@@ -2904,9 +2904,12 @@ return {
             ? { force: false, includeImages: true }
             : { force: false, skipImages: true };
           // ซิงก์พื้นหลังทุก mutation — ออฟไลน์จะค้างไว้ใน RemoteDB จนมีเน็ต
-          RemoteDB.sync(syncOpts).catch(function (err) {
-            if (typeof RemoteDB !== 'undefined' && RemoteDB.isOnline && !RemoteDB.isOnline()) return;
-            if (typeof toast === 'function') {
+          RemoteDB.sync(syncOpts).then(function (r) {
+            if (typeof notifySaveStatus === 'function') notifySaveStatus(r);
+          }, function (err) {
+            if (typeof notifySaveStatus === 'function') {
+              notifySaveStatus({ failed: true, error: err });
+            } else if (typeof toast === 'function') {
               toast((err && err.message) ? err.message : 'ซิงก์ขึ้น Google ไม่สำเร็จ');
             }
           });
