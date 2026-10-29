@@ -4,6 +4,7 @@
  */
 var RemoteDB = (function () {
   var GAS_URL_KEY = 'pharma:gasUrl';
+  var GAS_TOKEN_KEY = 'pharma:gasToken';
   var REV_KEY = 'pharma:syncRevision';
   var BACKUP_KEY = 'pharma:safetyBackup';
   var CLIMATE_HOLD_KEY = 'pharma:climateHold';
@@ -224,6 +225,33 @@ var RemoteDB = (function () {
     return true;
   }
 
+  function getToken_() {
+    try { return String(localStorage.getItem(GAS_TOKEN_KEY) || '').trim(); } catch (e) { return ''; }
+  }
+
+  function setToken_(token) {
+    token = String(token || '').trim();
+    try {
+      if (token) localStorage.setItem(GAS_TOKEN_KEY, token);
+      else localStorage.removeItem(GAS_TOKEN_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function withAuthQuery_(q) {
+    q = String(q || '').replace(/&?token=[^&]*/g, '').replace(/^&+|&+$/g, '');
+    var t = getToken_();
+    if (!t) return q;
+    return (q ? q + '&' : '') + 'token=' + encodeURIComponent(t);
+  }
+
+  function isTrustedGasOrigin_(origin) {
+    origin = String(origin || '');
+    if (origin === 'https://script.google.com') return true;
+    if (/^https:\/\/script\.googleusercontent\.com$/i.test(origin)) return true;
+    if (/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/i.test(origin)) return true;
+    return false;
+  }
+
   function getUrl() {
     if (window.PHARMA_CONFIG && window.PHARMA_CONFIG.gasUrl) {
       return normalizeGasUrl_(window.PHARMA_CONFIG.gasUrl);
@@ -347,7 +375,7 @@ var RemoteDB = (function () {
         reject(new Error('ไม่มี fetch'));
         return;
       }
-      var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
+      var q = withAuthQuery_(String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, ''));
       var url = baseUrl() + '?' + q + (q ? '&' : '') + 't=' + Date.now();
       var ms = /action=export/.test(q) ? 90000 : (/action=meta/.test(q) ? 4000 : 12000);
       var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -420,7 +448,7 @@ var RemoteDB = (function () {
           ? 'Edge ต้องกดปุ่มเชื่อมต่อ Google Sheets ครั้งหนึ่ง'
           : 'โหลดจาก Google Sheets ไม่สำเร็จ (เครือข่าย)'));
       };
-      var q = String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, '');
+      var q = withAuthQuery_(String(query || '').replace(/&?callback=[^&]*/g, '').replace(/^&/, ''));
       // authuser=0 ลดโอกาสถูกพาไป /macros/u/1/ เมื่อล็อกอินหลายบัญชี
       script.src = baseUrl() + '?' + q +
         (q ? '&' : '') + 'callback=' + encodeURIComponent(cb) +
@@ -442,6 +470,7 @@ var RemoteDB = (function () {
         reject(new Error('เชื่อมต่อ Google ไม่สำเร็จ (หมดเวลา)'));
       }, ms);
       function onMsg(ev) {
+        if (!isTrustedGasOrigin_(ev && ev.origin)) return;
         var d = ev && ev.data;
         if (!d || d.source !== 'DrugInventoryGAS') return;
         if (d.reqId && d.reqId !== reqId) return;
@@ -455,11 +484,11 @@ var RemoteDB = (function () {
         window.removeEventListener('message', onMsg);
       }
       window.addEventListener('message', onMsg);
-      var q = String(query || '')
+      var q = withAuthQuery_(String(query || '')
         .replace(/&?relay=[^&]*/g, '')
         .replace(/&?reqId=[^&]*/g, '')
         .replace(/&?callback=[^&]*/g, '')
-        .replace(/^&/, '');
+        .replace(/^&/, ''));
       var url = baseUrl() + '?' + q +
         (q ? '&' : '') + 'relay=1&reqId=' + encodeURIComponent(reqId) + '&t=' + Date.now();
       var w = window.open(url, 'pharmaGasRelay', 'popup=yes,width=520,height=420');
@@ -510,6 +539,8 @@ var RemoteDB = (function () {
       }
       add('bridge', '1');
       add('reqId', reqId);
+      var tok = getToken_();
+      if (tok) add('token', tok);
       Object.keys(fields || {}).forEach(function (k) { add(k, fields[k]); });
       document.body.appendChild(form);
       var settled = false;
@@ -520,6 +551,7 @@ var RemoteDB = (function () {
         reject(new Error('บันทึกขึ้น Google ไม่สำเร็จ (หมดเวลา)'));
       }, 60000);
       function onMsg(ev) {
+        if (!isTrustedGasOrigin_(ev && ev.origin)) return;
         var d = ev && ev.data;
         if (!d || d.source !== 'DrugInventoryGAS') return;
         if (d.reqId && d.reqId !== reqId) return;
@@ -864,7 +896,8 @@ var RemoteDB = (function () {
         action: 'import',
         data: DB.exportAll(exportOpts || {}),
         expectedRevision: force ? null : localRevision,
-        force: !!force
+        force: !!force,
+        token: getToken_()
       })
     });
   }
@@ -1234,9 +1267,11 @@ var RemoteDB = (function () {
     enabled: enabled,
     getUrl: getUrl,
     setUrl: setUrl,
+    getToken: getToken_,
+    setToken: setToken_,
     validateUrl: validateUrlMessage_,
     normalizeUrl: normalizeGasUrl_,
-    build: 107,
+    build: 108,
     ensureLoaded: ensureLoaded,
     isLoaded: function () { return !!loaded; },
     refreshIfNewer: refreshIfNewer,

@@ -275,58 +275,176 @@ function apiSaveSettings_(p) {
   return { ok: true, settings: readSettings_() };
 }
 
-function parseUsers_(settings) {
+function sha256hex_(ascii) {
+  function rr(v, n) { return (v >>> n) | (v << (32 - n)); }
+  var maxWord = Math.pow(2, 32);
+  var i, j;
+  var result = '';
+  var words = [];
+  var asciiBitLength = ascii.length * 8;
+  var hash = [];
+  var k = [];
+  var isComposite = {};
+  var primeCounter = 0;
+  for (var candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+      hash[primeCounter] = (Math.pow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (Math.pow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+  ascii += '\x80';
+  while (ascii.length % 64 - 56) ascii += '\x00';
+  for (i = 0; i < ascii.length; i++) {
+    j = ascii.charCodeAt(i);
+    if (j >> 8) return '';
+    words[i >> 2] |= j << (((3 - i) % 4) * 8);
+  }
+  words[words.length] = (asciiBitLength / maxWord) | 0;
+  words[words.length] = asciiBitLength;
+  for (j = 0; j < words.length;) {
+    var w = words.slice(j, j += 16);
+    var oldHash = hash.slice();
+    hash = hash.slice(0, 8);
+    for (i = 0; i < 64; i++) {
+      var w15 = w[i - 15], w2 = w[i - 2];
+      var a = hash[0], e = hash[4];
+      var temp1 = hash[7]
+        + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+          w[i - 16] + (rr(w15, 7) ^ rr(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rr(w2, 17) ^ rr(w2, 19) ^ (w2 >>> 10))
+        ) | 0);
+      var temp2 = (rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  for (i = 0; i < 8; i++) {
+    for (j = 3; j + 1; j--) {
+      var b = (hash[i] >> (j * 8)) & 255;
+      result += (b < 16 ? '0' : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+
+function utf8Bytes_(s) {
+  return unescape(encodeURIComponent(String(s || '')));
+}
+
+function hashPassword_(password, salt) {
+  return sha256hex_(utf8Bytes_(String(salt || '') + '\n' + String(password || '')));
+}
+
+function randomSalt_() {
+  var s = '';
+  for (var i = 0; i < 16; i++) s += ('0' + Math.floor(Math.random() * 256).toString(16)).slice(-2);
+  return s;
+}
+
+function parseUserRecords_(settings) {
+  var fallback = [{ username: 'Napatsorn', salt: '', passHash: '' }];
   try {
     var raw = settings.loginUsers;
-    if (!raw) return ['Napatsorn'];
+    if (!raw) return fallback;
     var arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (typeof arr === 'string') {
       try { arr = JSON.parse(arr); } catch (e2) { arr = [arr]; }
     }
-    if (!Array.isArray(arr)) return ['Napatsorn'];
-    var cleaned = arr.map(function (u) { return String(u || '').trim(); }).filter(Boolean);
-    return cleaned.length ? cleaned : ['Napatsorn'];
+    if (!Array.isArray(arr)) return fallback;
+    var out = [];
+    arr.forEach(function (u) {
+      if (u && typeof u === 'object') {
+        var name = String(u.username || u.u || '').trim();
+        if (!name) return;
+        out.push({
+          username: name,
+          salt: String(u.salt || u.s || ''),
+          passHash: String(u.passHash || u.h || '')
+        });
+      } else {
+        var n = String(u || '').trim();
+        if (n) out.push({ username: n, salt: '', passHash: '' });
+      }
+    });
+    return out.length ? out : fallback;
   } catch (e) {
-    return ['Napatsorn'];
+    return fallback;
   }
 }
 
+function parseUsers_(settings) {
+  return parseUserRecords_(settings).map(function (u) { return u.username; });
+}
+
+function writeUserRecords_(rows) {
+  setSetting_('loginUsers', JSON.stringify((rows || []).map(function (u) {
+    return { username: u.username, salt: u.salt || '', passHash: u.passHash || '' };
+  })));
+}
+
+function userPublicList_(rows) {
+  return (rows || []).map(function (u) {
+    return { username: u.username, hasPassword: !!u.passHash };
+  });
+}
+
 function apiListUsers_() {
-  return { users: parseUsers_(readSettings_()) };
+  return { users: userPublicList_(parseUserRecords_(readSettings_())) };
 }
 
 function apiLogin_(p) {
   var name = String(p.username || '').trim();
+  var pass = String(p.password || '');
   if (!name) throw new Error('กรุณาใส่ Username');
-  var users = parseUsers_(readSettings_());
-  var ok = users.some(function (u) { return String(u).toLowerCase() === name.toLowerCase(); });
-  if (!ok) throw new Error('Username ไม่ถูกต้อง');
-  var matched = users.filter(function (u) { return String(u).toLowerCase() === name.toLowerCase(); })[0];
-  setSetting_('lastLoginUser', matched);
-  return { ok: true, username: matched };
+  var rows = parseUserRecords_(readSettings_());
+  var rec = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].username).toLowerCase() === name.toLowerCase()) {
+      rec = rows[i];
+      break;
+    }
+  }
+  if (!rec) throw new Error('Username ไม่ถูกต้อง');
+  if (!rec.passHash) {
+    if (pass.length < 4) throw new Error('ผู้ใช้นี้ยังไม่มีรหัสผ่าน — ตั้งรหัสอย่างน้อย 4 ตัว');
+    rec.salt = randomSalt_();
+    rec.passHash = hashPassword_(pass, rec.salt);
+    writeUserRecords_(rows);
+  } else if (hashPassword_(pass, rec.salt) !== rec.passHash) {
+    throw new Error('รหัสผ่านไม่ถูกต้อง');
+  }
+  setSetting_('lastLoginUser', rec.username);
+  return { ok: true, username: rec.username };
 }
 
 function apiAddUser_(p) {
   var name = String(p.username || '').trim().replace(/\s+/g, ' ');
+  var pass = String(p.password || '');
   if (!name) throw new Error('กรุณาใส่ Username');
   if (name.length < 2) throw new Error('Username สั้นเกินไป');
-  var users = parseUsers_(readSettings_());
-  if (users.some(function (u) { return String(u).toLowerCase() === name.toLowerCase(); })) {
+  if (pass.length < 4) throw new Error('รหัสผ่านอย่างน้อย 4 ตัว');
+  var rows = parseUserRecords_(readSettings_());
+  if (rows.some(function (u) { return String(u.username).toLowerCase() === name.toLowerCase(); })) {
     throw new Error('มี Username นี้แล้ว');
   }
-  users.push(name);
-  setSetting_('loginUsers', JSON.stringify(users));
-  return { ok: true, users: users };
+  var salt = randomSalt_();
+  rows.push({ username: name, salt: salt, passHash: hashPassword_(pass, salt) });
+  writeUserRecords_(rows);
+  return { ok: true, users: userPublicList_(rows) };
 }
 
 function apiRemoveUser_(p) {
   var name = String(p.username || '').trim();
-  var users = parseUsers_(readSettings_()).filter(function (u) {
-    return String(u).toLowerCase() !== name.toLowerCase();
+  var rows = parseUserRecords_(readSettings_()).filter(function (u) {
+    return String(u.username).toLowerCase() !== name.toLowerCase();
   });
-  if (!users.length) throw new Error('ต้องมีผู้ใช้อย่างน้อย 1 คน');
-  setSetting_('loginUsers', JSON.stringify(users));
-  return { ok: true, users: users };
+  if (!rows.length) throw new Error('ต้องมีผู้ใช้อย่างน้อย 1 คน');
+  writeUserRecords_(rows);
+  return { ok: true, users: userPublicList_(rows) };
 }
 
 function apiListItems_() {
@@ -2920,6 +3038,7 @@ return {
   exportData: function () {
     return DB.exportAll();
   },
+  toIsoDate: toIsoDate_,
   resetCaches: resetCaches_
 };
 })();

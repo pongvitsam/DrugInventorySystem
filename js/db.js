@@ -16,7 +16,11 @@ var DB = {
   },
   writeObjects: function (name, rows) {
     DB_MEM[name] = rows || [];
-    localStorage.setItem(DB_PREFIX + name, JSON.stringify(DB_MEM[name]));
+    try {
+      localStorage.setItem(DB_PREFIX + name, JSON.stringify(DB_MEM[name]));
+    } catch (e) {
+      throw new Error('ที่เก็บในเครื่องเต็ม — Export สำรองแล้วลบรูปบิลเก่า หรือลองใหม่');
+    }
   },
   clearCache: function (name) {
     if (name) delete DB_MEM[name];
@@ -35,7 +39,11 @@ var DB = {
   },
   writeSettingsObj: function (obj) {
     DB_MEM.SettingsObj = obj || {};
-    localStorage.setItem(DB_PREFIX + 'SettingsObj', JSON.stringify(DB_MEM.SettingsObj));
+    try {
+      localStorage.setItem(DB_PREFIX + 'SettingsObj', JSON.stringify(DB_MEM.SettingsObj));
+    } catch (e) {
+      throw new Error('ที่เก็บในเครื่องเต็ม — Export สำรองแล้วลบรูปบิลเก่า หรือลองใหม่');
+    }
   },
   readSeqObj: function () {
     if (DB_MEM.SeqObj) return DB_MEM.SeqObj;
@@ -50,7 +58,11 @@ var DB = {
   },
   writeSeqObj: function (obj) {
     DB_MEM.SeqObj = obj || {};
-    localStorage.setItem(DB_PREFIX + 'SeqObj', JSON.stringify(DB_MEM.SeqObj));
+    try {
+      localStorage.setItem(DB_PREFIX + 'SeqObj', JSON.stringify(DB_MEM.SeqObj));
+    } catch (e) {
+      throw new Error('ที่เก็บในเครื่องเต็ม — Export สำรองแล้วลบรูปบิลเก่า หรือลองใหม่');
+    }
   },
   readReceiptImages: function () {
     if (DB_MEM.ReceiptImages) return DB_MEM.ReceiptImages;

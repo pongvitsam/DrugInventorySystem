@@ -72,6 +72,34 @@ function toastSaveStatus_(msg, ms, since) {
 function syncErrorText(err) {
   return (err && err.message) ? err.message : SYNC_FAILED_MSG;
 }
+function withSaveLock(btnId, work) {
+  var btn = typeof btnId === 'string' ? document.getElementById(btnId) : btnId;
+  if (btn && !btn.dataset) btn.dataset = {};
+  if (btn && btn.dataset.saving === '1') return;
+  if (btn) {
+    btn.dataset.saving = '1';
+    btn.disabled = true;
+  }
+  var done = function () {
+    if (btn) {
+      if (!btn.dataset) btn.dataset = {};
+      btn.dataset.saving = '';
+      btn.disabled = false;
+    }
+  };
+  try {
+    var r = work();
+    if (r && typeof r.then === 'function') {
+      return r.then(function (v) { done(); return v; }, function (err) { done(); throw err; });
+    }
+    done();
+    return r;
+  } catch (e) {
+    done();
+    throw e;
+  }
+}
+
 function notifySaveStatus(r, since) {
   r = r || {};
   if (r.saved) {
@@ -128,6 +156,7 @@ function showPage(id) {
   if (id === 'import') {
     loadLoginUsers();
     loadLowStockSettings();
+    loadGasTokenField_();
   }
   if (id === 'reports') {
     setReportTab(STATE.reportKind || 'month');
@@ -857,8 +886,8 @@ function renderDash(b) {
       return '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.location || 'คลังหลัก') + '</td><td><span class="pill warn">' + esc(x.expiry) + '</span></td><td class="right">' + x.qty + '</td></tr>';
     }).join('') + '</table>'
     : 'ไม่มีรายการใกล้หมดอายุ';
-  var rec = (b.recentReceipts || []).map(function (r) { return 'รับเข้า ' + (r.number || r.id) + ' · ' + money(r.totalValue) + ' ฿'; });
-  var tr = (b.recentTransfers || []).map(function (r) { return 'เบิก ' + r.id + ' · ' + money(r.totalValue) + ' ฿'; });
+  var rec = (b.recentReceipts || []).map(function (r) { return 'รับเข้า ' + esc(r.number || r.id) + ' · ' + money(r.totalValue) + ' ฿'; });
+  var tr = (b.recentTransfers || []).map(function (r) { return 'เบิก ' + esc(r.id) + ' · ' + money(r.totalValue) + ' ฿'; });
   document.getElementById('dashRecent').innerHTML = (rec.concat(tr).slice(0, 8).join('<br>') || 'ยังไม่มีรายการ');
 }
 function kpi(label, value, hint, tone) {
@@ -1141,37 +1170,39 @@ function removeItemLotRow(i) {
 }
 
 function saveItem() {
-  var payload = {
-    id: document.getElementById('itId').value,
-    name: document.getElementById('itName').value,
-    code: document.getElementById('itCode').value,
-    category: readOptionSelect('itCat'),
-    packSize: readOptionSelect('itPack'),
-    form: readOptionSelect('itForm'),
-    unitPrice: document.getElementById('itPrice').value,
-    notes: document.getElementById('itNotes').value
-  };
-  var lots = (STATE.itemLotDraft || []).filter(function (l) {
-    return l.stockId || Number(l.qty) > 0 || l.expiry || l.packSize;
+  return withSaveLock('itSaveBtn', function () {
+    var payload = {
+      id: document.getElementById('itId').value,
+      name: document.getElementById('itName').value,
+      code: document.getElementById('itCode').value,
+      category: readOptionSelect('itCat'),
+      packSize: readOptionSelect('itPack'),
+      form: readOptionSelect('itForm'),
+      unitPrice: document.getElementById('itPrice').value,
+      notes: document.getElementById('itNotes').value
+    };
+    var lots = (STATE.itemLotDraft || []).filter(function (l) {
+      return l.stockId || Number(l.qty) > 0 || l.expiry || l.packSize;
+    });
+    var origIds = (STATE.editingItemLots || []).map(function (l) { return l.stockId; }).filter(Boolean);
+    var currentIds = lots.filter(function (l) { return l.stockId; }).map(function (l) { return l.stockId; });
+    var removeStockIds = origIds.filter(function (id) { return currentIds.indexOf(id) < 0; });
+    return ensureOptionOnSave('categories', payload.category)
+      .then(function () { return ensureOptionOnSave('packSizes', payload.packSize); })
+      .then(function () { return ensureOptionOnSave('forms', payload.form); })
+      .then(function () { return api('saveItem', payload); })
+      .then(function (r) {
+        var itemId = r.item.id;
+        if (lots.length || removeStockIds.length) {
+          return api('saveStockLots', { itemId: itemId, lots: lots, removeStockIds: removeStockIds });
+        }
+      }).then(function () {
+      closeModal();
+      toast('บันทึกรายการแล้ว');
+      loadItems();
+      refreshStockCache();
+    }).catch(function (e) { toast(e.message || String(e)); });
   });
-  var origIds = (STATE.editingItemLots || []).map(function (l) { return l.stockId; }).filter(Boolean);
-  var currentIds = lots.filter(function (l) { return l.stockId; }).map(function (l) { return l.stockId; });
-  var removeStockIds = origIds.filter(function (id) { return currentIds.indexOf(id) < 0; });
-  ensureOptionOnSave('categories', payload.category)
-    .then(function () { return ensureOptionOnSave('packSizes', payload.packSize); })
-    .then(function () { return ensureOptionOnSave('forms', payload.form); })
-    .then(function () { return api('saveItem', payload); })
-    .then(function (r) {
-      var itemId = r.item.id;
-      if (lots.length || removeStockIds.length) {
-        return api('saveStockLots', { itemId: itemId, lots: lots, removeStockIds: removeStockIds });
-      }
-    }).then(function () {
-    closeModal();
-    toast('บันทึกรายการแล้ว');
-    loadItems();
-    refreshStockCache();
-  }).catch(function (e) { toast(e.message || String(e)); });
 }
 
 var LOW_STOCK_QTY = 10;
@@ -1298,15 +1329,9 @@ function renderStockAlert(allRows, alertId, which) {
 }
 
 function exStockExpiryKey_(v) {
-  var s = String(v || '').trim();
-  if (!s) return '9999-99-99';
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (!m) return '9999-99-99';
-  var y = Number(m[3]);
-  if (y > 2400) y -= 543;
-  if (y < 100) y += 2500 - 543;
-  return y + '-' + ('0' + Number(m[2])).slice(-2) + '-' + ('0' + Number(m[1])).slice(-2);
+  if (!v) return '9999-99-99';
+  var iso = (typeof DrugAPI !== 'undefined' && DrugAPI.toIsoDate) ? DrugAPI.toIsoDate(v) : '';
+  return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '9999-99-99';
 }
 function renderStock() { renderStockView('MAIN'); }
 function renderExStock() { renderStockView('EXT'); }
@@ -1567,30 +1592,32 @@ function capturePendingBillImage_() {
 
 function saveReceipt() {
   if (!STATE.receive.lines.length) return toast('ยังไม่มีรายการ');
-  var billImage = capturePendingBillImage_();
-  var payload = {
-    number: document.getElementById('rcNumber').value,
-    date: document.getElementById('rcDate').value,
-    source: document.getElementById('rcSource').value,
-    kind: document.getElementById('rcKind').value,
-    notes: document.getElementById('rcNotes').value,
-    lines: STATE.receive.lines
-  };
-  if (billImage) payload.billImage = billImage;
-  if (STATE.editingReceiptId) payload.id = STATE.editingReceiptId;
-  api('saveReceipt', payload).then(function (r) {
-    var editing = !!STATE.editingReceiptId;
-    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท' +
-      (billImage ? ' · เก็บรูปบิลแล้ว' : ''));
-    STATE.editingReceiptId = null;
-    STATE.receive.lines = [];
-    STATE.pendingBillImage = '';
-    clearOcrReview();
-    updateReceiptEditUI();
-    renderReceive();
-    loadReceipts();
-    refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  return withSaveLock('rcSaveBtn', function () {
+    var billImage = capturePendingBillImage_();
+    var payload = {
+      number: document.getElementById('rcNumber').value,
+      date: document.getElementById('rcDate').value,
+      source: document.getElementById('rcSource').value,
+      kind: document.getElementById('rcKind').value,
+      notes: document.getElementById('rcNotes').value,
+      lines: STATE.receive.lines
+    };
+    if (billImage) payload.billImage = billImage;
+    if (STATE.editingReceiptId) payload.id = STATE.editingReceiptId;
+    return api('saveReceipt', payload).then(function (r) {
+      var editing = !!STATE.editingReceiptId;
+      toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' รวม ' + money(r.receipt.totalValue) + ' บาท' +
+        (billImage ? ' · เก็บรูปบิลแล้ว' : ''));
+      STATE.editingReceiptId = null;
+      STATE.receive.lines = [];
+      STATE.pendingBillImage = '';
+      clearOcrReview();
+      updateReceiptEditUI();
+      renderReceive();
+      loadReceipts();
+      refreshAfterMutation();
+    }).catch(function (e) { toast(e.message || String(e)); });
+  });
 }
 function loadReceipts() {
   api('listReceipts').then(function (r) {
@@ -2155,32 +2182,34 @@ function saveWithdraw() {
   if (!lines.length && STATE.editingWithdrawId) {
     if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลัง ต้องการบันทึก?')) return;
   }
-  var payload = {
-    date: document.getElementById('wdDate').value,
-    notes: document.getElementById('wdNotes').value,
-    location: 'MAIN',
-    lines: lines
-  };
-  if (STATE.editingWithdrawId) payload.id = STATE.editingWithdrawId;
-  api('saveTransfer', payload).then(function (r) {
-    var editing = !!STATE.editingWithdrawId;
-    var msg = (editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท';
-    if (!editing && Number(r.extInbound) > 0) msg += ' · เข้าคลังภายนอก ' + fmtCount(r.extInbound) + ' หน่วย';
-    if (editing && r.returnedCount > 0) {
-      msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
-    }
-    toast(msg);
-    STATE.lastWithdrawId = r.transfer.id;
-    STATE.editingWithdrawId = null;
-    STATE.editWithdrawOrig = {};
-    STATE.withdrawCart = [];
-    updateWithdrawEditUI();
-    renderWithdrawSummary();
-    loadWithdrawPick();
-    loadWithdrawHistory();
-    showWithdrawPrint(r.transfer.id);
-    refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  return withSaveLock('wdSaveBtn', function () {
+    var payload = {
+      date: document.getElementById('wdDate').value,
+      notes: document.getElementById('wdNotes').value,
+      location: 'MAIN',
+      lines: lines
+    };
+    if (STATE.editingWithdrawId) payload.id = STATE.editingWithdrawId;
+    return api('saveTransfer', payload).then(function (r) {
+      var editing = !!STATE.editingWithdrawId;
+      var msg = (editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท';
+      if (!editing && Number(r.extInbound) > 0) msg += ' · เข้าคลังภายนอก ' + fmtCount(r.extInbound) + ' หน่วย';
+      if (editing && r.returnedCount > 0) {
+        msg += ' · คืนคลัง ' + r.returnedCount + ' รายการ (' + r.returnedQty + ' หน่วย)';
+      }
+      toast(msg);
+      STATE.lastWithdrawId = r.transfer.id;
+      STATE.editingWithdrawId = null;
+      STATE.editWithdrawOrig = {};
+      STATE.withdrawCart = [];
+      updateWithdrawEditUI();
+      renderWithdrawSummary();
+      loadWithdrawPick();
+      loadWithdrawHistory();
+      showWithdrawPrint(r.transfer.id);
+      refreshAfterMutation();
+    }).catch(function (e) { toast(e.message || String(e)); });
+  });
 }
 function withdrawHistoryTime(x) {
   return ThDate.formatTimeShort(x.createdAt || '') || '';
@@ -2908,6 +2937,7 @@ function refreshActivePageViews_() {
   if (active.id === 'page-import') {
     loadLoginUsers();
     loadLowStockSettings();
+    loadGasTokenField_();
   }
   if (active.id === 'page-climate') {
     ensureClimateLoaded_().then(function () {
@@ -3032,47 +3062,50 @@ function exportBackup() {
   updateBackupStatus('ดาวน์โหลดไฟล์สำรองแล้ว — ใช้ปุ่มอัปโหลดด้านล่างเพื่อกู้คืน (ทับทั้งชุด)');
 }
 
+function userRowName_(u) {
+  return (u && typeof u === 'object') ? String(u.username || '') : String(u || '');
+}
+
+function paintUserList_(users) {
+  users = users || [];
+  var html = users.map(function (u, idx) {
+    var name = userRowName_(u);
+    var hasPw = u && typeof u === 'object' ? !!u.hasPassword : false;
+    return '<div class="user-row"><span>' + esc(name) +
+      (hasPw ? '' : ' <span class="muted">· ยังไม่มีรหัส</span>') +
+      '</span><button type="button" class="btn ghost" data-user-idx="' + idx + '">ลบ</button></div>';
+  }).join('');
+  var box = document.getElementById('userList');
+  if (!box) return;
+  box.innerHTML = html || '<p class="muted">ยังไม่มีผู้ใช้</p>';
+  box.querySelectorAll('[data-user-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var i = Number(btn.getAttribute('data-user-idx'));
+      if (!isNaN(i) && users[i]) removeLoginUser(userRowName_(users[i]));
+    });
+  });
+}
+
 function loadLoginUsers() {
   api('listUsers').then(function (r) {
-    var users = r.users || [];
-    var html = users.map(function (u, idx) {
-      return '<div class="user-row"><span>' + esc(u) + '</span><button type="button" class="btn ghost" data-user-idx="' + idx + '">ลบ</button></div>';
-    }).join('');
-    var box = document.getElementById('userList');
-    box.innerHTML = html || '<p class="muted">ยังไม่มีผู้ใช้</p>';
-    box.querySelectorAll('[data-user-idx]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var i = Number(btn.getAttribute('data-user-idx'));
-        if (!isNaN(i) && users[i]) removeLoginUser(users[i]);
-      });
-    });
+    paintUserList_(r.users || []);
   }).catch(function (e) { toast(e.message || String(e)); });
 }
 
 function addLoginUser() {
   var name = (document.getElementById('newUserName').value || '').trim();
+  var pass = (document.getElementById('newUserPass') && document.getElementById('newUserPass').value) || '';
   if (!name) return toast('กรุณาใส่ Username');
   if (name.length < 2) return toast('Username สั้นเกินไป (อย่างน้อย 2 ตัวอักษร)');
+  if (String(pass).length < 4) return toast('รหัสผ่านอย่างน้อย 4 ตัว');
   var btn = document.querySelector('#page-settings button[onclick="addLoginUser()"]');
   if (btn) btn.disabled = true;
-  api('addUser', { username: name }).then(function (r) {
+  api('addUser', { username: name, password: pass }).then(function (r) {
     document.getElementById('newUserName').value = '';
+    if (document.getElementById('newUserPass')) document.getElementById('newUserPass').value = '';
     toast('เพิ่มผู้ใช้แล้ว');
-    if (r && r.users) {
-      var box = document.getElementById('userList');
-      var users = r.users || [];
-      box.innerHTML = users.map(function (u, idx) {
-        return '<div class="user-row"><span>' + esc(u) + '</span><button type="button" class="btn ghost" data-user-idx="' + idx + '">ลบ</button></div>';
-      }).join('') || '<p class="muted">ยังไม่มีผู้ใช้</p>';
-      box.querySelectorAll('[data-user-idx]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          var i = Number(b.getAttribute('data-user-idx'));
-          if (!isNaN(i) && users[i]) removeLoginUser(users[i]);
-        });
-      });
-    } else {
-      loadLoginUsers();
-    }
+    paintUserList_((r && r.users) || []);
+    if (!(r && r.users)) loadLoginUsers();
   }).catch(function (e) { toast(e.message || String(e)); })
     .then(function () { if (btn) btn.disabled = false; });
 }
@@ -3083,6 +3116,33 @@ function removeLoginUser(name) {
     toast('ลบแล้ว');
     loadLoginUsers();
   }).catch(function (e) { toast(e.message || String(e)); });
+}
+
+function loadGasTokenField_() {
+  var el = document.getElementById('gasSyncToken');
+  if (!el || typeof RemoteDB === 'undefined' || !RemoteDB.getToken) return;
+  el.value = RemoteDB.getToken() || '';
+}
+
+function saveGasToken() {
+  if (typeof RemoteDB === 'undefined' || !RemoteDB.setToken) return toast('โมดูล remote ไม่พร้อม');
+  var el = document.getElementById('gasSyncToken');
+  var token = el ? String(el.value || '').trim() : '';
+  RemoteDB.setToken(token);
+  toast(token ? 'บันทึกรหัสเชื่อมต่อในเครื่องนี้แล้ว' : 'ล้างรหัสเชื่อมต่อแล้ว');
+}
+
+function generateGasToken() {
+  var bytes = new Uint8Array(18);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  var token = Array.prototype.map.call(bytes, function (b) {
+    return ('0' + b.toString(16)).slice(-2);
+  }).join('');
+  var el = document.getElementById('gasSyncToken');
+  if (el) el.value = token;
+  if (typeof RemoteDB !== 'undefined' && RemoteDB.setToken) RemoteDB.setToken(token);
+  toast('สร้างรหัสแล้ว — คัดลอกไปใส่ Script Property ชื่อ SYNC_TOKEN แล้ว Deploy Web App ใหม่');
 }
 
 /* ---- Mobile bottom nav helpers ---- */
@@ -3455,15 +3515,17 @@ function saveExIn() {
   if (!lines.length && STATE.editingExInId) {
     if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลังหลัก ต้องการบันทึก?')) return;
   }
-  var payload = { date: document.getElementById('exInDate').value, notes: document.getElementById('exInNotes').value, lines: lines };
-  if (STATE.editingExInId) payload.id = STATE.editingExInId;
-  api('saveExtReceipt', payload).then(function (r) {
-    toast((STATE.editingExInId ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' · ' + money(r.receipt.totalValue) + ' บาท');
-    clearExInCart();
-    loadExInPick();
-    loadExInHistory();
-    refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  return withSaveLock('exInSaveBtn', function () {
+    var payload = { date: document.getElementById('exInDate').value, notes: document.getElementById('exInNotes').value, lines: lines };
+    if (STATE.editingExInId) payload.id = STATE.editingExInId;
+    return api('saveExtReceipt', payload).then(function (r) {
+      toast((STATE.editingExInId ? 'แก้ไข' : 'บันทึก') + 'ใบรับ ' + r.receipt.id + ' · ' + money(r.receipt.totalValue) + ' บาท');
+      clearExInCart();
+      loadExInPick();
+      loadExInHistory();
+      refreshAfterMutation();
+    }).catch(function (e) { toast(e.message || String(e)); });
+  });
 }
 function loadExInHistory() {
   api('listExtReceipts').then(function (r) {
@@ -3586,23 +3648,25 @@ function saveExOut() {
   if (!lines.length && STATE.editingExOutId) {
     if (!confirm('ไม่มีรายการเหลือ — จะคืนยาทั้งหมดเข้าคลังภายนอก ต้องการบันทึก?')) return;
   }
-  var payload = {
-    date: document.getElementById('exOutDate').value,
-    notes: document.getElementById('exOutNotes').value,
-    location: 'EXT',
-    lines: lines
-  };
-  if (STATE.editingExOutId) payload.id = STATE.editingExOutId;
-  api('saveTransfer', payload).then(function (r) {
-    var editing = !!STATE.editingExOutId;
-    toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
-    STATE.lastWithdrawId = r.transfer.id;
-    clearExOutCart();
-    loadExOutPick();
-    loadExOutHistory();
-    showExOutPrint(r.transfer.id);
-    refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  return withSaveLock('exOutSaveBtn', function () {
+    var payload = {
+      date: document.getElementById('exOutDate').value,
+      notes: document.getElementById('exOutNotes').value,
+      location: 'EXT',
+      lines: lines
+    };
+    if (STATE.editingExOutId) payload.id = STATE.editingExOutId;
+    return api('saveTransfer', payload).then(function (r) {
+      var editing = !!STATE.editingExOutId;
+      toast((editing ? 'แก้ไข' : 'บันทึก') + 'ใบเบิก ' + r.transfer.id + ' · ' + money(r.transfer.totalValue) + ' บาท');
+      STATE.lastWithdrawId = r.transfer.id;
+      clearExOutCart();
+      loadExOutPick();
+      loadExOutHistory();
+      showExOutPrint(r.transfer.id);
+      refreshAfterMutation();
+    }).catch(function (e) { toast(e.message || String(e)); });
+  });
 }
 function loadExOutHistory() {
   api('listTransfers', { location: 'EXT' }).then(function (r) {
@@ -3812,12 +3876,14 @@ function saveExOpening() {
   if (!lines.length) return toast('ใส่จำนวนที่ยกมาก่อน');
   var date = document.getElementById('exOpDate').value;
   if (!date) return toast('กรุณาเลือกวันที่');
-  api('saveExtOpening', { date: date, lines: lines }).then(function (r) {
-    toast('บันทึกยอดยกมา ' + r.id + ' · ' + r.totalQty + ' หน่วย');
-    clearExOpening();
-    loadExOpening();
-    refreshAfterMutation();
-  }).catch(function (e) { toast(e.message || String(e)); });
+  return withSaveLock('exOpSaveBtn', function () {
+    return api('saveExtOpening', { date: date, lines: lines }).then(function (r) {
+      toast('บันทึกยอดยกมา ' + r.id + ' · ' + r.totalQty + ' หน่วย');
+      clearExOpening();
+      loadExOpening();
+      refreshAfterMutation();
+    }).catch(function (e) { toast(e.message || String(e)); });
+  });
 }
 function loadExOpHistory() {
   var box = document.getElementById('exOpHistory');

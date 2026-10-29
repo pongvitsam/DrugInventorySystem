@@ -8,10 +8,18 @@
   var reqId = <?!= reqIdJson ?>;
   var action = <?!= actionJson ?>;
   var slim = <?!= slimJson ?>;
+  var token = <?!= tokenJson ?>;
+  function parentOrigin() {
+    try {
+      if (document.referrer) return new URL(document.referrer).origin;
+    } catch (e) {}
+    return 'https://pongvitsam.github.io';
+  }
   function send(p) {
     var msg = { source: 'DrugInventoryGAS', reqId: reqId, payload: p };
-    try { window.top.postMessage(msg, '*'); } catch (e) {}
-    try { window.parent.postMessage(msg, '*'); } catch (e2) {}
+    var origin = parentOrigin();
+    try { window.top.postMessage(msg, origin); } catch (e) {}
+    try { window.parent.postMessage(msg, origin); } catch (e2) {}
   }
   if (payload) {
     send(payload);
@@ -22,8 +30,8 @@
     .withFailureHandler(function (err) {
       send({ ok: false, error: String(err && err.message ? err.message : err) });
     });
-  if (action === 'export') runner.gasExport({ slim: !!slim });
-  else if (action === 'meta') runner.gasMeta();
+  if (action === 'export') runner.gasExport({ slim: !!slim, token: token });
+  else if (action === 'meta') runner.gasMeta({ token: token });
   else runner.gasPing();
 })();
 </script>

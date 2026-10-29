@@ -20,12 +20,20 @@
   var reqId = <?!= reqIdJson ?>;
   var action = <?!= actionJson ?>;
   var slim = <?!= slimJson ?>;
+  var token = <?!= tokenJson ?>;
   var msg = document.getElementById('msg');
+  function parentOrigin() {
+    try {
+      if (document.referrer) return new URL(document.referrer).origin;
+    } catch (e) {}
+    return 'https://pongvitsam.github.io';
+  }
   function send(p) {
     var payload = p || { ok: false, error: 'ไม่มีข้อมูล' };
     var message = { source: 'DrugInventoryGAS', reqId: reqId, payload: payload };
-    try { if (window.opener) window.opener.postMessage(message, '*'); } catch (e) {}
-    try { if (window.parent && window.parent !== window) window.parent.postMessage(message, '*'); } catch (e2) {}
+    var origin = parentOrigin();
+    try { if (window.opener) window.opener.postMessage(message, origin); } catch (e) {}
+    try { if (window.parent && window.parent !== window) window.parent.postMessage(message, origin); } catch (e2) {}
     if (payload.ok) {
       msg.className = 'ok';
       msg.textContent = 'เชื่อมต่อสำเร็จ — ปิดหน้าต่างนี้ได้';
@@ -44,8 +52,8 @@
     .withFailureHandler(function (err) {
       send({ ok: false, error: String(err && err.message ? err.message : err) });
     });
-  if (action === 'export') runner.gasExport({ slim: !!slim });
-  else if (action === 'meta') runner.gasMeta();
+  if (action === 'export') runner.gasExport({ slim: !!slim, token: token });
+  else if (action === 'meta') runner.gasMeta({ token: token });
   else runner.gasPing();
 })();
   </script>

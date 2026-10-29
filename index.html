@@ -27,10 +27,14 @@
       <div class="login-mark" aria-hidden="true"></div>
       <p class="login-eyebrow">ระบบคลังยา</p>
       <h1>รพ.สต.บ้านทรายขาว</h1>
-      <p class="login-sub">เข้าใช้งานด้วย Username · ไม่มีรหัสผ่าน</p>
+      <p class="login-sub">เข้าใช้งานด้วย Username และรหัสผ่าน</p>
       <div class="field">
         <label>Username</label>
         <input id="loginUser" type="text" placeholder="ระบุ Username ของท่าน" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>รหัสผ่าน</label>
+        <input id="loginPass" type="password" placeholder="อย่างน้อย 4 ตัว" autocomplete="current-password">
       </div>
       <label class="remember-row">
         <input type="checkbox" id="loginRemember"> จดจำเครื่องนี้ (ไม่ต้องล็อกอินอีก)
@@ -65,6 +69,8 @@
       <button class="nav-btn" data-page="climate"><span class="nav-ico" data-ico="climate"></span>ความชื้น/อุณหภูมิ</button>
       <button class="nav-btn" data-page="import"><span class="nav-ico" data-ico="import"></span>ตั้งค่า / นำเข้า</button>
       <div class="grow"></div>
+      <div id="syncStatus" class="sync-status" style="display:none"></div>
+      <button type="button" class="sheet-link" id="syncRefreshBtn" style="display:none" onclick="refreshFromGoogle_()">รีเฟรชจาก Google</button>
       <div class="user-box">
         <div class="who">รพ.สต.ทรายขาว</div>
         <button type="button" class="btn secondary" style="width:100%" onclick="doLogout()">ออกจากระบบ</button>
@@ -663,10 +669,20 @@
           <button type="button" class="btn secondary" style="margin-top:10px" onclick="saveLowStockSettings()">บันทึกการตั้งค่าเตือน</button>
         </div>
         <div class="card" style="margin-top:14px">
+          <h3>รหัสเชื่อมต่อ Google Sheets</h3>
+          <p class="muted">กันคนที่รู้ URL Web App อ่านหรือทับคลังยา — สร้างรหัสแล้วใส่ Script Property ชื่อ <b>SYNC_TOKEN</b> ใน Apps Script จากนั้น Deploy Web App ใหม่ รหัสเก็บเฉพาะเครื่องนี้ ไม่ซิงก์ขึ้นชีต</p>
+          <div class="row" style="align-items:flex-end;margin-top:8px;flex-wrap:wrap;gap:8px">
+            <div class="field" style="flex:2"><label>รหัสเชื่อมต่อ</label><input id="gasSyncToken" type="password" autocomplete="off" placeholder="ยังไม่ได้ตั้ง"></div>
+            <div class="field" style="flex:0"><label>&nbsp;</label><button type="button" class="btn secondary" onclick="generateGasToken()">สร้างรหัส</button></div>
+            <div class="field" style="flex:0"><label>&nbsp;</label><button type="button" class="btn" onclick="saveGasToken()">บันทึกในเครื่องนี้</button></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
           <h3>ผู้ใช้ที่ Login ได้</h3>
-          <p class="muted">Username เดียวก็ได้ (ไม่มีรหัสผ่าน)</p>
+          <p class="muted">ทุกคนต้องมีรหัสผ่านอย่างน้อย 4 ตัว — ผู้ใช้เดิมที่ยังไม่มีรหัส ตั้งรหัสใหม่ตอนเข้าสู่ระบบครั้งถัดไป</p>
           <div class="row" style="align-items:flex-end">
             <div class="field"><label>Username ใหม่</label><input id="newUserName" placeholder="ชื่อผู้ใช้" onkeydown="if(event.key==='Enter'){event.preventDefault();addLoginUser();}"></div>
+            <div class="field"><label>รหัสผ่าน</label><input id="newUserPass" type="password" placeholder="อย่างน้อย 4 ตัว" onkeydown="if(event.key==='Enter'){event.preventDefault();addLoginUser();}"></div>
             <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn" onclick="addLoginUser()">เพิ่มผู้ใช้</button></div>
           </div>
           <div id="userList" style="margin-top:12px"></div>
@@ -759,7 +775,7 @@
       </div>
       <div class="row" style="justify-content:flex-end;margin-top:14px">
         <button class="btn secondary" onclick="closeModal()">ยกเลิก</button>
-        <button class="btn" onclick="saveItem()">บันทึก</button>
+        <button class="btn" id="itSaveBtn" onclick="saveItem()">บันทึก</button>
       </div>
     </div>
   </div>
@@ -773,13 +789,13 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="js/db.js?v=126"></script>
-  <script src="js/remote.js?v=132"></script>
-  <script src="js/api.js?v=132"></script>
+  <script src="js/db.js?v=127"></script>
+  <script src="js/remote.js?v=133"></script>
+  <script src="js/api.js?v=133"></script>
   <script src="js/options.js?v=105"></script>
   <script src="js/thdate.js?v=106"></script>
-  <script src="js/app.js?v=135"></script>
-  <script src="js/auth.js?v=105"></script>
+  <script src="js/app.js?v=136"></script>
+  <script src="js/auth.js?v=106"></script>
   <script src="js/pwa.js?v=1"></script>
   <!-- seed / ocr / climate โหลดเมื่อเข้าหน้าที่เกี่ยวข้อง — เร่งเปิดหน้าแรก -->
 </body>

@@ -43,8 +43,8 @@ var Auth = (function () {
     if (typeof startApp === 'function') startApp();
   }
 
-  function login(username, remember) {
-    return DrugAPI.api('login', { username: username }).then(function (r) {
+  function login(username, remember, password) {
+    return DrugAPI.api('login', { username: username, password: password || '' }).then(function (r) {
       clearSession();
       var data = { username: r.username, remember: !!remember };
       if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(data));
@@ -59,6 +59,8 @@ var Auth = (function () {
     showLoginScreen();
     var inp = document.getElementById('loginUser');
     if (inp) inp.value = '';
+    var pass = document.getElementById('loginPass');
+    if (pass) pass.value = '';
     var err = document.getElementById('loginErr');
     if (err) err.textContent = '';
   }
@@ -73,6 +75,8 @@ var Auth = (function () {
 
 function doLogin() {
   var user = (document.getElementById('loginUser').value || '').trim();
+  var passEl = document.getElementById('loginPass');
+  var pass = passEl ? String(passEl.value || '') : '';
   var remember = document.getElementById('loginRemember').checked;
   var err = document.getElementById('loginErr');
   err.textContent = '';
@@ -80,7 +84,11 @@ function doLogin() {
     err.textContent = 'กรุณาใส่ Username';
     return;
   }
-  Auth.login(user, remember).then(function () {
+  if (!pass || pass.length < 4) {
+    err.textContent = 'กรุณาใส่รหัสผ่าน (อย่างน้อย 4 ตัว) — ผู้ใช้เดิมที่ยังไม่มีรหัส ให้ตั้งรหัสใหม่ที่นี่ครั้งแรก';
+    return;
+  }
+  Auth.login(user, remember, pass).then(function () {
     Auth.showApp();
   }).catch(function (e) {
     err.textContent = (e && e.message) ? e.message : String(e);
@@ -92,12 +100,14 @@ function doLogout() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  var inp = document.getElementById('loginUser');
-  if (inp) {
-    inp.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') doLogin();
-    });
-  }
+  ['loginUser', 'loginPass'].forEach(function (id) {
+    var inp = document.getElementById(id);
+    if (inp) {
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') doLogin();
+      });
+    }
+  });
   Auth.init();
   if (typeof PharmaPWA !== 'undefined' && PharmaPWA.init) PharmaPWA.init();
 });

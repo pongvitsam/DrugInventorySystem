@@ -46,4 +46,16 @@ node deploy-webapp.mjs
 https://script.google.com/macros/s/DEPLOYMENT_ID/exec?action=ping
 ```
 
-ควรได้ JSON: `{"ok":true,"service":"DrugInventoryGAS","version":2}`
+ควรได้ JSON: `{"ok":true,"service":"DrugInventoryGAS","version":5}`
+
+## รหัสเชื่อมต่อ (SYNC_TOKEN)
+
+กันคนที่รู้ URL Web App อ่านหรือทับชีต:
+
+1. ในเว็บ: **ตั้งค่า / นำเข้า** → สร้างรหัสเชื่อมต่อ แล้วคัดลอก
+2. ใน Script Editor: **Project Settings → Script properties → Add**
+   - Property: `SYNC_TOKEN`
+   - Value: รหัสเดียวกับในเว็บ
+3. Deploy เวอร์ชันใหม่ของ Web App หลัง `clasp push`
+
+ถ้ายังไม่ตั้ง `SYNC_TOKEN` ระบบทำงานแบบเดิม (Anyone อ่าน/เขียนได้)

@@ -3,6 +3,8 @@
  * Deploy as Web App: Execute as Me, Anyone can access
  *
  * First run: set Script Property SPREADSHEET_ID (or run setupSpreadsheet_)
+ * แนะนำ: ตั้ง Script Property SYNC_TOKEN แล้วใส่รหัสเดียวกันในหน้าตั้งค่าของเว็บ
+ * เพื่อกันคนที่รู้ URL อ่าน/ทับชีต
  */
 
 var SHEET_DEFS = {
@@ -10,8 +12,10 @@ var SHEET_DEFS = {
   Stock: ['id', 'itemId', 'location', 'qty', 'unitPrice', 'packSize', 'expiry', 'lotNote'],
   Receipts: ['id', 'number', 'date', 'source', 'kind', 'notes', 'totalValue', 'createdAt'],
   ReceiptLines: ['id', 'receiptId', 'itemId', 'qtyText', 'qty', 'unitPrice', 'amount', 'packSize', 'expiry', 'requestedQty', 'approvedQty', 'notes'],
-  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  Transfers: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt', 'location'],
   TransferLines: ['id', 'transferId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
+  ExtReceipts: ['id', 'date', 'notes', 'totalQty', 'totalValue', 'createdAt'],
+  ExtReceiptLines: ['id', 'extReceiptId', 'itemId', 'fromStockId', 'toStockId', 'qty', 'unitPrice', 'amount', 'expiry', 'packSize', 'name', 'qtyUnit', 'packQty', 'unitsPerPack'],
   Adjustments: ['id', 'date', 'type', 'location', 'notes', 'totalValue', 'createdAt'],
   AdjustmentLines: ['id', 'adjustmentId', 'itemId', 'stockId', 'qty', 'unitPrice', 'amount', 'expiry'],
   Movements: ['id', 'date', 'type', 'location', 'itemId', 'stockId', 'qtyChange', 'unitPrice', 'amount', 'refId', 'notes'],
@@ -22,74 +26,205 @@ var SHEET_DEFS = {
 };
 
 var DATA_KEYS_ = ['Items', 'Stock', 'Receipts', 'ReceiptLines', 'Transfers', 'TransferLines',
+  'ExtReceipts', 'ExtReceiptLines',
   'Adjustments', 'AdjustmentLines', 'Movements', 'MonthlyRequests', 'ClimateLogs'];
 
 function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
+    var action = String(p.action || 'ping').toLowerCase();
+    if (action !== 'ping') assertToken_(p.token);
+    // ป๊อปอัปบนโดเมน Google — Edge ใช้เมื่อ JSONP/iframe โดนบล็อก
+    if (String(p.relay || '') === '1') {
+      return relayPage_(p);
+    }
     if (String(p.bridge || '') === '1') {
       return serveBridge_(p);
     }
-    var action = String(p.action || 'ping').toLowerCase();
     if (action === 'ping') {
-      return json_({ ok: true, service: 'DrugInventoryGAS', version: 3 });
+      return jsonpOrJson_({ ok: true, service: 'DrugInventoryGAS', version: 5 }, p.callback);
     }
     if (action === 'meta') {
-      return json_(getMeta_());
+      return jsonpOrJson_(getMeta_(), p.callback);
     }
     if (action === 'export') {
       var slim = String(p.slim || '') === '1';
-      return json_(exportAll_({ slim: slim }));
+      return jsonpOrJson_(exportAll_({ slim: slim }), p.callback);
     }
-    return json_({ ok: false, error: 'Unknown action: ' + action });
+    return jsonpOrJson_({ ok: false, error: 'Unknown action: ' + action }, p.callback);
   } catch (err) {
-    return json_({ ok: false, error: String(err.message || err) });
+    var cb = e && e.parameter && e.parameter.callback;
+    return jsonpOrJson_({ ok: false, error: String(err.message || err) }, cb);
   }
 }
 
+function relayPage_(p) {
+  var action = String((p && p.action) || 'meta').toLowerCase();
+  var slim = String((p && p.slim) || '') === '1';
+  var t = HtmlService.createTemplateFromFile('Relay');
+  t.reqIdJson = JSON.stringify(String((p && p.reqId) || ''));
+  t.actionJson = JSON.stringify(action);
+  t.slimJson = JSON.stringify(slim);
+  t.tokenJson = JSON.stringify(String((p && p.token) || ''));
+  return t.evaluate()
+    .setTitle('เชื่อมต่อคลังยา')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/** iframe bridge สำหรับ GitHub Pages (ไม่มี CORS) — ส่งผลผ่าน postMessage */
 function serveBridge_(p) {
   var action = String(p.action || 'ping').toLowerCase();
   var slim = String(p.slim || '') === '1';
-  var payload;
-  try {
-    if (action === 'meta') payload = getMeta_();
-    else if (action === 'export') payload = exportAll_({ slim: slim });
-    else payload = { ok: true, service: 'DrugInventoryGAS', version: 3 };
-  } catch (err) {
-    payload = { ok: false, error: String(err && err.message ? err.message : err) };
-  }
   var t = HtmlService.createTemplateFromFile('Bridge');
-  t.payloadJson = JSON.stringify(payload);
   t.reqIdJson = JSON.stringify(String(p.reqId || ''));
   t.actionJson = JSON.stringify(action);
+  t.slimJson = JSON.stringify(slim);
+  t.tokenJson = JSON.stringify(String(p.token || ''));
+  // export ใหญ่ — อย่าฝังใน HTML (Edge/หลายบัญชี 404) ให้เรียกผ่าน google.script.run
+  if (action === 'export') {
+    t.payloadJson = 'null';
+  } else {
+    var payload;
+    try {
+      if (action === 'meta') payload = getMeta_();
+      else payload = { ok: true, service: 'DrugInventoryGAS', version: 5 };
+    } catch (err) {
+      payload = { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+    t.payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+  }
   return t.evaluate()
     .setTitle('DrugInventory bridge')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function gasExport() { return exportAll_({ slim: true }); }
-function gasMeta() { return getMeta_(); }
-function gasPing() { return { ok: true, service: 'DrugInventoryGAS', version: 3 }; }
+function gasExport(opts) {
+  opts = opts || {};
+  assertToken_(opts.token);
+  return exportAll_({ slim: opts.slim !== false });
+}
+function gasMeta(opts) {
+  opts = opts || {};
+  assertToken_(opts.token);
+  return getMeta_();
+}
+function gasPing() { return { ok: true, service: 'DrugInventoryGAS', version: 5 }; }
+
+function expectedToken_() {
+  try {
+    return String(PropertiesService.getScriptProperties().getProperty('SYNC_TOKEN') || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+function assertToken_(got) {
+  var need = expectedToken_();
+  if (!need) return;
+  if (String(got || '') !== need) {
+    throw new Error('รหัสเชื่อมต่อไม่ถูกต้อง — ตั้ง SYNC_TOKEN ใน Script Properties ให้ตรงกับหน้าตั้งค่า');
+  }
+}
+
+function servePostResult_(reqId, payload) {
+  var t = HtmlService.createTemplateFromFile('Bridge');
+  t.reqIdJson = JSON.stringify(String(reqId || ''));
+  t.actionJson = JSON.stringify('import');
+  t.slimJson = JSON.stringify(false);
+  t.tokenJson = JSON.stringify('');
+  t.payloadJson = JSON.stringify(payload || { ok: false }).replace(/</g, '\\u003c');
+  return t.evaluate()
+    .setTitle('DrugInventory bridge')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function parsePostBody_(e, p) {
+  p = p || {};
+  if (p.payload) {
+    return JSON.parse(p.payload);
+  }
+  if (e && e.postData && e.postData.contents) {
+    var raw = String(e.postData.contents || '').trim();
+    if (raw.charAt(0) === '{' || raw.charAt(0) === '[') return JSON.parse(raw);
+  }
+  return {};
+}
+
+function saveChunk_(id, index, total, text) {
+  id = String(id || '');
+  if (!id) throw new Error('ไม่พบรหัสชิ้นข้อมูล');
+  var cache = CacheService.getScriptCache();
+  cache.put('ck_' + id + '_' + Number(index), String(text || ''), 900);
+  cache.put('ck_' + id + '_n', String(Number(total) || 0), 900);
+  return { ok: true, index: Number(index), total: Number(total) };
+}
+
+function readChunks_(id) {
+  var cache = CacheService.getScriptCache();
+  var n = Number(cache.get('ck_' + id + '_n') || 0);
+  if (!n) throw new Error('ไม่พบชิ้นข้อมูลที่อัปโหลด');
+  var parts = [];
+  for (var i = 0; i < n; i++) {
+    var t = cache.get('ck_' + id + '_' + i);
+    if (t == null) throw new Error('ชิ้นข้อมูลไม่ครบ (' + (i + 1) + '/' + n + ')');
+    parts.push(t);
+  }
+  return parts.join('');
+}
+
+function handlePost_(e, p) {
+  p = p || {};
+  var action = String(p.action || '').toLowerCase();
+  if (action === 'chunk') {
+    assertToken_(p.token);
+    return saveChunk_(p.id, p.index, p.total, p.text);
+  }
+  var body = {};
+  if (action === 'import' && p.chunkId) {
+    assertToken_(p.token);
+    body = JSON.parse(readChunks_(p.chunkId));
+  } else {
+    body = parsePostBody_(e, p);
+  }
+  assertToken_(p.token || body.token);
+  action = String(body.action || action || '').toLowerCase();
+  if (action === 'import') {
+    var meta = importAll_(body.data || {}, {
+      expectedRevision: body.expectedRevision,
+      force: !!body.force
+    });
+    if (meta && meta.conflict) return meta;
+    return { ok: true, revision: meta.revision, updatedAt: meta.updatedAt };
+  }
+  return { ok: false, error: 'Unknown action: ' + action };
+}
 
 function doPost(e) {
+  var p = (e && e.parameter) || {};
+  var wantsHtml = String(p.bridge || '') === '1';
+  var result;
   try {
-    var body = {};
-    if (e && e.postData && e.postData.contents) {
-      body = JSON.parse(e.postData.contents);
-    }
-    var action = String(body.action || '').toLowerCase();
-    if (action === 'import') {
-      var meta = importAll_(body.data || {});
-      return json_({ ok: true, revision: meta.revision, updatedAt: meta.updatedAt });
-    }
-    return json_({ ok: false, error: 'Unknown action: ' + action });
+    result = handlePost_(e, p);
   } catch (err) {
-    return json_({ ok: false, error: String(err.message || err) });
+    result = { ok: false, error: String(err.message || err) };
   }
+  if (wantsHtml) return servePostResult_(p.reqId, result);
+  return json_(result);
 }
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** JSONP สำหรับ GitHub Pages — Edge/Chrome เรียกผ่าน <script> ไม่ติด CORS */
+function jsonpOrJson_(obj, callback) {
+  var text = JSON.stringify(obj);
+  if (callback && /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(callback))) {
+    return ContentService.createTextOutput(String(callback) + '(' + text + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(text)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -111,7 +246,22 @@ function ensureSheets_(ss) {
     if (sheet.getLastRow() === 0) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
+      return;
     }
+    var width = Math.max(sheet.getLastColumn(), 1);
+    var current = sheet.getRange(1, 1, 1, width).getValues()[0];
+    var needs = false;
+    for (var i = 0; i < headers.length; i++) {
+      if (String(current[i] || '') !== headers[i]) { needs = true; break; }
+    }
+    if (!needs) return;
+    var prefixOk = true;
+    for (var j = 0; j < current.length; j++) {
+      var cell = String(current[j] || '');
+      if (!cell) continue;
+      if (headers[j] !== cell) { prefixOk = false; break; }
+    }
+    if (prefixOk) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   });
 }
 
@@ -173,12 +323,12 @@ function writeSheetObjects_(sheet, columns, objects) {
     });
   });
   var range = sheet.getRange(2, 1, rows.length, columns.length);
-  range.setValues(rows);
-  // บังคับคอลัมน์วันที่เป็นข้อความ — กัน Sheets แปลงเป็น Date แล้วเลื่อนวันตอน export
+  // ตั้งเป็นข้อความก่อนใส่ค่า — กัน Sheets แปลง YYYY-MM-DD เป็น Date แล้ววันเลื่อน
   columns.forEach(function (col, i) {
     if (!DATE_ONLY_COLS_[col]) return;
     sheet.getRange(2, i + 1, rows.length, 1).setNumberFormat('@');
   });
+  range.setValues(rows);
 }
 
 var LOGO_PROP_KEY_ = 'LOGO_DATA_URL';
@@ -251,6 +401,7 @@ function exportAll_(opts) {
   DATA_KEYS_.forEach(function (name) {
     data[name] = readSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name]);
   });
+  // slim: ข้ามรูปบิล — ลดขนาด/เวลาโหลด (รูปเก็บในเครื่องแยกอยู่แล้ว)
   if (!opts.slim && data.Receipts && data.Receipts.length) {
     var props = PropertiesService.getScriptProperties();
     data.Receipts.forEach(function (r) {
@@ -269,32 +420,46 @@ function exportAll_(opts) {
   };
 }
 
-function importAll_(data) {
-  var ss = getSpreadsheet_();
-  var current = readSettingsObj_(ss);
-  var settings = data.SettingsObj || {};
-  var rev = Number(current.syncRevision) || 0;
-  settings.syncRevision = String(rev + 1);
-  settings.syncUpdatedAt = new Date().toISOString();
-  data.SettingsObj = settings;
-  writeSettingsObj_(ss, settings);
-  if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
-  if (data.Receipts && data.Receipts.length) {
-    var props2 = PropertiesService.getScriptProperties();
-    data.Receipts.forEach(function (r) {
-      if (!r || !r.id) return;
-      if (r.billImage) {
-        try { props2.setProperty('RIMG_' + r.id, String(r.billImage)); } catch (e) { /* quota */ }
-        delete r.billImage;
+function importAll_(data, opts) {
+  opts = opts || {};
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    throw new Error('มีเครื่องอื่นกำลังบันทึกอยู่ — ลองอีกครั้ง');
+  }
+  try {
+    var ss = getSpreadsheet_();
+    var current = readSettingsObj_(ss);
+    var settings = data.SettingsObj || {};
+    var rev = Number(current.syncRevision) || 0;
+    var expected = opts.expectedRevision;
+    if (!opts.force && expected != null && expected !== '' && Number(expected) !== rev) {
+      return { conflict: true, revision: rev, updatedAt: current.syncUpdatedAt || '' };
+    }
+    // เขียนชีตก่อน แล้วค่อยขึ้น revision — ถ้าหมดเวลากลางทาง จะยังไม่ประกาศชุดที่ไม่ครบ (เช่น อุณหภูมิ)
+    if (data.SeqObj) writeSeqObj_(ss, data.SeqObj);
+    if (data.Receipts && data.Receipts.length) {
+      var props2 = PropertiesService.getScriptProperties();
+      data.Receipts.forEach(function (r) {
+        if (!r || !r.id) return;
+        if (r.billImage) {
+          try { props2.setProperty('RIMG_' + r.id, String(r.billImage)); } catch (e) { /* quota */ }
+          delete r.billImage;
+        }
+      });
+    }
+    DATA_KEYS_.forEach(function (name) {
+      if (data[name]) {
+        writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
       }
     });
+    settings.syncRevision = String(rev + 1);
+    settings.syncUpdatedAt = new Date().toISOString();
+    data.SettingsObj = settings;
+    writeSettingsObj_(ss, settings);
+    return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { /* ignore */ }
   }
-  DATA_KEYS_.forEach(function (name) {
-    if (data[name]) {
-      writeSheetObjects_(getSheet_(ss, name), SHEET_DEFS[name], data[name]);
-    }
-  });
-  return { revision: rev + 1, updatedAt: settings.syncUpdatedAt };
 }
 
 /** Run once from Apps Script editor to create spreadsheet */
