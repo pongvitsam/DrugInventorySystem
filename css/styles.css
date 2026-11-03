@@ -816,6 +816,12 @@ textarea { min-height: 70px; }
 .lot-row { font-size: 13px; line-height: 1.35; }
 .option-field { min-width: 0; }
 .opt-field { min-width: 0; position: relative; }
+.rc-kind-field { min-width: 220px; z-index: 4; }
+.rc-kind-field .opt-manage-pop {
+  left: auto;
+  right: 0;
+  width: max(100%, 260px);
+}
 .opt-label-row {
   display: flex;
   align-items: center;

@@ -218,15 +218,24 @@ function listCategories_() {
   return custom && custom.length ? custom : CATEGORIES.slice();
 }
 
+var DEFAULT_RECEIPT_KINDS_ = ['ยา', 'เวชภัณฑ์'];
+
+function listReceiptKinds_() {
+  var custom = parseJsonList_(readSettings_().listReceiptKinds);
+  return custom && custom.length ? custom : DEFAULT_RECEIPT_KINDS_.slice();
+}
+
 function apiSaveOptionLists_(p) {
   if (p.categories) setSetting_('listCategories', JSON.stringify(p.categories));
   if (p.packSizes) setSetting_('listPackSizes', JSON.stringify(p.packSizes));
   if (p.forms) setSetting_('listForms', JSON.stringify(p.forms));
+  if (p.receiptKinds && p.receiptKinds.length) setSetting_('listReceiptKinds', JSON.stringify(p.receiptKinds));
   return {
     ok: true,
     categories: listCategories_(),
     packSizes: parseJsonList_(readSettings_().listPackSizes) || [],
-    forms: parseJsonList_(readSettings_().listForms) || []
+    forms: parseJsonList_(readSettings_().listForms) || [],
+    receiptKinds: listReceiptKinds_()
   };
 }
 
@@ -247,6 +256,7 @@ function apiBootstrap_() {
     categories: listCategories_(),
     packSizes: parseJsonList_(settings.listPackSizes) || [],
     forms: parseJsonList_(settings.listForms) || [],
+    receiptKinds: listReceiptKinds_(),
     locations: LOC_LABEL,
     itemCount: items.filter(function (i) { return i.active !== '0'; }).length,
     imported: String(settings.imported) === '1',

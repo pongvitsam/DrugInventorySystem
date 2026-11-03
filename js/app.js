@@ -32,7 +32,7 @@ var STATE = {
   reportLookback: 12,
   reportDrugItem: null,
   lastWithdrawId: null,
-  optionLists: { categories: [], packSizes: [], forms: [] },
+  optionLists: { categories: [], packSizes: [], forms: [], receiptKinds: ['ยา', 'เวชภัณฑ์'] },
   lowStockItems: [],
   dashSnapshot: null,
   logoDataUrl: '',
@@ -739,10 +739,12 @@ function refreshOptionLists() {
   var b = STATE.boot || {};
   var savedPacks = b.packSizes && b.packSizes.length ? b.packSizes : null;
   var savedForms = b.forms && b.forms.length ? b.forms : null;
+  var savedKinds = b.receiptKinds && b.receiptKinds.length ? b.receiptKinds : null;
   STATE.optionLists = {
     categories: (b.categories || []).slice(),
     packSizes: savedPacks || Options.mergePackFromItems(STATE.items || []),
-    forms: savedForms || Options.mergeFormFromItems(STATE.items || [])
+    forms: savedForms || Options.mergeFormFromItems(STATE.items || []),
+    receiptKinds: (savedKinds || ['ยา', 'เวชภัณฑ์']).slice()
   };
 }
 
@@ -761,16 +763,19 @@ function persistOptionLists() {
   return api('saveOptionLists', {
     categories: STATE.optionLists.categories,
     packSizes: STATE.optionLists.packSizes,
-    forms: STATE.optionLists.forms
+    forms: STATE.optionLists.forms,
+    receiptKinds: STATE.optionLists.receiptKinds
   }).then(function (r) {
     if (STATE.boot) {
       STATE.boot.categories = r.categories || STATE.optionLists.categories;
       STATE.boot.packSizes = r.packSizes || STATE.optionLists.packSizes;
       STATE.boot.forms = r.forms || STATE.optionLists.forms;
+      STATE.boot.receiptKinds = r.receiptKinds || STATE.optionLists.receiptKinds;
       if (STATE.boot.settings) {
         STATE.boot.settings.listCategories = JSON.stringify(STATE.optionLists.categories);
         STATE.boot.settings.listPackSizes = JSON.stringify(STATE.optionLists.packSizes);
         STATE.boot.settings.listForms = JSON.stringify(STATE.optionLists.forms);
+        STATE.boot.settings.listReceiptKinds = JSON.stringify(STATE.optionLists.receiptKinds);
       }
     }
     fillSelect('itemCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
@@ -779,10 +784,56 @@ function persistOptionLists() {
   });
 }
 
+function defaultReceiptKind() {
+  var list = (STATE.optionLists && STATE.optionLists.receiptKinds) || [];
+  if (list.indexOf('ยา') >= 0) return 'ยา';
+  return list[0] || 'ยา';
+}
+
+function fillReceiptKindSelect(selected) {
+  var sel = document.getElementById('rcKind');
+  if (!sel) return;
+  var list = (STATE.optionLists && STATE.optionLists.receiptKinds) || [];
+  if (!list.length) list = ['ยา', 'เวชภัณฑ์'];
+  var cur = selected != null ? String(selected).trim() : String(sel.value || '').trim();
+  if (!cur) cur = defaultReceiptKind();
+  var values = list.slice();
+  if (cur && values.every(function (x) { return String(x).toLowerCase() !== cur.toLowerCase(); })) {
+    values.unshift(cur);
+  }
+  sel.innerHTML = '';
+  values.forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.textContent = v;
+    sel.appendChild(o);
+  });
+  var match = values.filter(function (x) { return String(x).toLowerCase() === cur.toLowerCase(); })[0];
+  sel.value = match || values[0];
+}
+
 function addOptionListItem(listKey, val, selectId) {
   val = String(val || '').trim();
   if (!val) return toast('พิมพ์รายการที่ต้องการเพิ่ม');
   var list = (STATE.optionLists[listKey] || []).slice();
+  if (listKey === 'receiptKinds') {
+    if (list.some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) {
+      fillReceiptKindSelect(val);
+      paintOptionManage('receiptKinds', 'rcKindManage');
+      var dupPop = document.getElementById('rcKindManage');
+      if (dupPop) dupPop.style.display = 'block';
+      return toast('มีรายการนี้แล้ว');
+    }
+    list.push(val);
+    STATE.optionLists.receiptKinds = list;
+    return persistOptionLists().then(function () {
+      fillReceiptKindSelect(val);
+      paintOptionManage('receiptKinds', 'rcKindManage');
+      var pop = document.getElementById('rcKindManage');
+      if (pop) pop.style.display = 'block';
+      toast('เพิ่มประเภทแล้ว');
+    }).catch(function (e) { toast(e.message || String(e)); });
+  }
   if (list.some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) {
     refillItemModalSelects({
       category: listKey === 'categories' ? val : readOptionSelect('itCat'),
@@ -820,6 +871,17 @@ function removeOptionListItem(listKey, index) {
   if (!confirm('ลบ "' + value + '" จากรายการเลือก?')) return;
   list.splice(index, 1);
   STATE.optionLists[listKey] = list;
+  if (listKey === 'receiptKinds') {
+    var nextKind = readOptionSelect('rcKind');
+    if (String(nextKind).toLowerCase() === String(value).toLowerCase()) nextKind = list[0];
+    return persistOptionLists().then(function () {
+      fillReceiptKindSelect(nextKind);
+      paintOptionManage('receiptKinds', 'rcKindManage');
+      var pop = document.getElementById('rcKindManage');
+      if (pop) pop.style.display = 'block';
+      toast('ลบประเภทแล้ว');
+    }).catch(function (e) { toast(e.message || String(e)); });
+  }
   var map = { categories: 'itCat', packSizes: 'itPack', forms: 'itForm' };
   persistOptionLists().then(function () {
     refillItemModalSelects({
@@ -1533,7 +1595,7 @@ function cancelReceiptEdit() {
   STATE.receive.item = null;
   document.getElementById('rcNumber').value = '';
   document.getElementById('rcSource').value = 'โรงพยาบาลคลองท่อม';
-  document.getElementById('rcKind').value = 'ยา';
+  fillReceiptKindSelect(defaultReceiptKind());
   document.getElementById('rcNotes').value = '';
   document.getElementById('rcSearch').value = '';
   document.getElementById('rcQty').value = '';
@@ -1552,7 +1614,7 @@ function editReceipt(id) {
     document.getElementById('rcNumber').value = rec.number || '';
     ThDate.set('rcDate', rec.date);
     document.getElementById('rcSource').value = rec.source || 'โรงพยาบาลคลองท่อม';
-    document.getElementById('rcKind').value = rec.kind || 'ยา';
+    fillReceiptKindSelect(rec.kind || defaultReceiptKind());
     document.getElementById('rcNotes').value = rec.notes || '';
     STATE.receive.lines = (data.lines || []).map(function (l) {
       var it = itemMap[l.itemId] || {};
@@ -1594,11 +1656,13 @@ function saveReceipt() {
   if (!STATE.receive.lines.length) return toast('ยังไม่มีรายการ');
   return withSaveLock('rcSaveBtn', function () {
     var billImage = capturePendingBillImage_();
+    var kind = String(document.getElementById('rcKind').value || '').trim();
+    if (!kind) return toast('เลือกประเภท');
     var payload = {
       number: document.getElementById('rcNumber').value,
       date: document.getElementById('rcDate').value,
       source: document.getElementById('rcSource').value,
-      kind: document.getElementById('rcKind').value,
+      kind: kind,
       notes: document.getElementById('rcNotes').value,
       lines: STATE.receive.lines
     };

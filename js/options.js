@@ -260,4 +260,5 @@ function initItemOptionSelects(items) {
   refreshOptionLists();
   var packs = STATE.optionLists.packSizes;
   fillSelectWithCustom('rcPack', 'rcPackCustom', packs, '');
+  if (typeof fillReceiptKindSelect === 'function') fillReceiptKindSelect();
 }
