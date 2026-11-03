@@ -763,25 +763,44 @@ function persistOptionLists() {
   return api('saveOptionLists', {
     categories: STATE.optionLists.categories,
     packSizes: STATE.optionLists.packSizes,
-    forms: STATE.optionLists.forms,
-    receiptKinds: STATE.optionLists.receiptKinds
+    forms: STATE.optionLists.forms
   }).then(function (r) {
     if (STATE.boot) {
       STATE.boot.categories = r.categories || STATE.optionLists.categories;
       STATE.boot.packSizes = r.packSizes || STATE.optionLists.packSizes;
       STATE.boot.forms = r.forms || STATE.optionLists.forms;
-      STATE.boot.receiptKinds = r.receiptKinds || STATE.optionLists.receiptKinds;
       if (STATE.boot.settings) {
         STATE.boot.settings.listCategories = JSON.stringify(STATE.optionLists.categories);
         STATE.boot.settings.listPackSizes = JSON.stringify(STATE.optionLists.packSizes);
         STATE.boot.settings.listForms = JSON.stringify(STATE.optionLists.forms);
-        STATE.boot.settings.listReceiptKinds = JSON.stringify(STATE.optionLists.receiptKinds);
       }
     }
     fillSelect('itemCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
     fillSelect('wdCatFilter', ['ทั้งหมด'].concat(STATE.optionLists.categories), true);
     initItemOptionSelects(STATE.items || []);
   });
+}
+
+function persistReceiptKinds() {
+  return api('saveOptionLists', {
+    receiptKinds: STATE.optionLists.receiptKinds
+  }).then(function (r) {
+    var kinds = (r && r.receiptKinds) || STATE.optionLists.receiptKinds;
+    STATE.optionLists.receiptKinds = kinds.slice();
+    if (STATE.boot) {
+      STATE.boot.receiptKinds = kinds.slice();
+      if (STATE.boot.settings) {
+        STATE.boot.settings.listReceiptKinds = JSON.stringify(kinds);
+      }
+    }
+  });
+}
+
+function showReceiptKindManage(selected) {
+  fillReceiptKindSelect(selected);
+  paintOptionManage('receiptKinds', 'rcKindManage');
+  var pop = document.getElementById('rcKindManage');
+  if (pop) pop.style.display = 'block';
 }
 
 function defaultReceiptKind() {
@@ -818,19 +837,13 @@ function addOptionListItem(listKey, val, selectId) {
   var list = (STATE.optionLists[listKey] || []).slice();
   if (listKey === 'receiptKinds') {
     if (list.some(function (x) { return String(x).toLowerCase() === val.toLowerCase(); })) {
-      fillReceiptKindSelect(val);
-      paintOptionManage('receiptKinds', 'rcKindManage');
-      var dupPop = document.getElementById('rcKindManage');
-      if (dupPop) dupPop.style.display = 'block';
+      showReceiptKindManage(val);
       return toast('มีรายการนี้แล้ว');
     }
     list.push(val);
     STATE.optionLists.receiptKinds = list;
-    return persistOptionLists().then(function () {
-      fillReceiptKindSelect(val);
-      paintOptionManage('receiptKinds', 'rcKindManage');
-      var pop = document.getElementById('rcKindManage');
-      if (pop) pop.style.display = 'block';
+    return persistReceiptKinds().then(function () {
+      showReceiptKindManage(val);
       toast('เพิ่มประเภทแล้ว');
     }).catch(function (e) { toast(e.message || String(e)); });
   }
@@ -874,11 +887,8 @@ function removeOptionListItem(listKey, index) {
   if (listKey === 'receiptKinds') {
     var nextKind = readOptionSelect('rcKind');
     if (String(nextKind).toLowerCase() === String(value).toLowerCase()) nextKind = list[0];
-    return persistOptionLists().then(function () {
-      fillReceiptKindSelect(nextKind);
-      paintOptionManage('receiptKinds', 'rcKindManage');
-      var pop = document.getElementById('rcKindManage');
-      if (pop) pop.style.display = 'block';
+    return persistReceiptKinds().then(function () {
+      showReceiptKindManage(nextKind);
       toast('ลบประเภทแล้ว');
     }).catch(function (e) { toast(e.message || String(e)); });
   }
@@ -1656,13 +1666,11 @@ function saveReceipt() {
   if (!STATE.receive.lines.length) return toast('ยังไม่มีรายการ');
   return withSaveLock('rcSaveBtn', function () {
     var billImage = capturePendingBillImage_();
-    var kind = String(document.getElementById('rcKind').value || '').trim();
-    if (!kind) return toast('เลือกประเภท');
     var payload = {
       number: document.getElementById('rcNumber').value,
       date: document.getElementById('rcDate').value,
       source: document.getElementById('rcSource').value,
-      kind: kind,
+      kind: document.getElementById('rcKind').value,
       notes: document.getElementById('rcNotes').value,
       lines: STATE.receive.lines
     };

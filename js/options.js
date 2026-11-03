@@ -257,8 +257,9 @@ function confirmOptionAddInline(listKey, selectId, addInputId) {
 }
 
 function initItemOptionSelects(items) {
+  var packNow = readSelectWithCustom('rcPack', 'rcPackCustom');
   refreshOptionLists();
   var packs = STATE.optionLists.packSizes;
-  fillSelectWithCustom('rcPack', 'rcPackCustom', packs, '');
-  if (typeof fillReceiptKindSelect === 'function') fillReceiptKindSelect();
+  fillSelectWithCustom('rcPack', 'rcPackCustom', packs, packNow);
+  fillReceiptKindSelect();
 }
